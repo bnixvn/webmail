@@ -25,27 +25,6 @@ generate_secret() {
   node -e 'process.stdout.write(require("crypto").randomBytes(32).toString("base64url"))'
 }
 
-prompt_required() {
-  local label="$1"
-  local value="${2:-}"
-
-  if [ -n "${value}" ]; then
-    printf '%s' "${value}"
-    return
-  fi
-
-  if [ ! -t 0 ]; then
-    die "${label} is required. Set it as an environment variable or run the installer interactively."
-  fi
-
-  while [ -z "${value}" ]; do
-    read -r -p "${label}: " value
-    value="$(printf '%s' "${value}" | xargs)"
-  done
-
-  printf '%s' "${value}"
-}
-
 prompt_default() {
   local label="$1"
   local default_value="$2"
@@ -61,6 +40,23 @@ prompt_default() {
     value="$(printf '%s' "${value:-${default_value}}" | xargs)"
   else
     value="${default_value}"
+  fi
+
+  printf '%s' "${value}"
+}
+
+prompt_optional() {
+  local label="$1"
+  local value="${2:-}"
+
+  if [ -n "${value}" ]; then
+    printf '%s' "${value}"
+    return
+  fi
+
+  if [ -t 0 ]; then
+    read -r -p "${label}: " value
+    value="$(printf '%s' "${value}" | xargs)"
   fi
 
   printf '%s' "${value}"
@@ -158,17 +154,18 @@ prepare_env() {
     cp "${SOURCE_DIR}/.env.local" "${ENV_FILE}"
   else
     local allowed_domains
-    local first_domain
+    local mail_host_map
     local mail_host
     local app_port
     local app_name
     local max_attachment_mb
     local auth_secret
 
-    allowed_domains="$(prompt_required "Allowed email domains, comma separated" "${ALLOWED_EMAIL_DOMAINS:-}")"
+    allowed_domains="$(prompt_optional "Allowed email domains, comma separated, blank allows all domains" "${ALLOWED_EMAIL_DOMAINS:-}")"
     allowed_domains="$(printf '%s' "${allowed_domains}" | tr -d ' ')"
-    first_domain="$(printf '%s' "${allowed_domains}" | cut -d',' -f1)"
-    mail_host="$(prompt_default "Mail server host" "mail.${first_domain}" "${MAIL_HOST:-}")"
+    mail_host_map="$(prompt_optional "Mail host map, domain=host pairs, blank uses mail.<login-domain>" "${MAIL_HOST_MAP:-}")"
+    mail_host_map="$(printf '%s' "${mail_host_map}" | tr -d ' ')"
+    mail_host="$(prompt_optional "Default mail host override, blank uses mail.<login-domain>" "${MAIL_HOST:-}")"
     app_port="$(prompt_default "Local webmail port" "3000" "${PORT:-}")"
     app_name="$(prompt_default "Webmail display name" "BNIX WEBMAIL" "${NEXT_PUBLIC_WEBMAIL_NAME:-}")"
     max_attachment_mb="$(prompt_default "Max attachment size in MB" "10" "${NEXT_PUBLIC_MAX_ATTACHMENT_MB:-}")"
@@ -177,9 +174,14 @@ prepare_env() {
     cat > "${ENV_FILE}" <<EOF
 AUTH_SECRET=${auth_secret}
 MAIL_HOST=${mail_host}
+MAIL_HOST_MAP=${mail_host_map}
+IMAP_HOST=
+IMAP_HOST_MAP=
 IMAP_PORT=993
-SMTP_PORT=465
 IMAP_SECURE=true
+SMTP_HOST=
+SMTP_HOST_MAP=
+SMTP_PORT=465
 SMTP_SECURE=true
 ALLOWED_EMAIL_DOMAINS=${allowed_domains}
 NEXT_PUBLIC_WEBMAIL_NAME="${app_name}"

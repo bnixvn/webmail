@@ -31,17 +31,41 @@ export function assertAllowedDomain(email: string) {
   }
 }
 
+function parseHostMap(value?: string) {
+  const hosts = new Map<string, string>();
+
+  for (const entry of value?.split(/[\n,;]+/) || []) {
+    const [rawDomain, ...rawHostParts] = entry.split("=");
+    const domain = rawDomain?.trim().toLowerCase();
+    const host = rawHostParts.join("=").trim();
+
+    if (domain && host) {
+      hosts.set(domain, host);
+    }
+  }
+
+  return hosts;
+}
+
+function mappedHost(value: string | undefined, domain: string) {
+  const hosts = parseHostMap(value);
+  return hosts.get(domain) || hosts.get("*") || "";
+}
+
 export function getMailServerConfig(email: string): MailServerConfig {
   const domain = getEmailDomain(email);
   const fallbackHost = `mail.${domain}`;
   const sharedHost = process.env.MAIL_HOST?.trim();
+  const mappedSharedHost = mappedHost(process.env.MAIL_HOST_MAP, domain);
+  const mappedImapHost = mappedHost(process.env.IMAP_HOST_MAP, domain);
+  const mappedSmtpHost = mappedHost(process.env.SMTP_HOST_MAP, domain);
   const smtpPort = Number(process.env.SMTP_PORT || 465);
 
   return {
-    imapHost: process.env.IMAP_HOST?.trim() || sharedHost || fallbackHost,
+    imapHost: mappedImapHost || mappedSharedHost || process.env.IMAP_HOST?.trim() || sharedHost || fallbackHost,
     imapPort: Number(process.env.IMAP_PORT || 993),
     imapSecure: process.env.IMAP_SECURE !== "false",
-    smtpHost: process.env.SMTP_HOST?.trim() || sharedHost || fallbackHost,
+    smtpHost: mappedSmtpHost || mappedSharedHost || process.env.SMTP_HOST?.trim() || sharedHost || fallbackHost,
     smtpPort,
     smtpSecure:
       process.env.SMTP_SECURE === "false" ? false : smtpPort === 465 || process.env.SMTP_SECURE === "true"
