@@ -96,14 +96,26 @@ install_packages() {
   DEBIAN_FRONTEND=noninteractive apt-get install -y \
     build-essential \
     ca-certificates \
-    nodejs \
-    npm \
+    curl \
+    gnupg \
     rsync
 
   local node_major
+  node_major="$(node -p "Number(process.versions.node.split('.')[0])" 2>/dev/null || echo 0)"
+
+  if [ "${node_major}" -lt 20 ]; then
+    log "Installing Node.js 22 LTS"
+    curl -fsSL https://deb.nodesource.com/setup_22.x -o /tmp/nodesource_setup.sh
+    bash /tmp/nodesource_setup.sh
+    DEBIAN_FRONTEND=noninteractive apt-get install -y nodejs
+    rm -f /tmp/nodesource_setup.sh
+  elif ! command -v npm >/dev/null 2>&1; then
+    DEBIAN_FRONTEND=noninteractive apt-get install -y npm
+  fi
+
   node_major="$(node -p "Number(process.versions.node.split('.')[0])")"
-  if [ "${node_major}" -lt 18 ]; then
-    die "Node.js 18+ is required. Installed: $(node -v)"
+  if [ "${node_major}" -lt 20 ]; then
+    die "Node.js 20+ is required. Installed: $(node -v)"
   fi
 }
 

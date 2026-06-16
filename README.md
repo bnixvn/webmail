@@ -1,115 +1,182 @@
 # BNIX Webmail
 
-Custom webmail UI that logs in with the mailbox credentials from DirectAdmin, reads mail over IMAP, and sends mail over SMTP.
+Webmail riêng cho mailbox DirectAdmin. Ứng dụng không chạy mail server, chỉ đăng nhập mailbox có sẵn và làm việc qua IMAP/SMTP.
 
-## Stack
-
-- Next.js App Router
-- IMAP: `imapflow`
-- SMTP: `nodemailer`
-- MIME parsing: `mailparser`
-- HTML email sanitizing: `sanitize-html`
-- Encrypted HttpOnly cookie session
-
-## Setup
-
-```bash
-cp .env.example .env.local
-npm install
-npm run dev
-```
-
-Open:
-
-```txt
-http://localhost:3000
-```
-
-## Environment
-
-```txt
-AUTH_SECRET=replace-with-at-least-32-random-characters
-MAIL_HOST=mail.your-domain.com
-IMAP_PORT=993
-SMTP_PORT=465
-ALLOWED_EMAIL_DOMAINS=your-domain.com
-NEXT_PUBLIC_WEBMAIL_NAME=BNIX WEBMAIL
-```
-
-If `IMAP_HOST` or `SMTP_HOST` are empty, the app uses `MAIL_HOST`. If `MAIL_HOST` is also empty, it uses `mail.<email-domain>`.
-
-## DirectAdmin Flow
-
-The login form accepts the real mailbox account:
-
-```txt
-alice@demo.root.cloud
-mailbox-password
-```
-
-The app verifies those credentials by opening an IMAP connection. After login, each request opens a short-lived IMAP/SMTP connection using the encrypted session cookie.
-
-## MVP Features
-
-- Login with mailbox credentials
-- Folder list
-- Folder tree with custom folders
-- Create mailbox folders
-- Message list with snippets
-- Read sanitized HTML/text email
-- Compose, reply, send via SMTP
-- Append sent messages to Sent folder when possible
-- Star and delete messages
-- Mark spam or not spam
-- Attachments when sending
-
-## Production Notes
-
-- Set a strong `AUTH_SECRET`.
-- Set `ALLOWED_EMAIL_DOMAINS` before exposing publicly.
-- Run behind HTTPS.
-- Put the app behind Caddy or another reverse proxy.
-- The included Linux systemd service binds to `127.0.0.1` only, so public traffic must go through the reverse proxy.
-- Add rate limiting at the proxy or middleware layer.
-- Consider Redis-backed sessions if you do not want encrypted mailbox credentials in cookies.
-
-## Linux Setup
-
-Supported:
+## Hỗ Trợ
 
 - Ubuntu 24.04
 - Debian 12
 - Debian 13
+- DirectAdmin mail backend
+- Caddy/reverse proxy cài riêng sau
 
-Install:
+Service mặc định chỉ listen nội bộ:
+
+```txt
+127.0.0.1:3000
+```
+
+Không mở `0.0.0.0`, tránh public trực tiếp Node.js ra internet.
+
+## Cài Đặt Từ Git
+
+Đăng nhập server bằng user có quyền `sudo`, rồi chạy:
 
 ```bash
+sudo apt-get update
+sudo apt-get install -y git
+git clone https://github.com/bnixvn/webmail.git
+cd webmail
 sudo bash install-webmail.sh
 ```
 
-The installer builds the Next.js standalone runtime, installs it under `/opt/bnix-webmail`, creates `/etc/bnix-webmail.env`, and starts `bnix-webmail.service`.
-
-If `/etc/bnix-webmail.env` does not exist, the script asks for:
-
-- allowed email domain list
-- mail server host
-- local loopback port
-- display name and attachment limit
-
-It also generates a strong `AUTH_SECRET`.
-
-The service is loopback-only:
+Trong lúc cài, script sẽ hỏi:
 
 ```txt
-127.0.0.1:${PORT:-3000}
+Allowed email domains, comma separated: bnix.io.vn
+Mail server host [mail.bnix.io.vn]: mail.bnix.io.vn
+Local webmail port [3000]: 3000
+Webmail display name [BNIX WEBMAIL]: BNIX WEBMAIL
+Max attachment size in MB [10]: 10
 ```
 
-This installer does not install Caddy. Add Caddy or another reverse proxy separately.
+Sau khi chạy xong, app nằm tại:
 
-Config and logs:
+```txt
+/opt/bnix-webmail
+```
+
+File cấu hình nằm tại:
+
+```txt
+/etc/bnix-webmail.env
+```
+
+Systemd service:
+
+```txt
+bnix-webmail.service
+```
+
+## Cài Đặt Từ File Nén
+
+Nếu dùng bản `.tar.gz`:
+
+```bash
+tar -xzf bnix-webmail-setup-YYYYMMDD-HHMMSS.tar.gz
+cd bnix-webmail
+sudo bash install-webmail.sh
+```
+
+## Kiểm Tra Sau Khi Cài
+
+Kiểm tra service:
+
+```bash
+sudo systemctl status bnix-webmail
+```
+
+Xem log realtime:
+
+```bash
+sudo journalctl -u bnix-webmail -f
+```
+
+Test local:
+
+```bash
+curl -I http://127.0.0.1:3000
+```
+
+Kết quả đúng sẽ có:
+
+```txt
+HTTP/1.1 200 OK
+```
+
+## Cấu Hình
+
+Mở file env:
 
 ```bash
 sudo nano /etc/bnix-webmail.env
-sudo systemctl restart bnix-webmail
-sudo journalctl -u bnix-webmail -f
 ```
+
+Ví dụ:
+
+```env
+AUTH_SECRET=auto-generated-secret
+MAIL_HOST=mail.bnix.io.vn
+IMAP_PORT=993
+SMTP_PORT=465
+IMAP_SECURE=true
+SMTP_SECURE=true
+ALLOWED_EMAIL_DOMAINS=bnix.io.vn
+NEXT_PUBLIC_WEBMAIL_NAME="BNIX WEBMAIL"
+NEXT_PUBLIC_MAX_ATTACHMENT_MB=10
+PORT=3000
+```
+
+Sau khi sửa:
+
+```bash
+sudo systemctl restart bnix-webmail
+```
+
+## Dùng Với Caddy
+
+Script này không cài Caddy.
+
+Sau khi tự cài Caddy, reverse proxy về loopback:
+
+```txt
+127.0.0.1:3000
+```
+
+Không cần đổi app sang `0.0.0.0`.
+
+## Update Phiên Bản Mới
+
+Nếu cài từ Git:
+
+```bash
+cd webmail
+git pull
+sudo bash install-webmail.sh
+```
+
+Script sẽ build lại app, giữ nguyên `/etc/bnix-webmail.env`, và restart service.
+
+## Gỡ Cài Đặt
+
+```bash
+sudo systemctl disable --now bnix-webmail
+sudo rm -f /etc/systemd/system/bnix-webmail.service
+sudo systemctl daemon-reload
+sudo rm -rf /opt/bnix-webmail
+sudo rm -f /etc/bnix-webmail.env
+sudo userdel bnix-webmail 2>/dev/null || true
+sudo groupdel bnix-webmail 2>/dev/null || true
+```
+
+## Tính Năng Chính
+
+- Login bằng mailbox DirectAdmin
+- Đọc mail qua IMAP
+- Gửi mail qua SMTP
+- Folder tree và custom folders
+- Tạo folder
+- Compose/reply/reply all/forward
+- Gửi nhiều người nhận To/Cc/Bcc
+- Rich text editor cơ bản
+- Attachments
+- Mark spam / Not spam
+- Star, delete, mark read/unread
+- Session cookie HttpOnly có mã hóa
+
+## Ghi Chú Bảo Mật
+
+- Bắt buộc đặt `ALLOWED_EMAIL_DOMAINS` khi public.
+- `AUTH_SECRET` phải mạnh và giữ kín.
+- App chỉ nên chạy sau Caddy/reverse proxy có HTTPS.
+- Service systemd đã force `HOSTNAME=127.0.0.1`, kể cả khi env bị cấu hình nhầm.
