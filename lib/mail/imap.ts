@@ -1,6 +1,6 @@
 import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
-import { assertAllowedDomain, getMailServerConfig } from "@/lib/config";
+import { getMailServerConfig } from "@/lib/config";
 import type { MailSession } from "@/lib/session";
 import { sanitizeEmailHtml } from "@/lib/mail/sanitize";
 
@@ -57,7 +57,6 @@ export type MessageDetail = MessageSummary & {
 };
 
 async function getImapClient(session: MailSession) {
-  assertAllowedDomain(session.email);
   const config = await getMailServerConfig(session.email);
 
   return new ImapFlow({

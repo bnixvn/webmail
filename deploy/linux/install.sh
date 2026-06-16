@@ -153,14 +153,11 @@ prepare_env() {
   elif [ -f "${SOURCE_DIR}/.env.local" ]; then
     cp "${SOURCE_DIR}/.env.local" "${ENV_FILE}"
   else
-    local allowed_domains
     local app_port
     local app_name
     local max_attachment_mb
     local auth_secret
 
-    allowed_domains="$(prompt_optional "Allowed email domains, comma separated, blank allows all domains" "${ALLOWED_EMAIL_DOMAINS:-}")"
-    allowed_domains="$(printf '%s' "${allowed_domains}" | tr -d ' ')"
     app_port="$(prompt_default "Local webmail port" "3000" "${PORT:-}")"
     app_name="$(prompt_default "Webmail display name" "BNIX WEBMAIL" "${NEXT_PUBLIC_WEBMAIL_NAME:-}")"
     max_attachment_mb="$(prompt_default "Max attachment size in MB" "10" "${NEXT_PUBLIC_MAX_ATTACHMENT_MB:-}")"
@@ -175,7 +172,6 @@ IMAP_SECURE=true
 SMTP_HOST=
 SMTP_PORT=465
 SMTP_SECURE=true
-ALLOWED_EMAIL_DOMAINS=${allowed_domains}
 NEXT_PUBLIC_WEBMAIL_NAME="${app_name}"
 NEXT_PUBLIC_MAX_ATTACHMENT_MB=${max_attachment_mb}
 PORT=${app_port}

@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { jsonError } from "@/lib/api";
-import { assertAllowedDomain } from "@/lib/config";
 import { verifyLogin } from "@/lib/mail/imap";
 import { setSession } from "@/lib/session";
 
@@ -20,7 +19,6 @@ export async function POST(request: Request) {
       createdAt: Date.now()
     };
 
-    assertAllowedDomain(session.email);
     await verifyLogin(session);
     await setSession(session, { persistent: input.remember });
 

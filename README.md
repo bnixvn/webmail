@@ -33,7 +33,6 @@ sudo bash install-webmail.sh
 Trong lúc cài, script sẽ hỏi:
 
 ```txt
-Allowed email domains, comma separated, blank allows all domains:
 Local webmail port [3000]: 3000
 Webmail display name [BNIX WEBMAIL]: BNIX WEBMAIL
 Max attachment size in MB [10]: 10
@@ -120,7 +119,6 @@ IMAP_SECURE=true
 SMTP_HOST=
 SMTP_PORT=465
 SMTP_SECURE=true
-ALLOWED_EMAIL_DOMAINS=
 NEXT_PUBLIC_WEBMAIL_NAME="BNIX WEBMAIL"
 NEXT_PUBLIC_MAX_ATTACHMENT_MB=10
 PORT=3000
@@ -200,7 +198,6 @@ sudo groupdel bnix-webmail 2>/dev/null || true
 
 ## Ghi Chú Bảo Mật
 
-- Nên đặt `ALLOWED_EMAIL_DOMAINS` nếu chỉ muốn webmail phục vụ một nhóm domain cụ thể. Để trống nghĩa là cho phép mọi domain và mail host sẽ được lấy từ MX record của domain login.
 - `AUTH_SECRET` phải mạnh và giữ kín.
 - App chỉ nên chạy sau Caddy/reverse proxy có HTTPS.
 - Service systemd đã force `HOSTNAME=127.0.0.1`, kể cả khi env bị cấu hình nhầm.

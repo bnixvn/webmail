@@ -18,21 +18,6 @@ export function getEmailDomain(email: string) {
   return domain;
 }
 
-export function assertAllowedDomain(email: string) {
-  const allowed = process.env.ALLOWED_EMAIL_DOMAINS?.split(",")
-    .map((domain) => domain.trim().toLowerCase())
-    .filter(Boolean);
-
-  if (!allowed?.length) {
-    return;
-  }
-
-  const domain = getEmailDomain(email);
-  if (!allowed.includes(domain)) {
-    throw new Error("This email domain is not allowed on this webmail.");
-  }
-}
-
 const mxCache = new Map<string, string>();
 
 async function getMxHost(domain: string) {

@@ -1,6 +1,6 @@
 import nodemailer from "nodemailer";
 import { z } from "zod";
-import { assertAllowedDomain, getMailServerConfig } from "@/lib/config";
+import { getMailServerConfig } from "@/lib/config";
 import { appendSentMessage } from "@/lib/mail/imap";
 import type { MailSession } from "@/lib/session";
 
@@ -42,7 +42,6 @@ function recipientAddress(value: string) {
 }
 
 export async function sendMail(session: MailSession, input: SendMailInput) {
-  assertAllowedDomain(session.email);
   const config = await getMailServerConfig(session.email);
   const parsed = sendMailSchema.parse(input);
 
