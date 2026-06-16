@@ -20,6 +20,8 @@ The installer:
 - creates user `bnix-webmail`
 - installs and starts `bnix-webmail.service`
 
+If `/etc/bnix-webmail.env` does not exist, the installer prompts for the required mail domain and host settings, then generates a strong `AUTH_SECRET`.
+
 The service is intentionally bound to loopback only:
 
 ```txt
@@ -28,20 +30,13 @@ The service is intentionally bound to loopback only:
 
 Even if `HOSTNAME=0.0.0.0` is added to `/etc/bnix-webmail.env`, the systemd unit forces `HOSTNAME=127.0.0.1`.
 
+This installer does not install Caddy or any public reverse proxy.
+
 Edit production settings:
 
 ```bash
 sudo nano /etc/bnix-webmail.env
 sudo systemctl restart bnix-webmail
-```
-
-Caddy example:
-
-```caddyfile
-webmail.example.com {
-  encode zstd gzip
-  reverse_proxy 127.0.0.1:3000
-}
 ```
 
 Useful commands:

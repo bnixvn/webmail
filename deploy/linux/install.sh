@@ -21,6 +21,51 @@ die() {
   exit 1
 }
 
+generate_secret() {
+  node -e 'process.stdout.write(require("crypto").randomBytes(32).toString("base64url"))'
+}
+
+prompt_required() {
+  local label="$1"
+  local value="${2:-}"
+
+  if [ -n "${value}" ]; then
+    printf '%s' "${value}"
+    return
+  fi
+
+  if [ ! -t 0 ]; then
+    die "${label} is required. Set it as an environment variable or run the installer interactively."
+  fi
+
+  while [ -z "${value}" ]; do
+    read -r -p "${label}: " value
+    value="$(printf '%s' "${value}" | xargs)"
+  done
+
+  printf '%s' "${value}"
+}
+
+prompt_default() {
+  local label="$1"
+  local default_value="$2"
+  local value="${3:-}"
+
+  if [ -n "${value}" ]; then
+    printf '%s' "${value}"
+    return
+  fi
+
+  if [ -t 0 ]; then
+    read -r -p "${label} [${default_value}]: " value
+    value="$(printf '%s' "${value:-${default_value}}" | xargs)"
+  else
+    value="${default_value}"
+  fi
+
+  printf '%s' "${value}"
+}
+
 require_root() {
   if [ "$(id -u)" -ne 0 ]; then
     die "Run this installer as root: sudo bash deploy/linux/install.sh"
@@ -99,16 +144,35 @@ prepare_env() {
     cp "${SOURCE_DIR}/.env.production" "${ENV_FILE}"
   elif [ -f "${SOURCE_DIR}/.env.local" ]; then
     cp "${SOURCE_DIR}/.env.local" "${ENV_FILE}"
-  elif [ -f "${SOURCE_DIR}/.env.example" ]; then
-    cp "${SOURCE_DIR}/.env.example" "${ENV_FILE}"
   else
-    cat > "${ENV_FILE}" <<'EOF'
-AUTH_SECRET=replace-with-at-least-32-random-characters
-MAIL_HOST=mail.your-domain.com
+    local allowed_domains
+    local first_domain
+    local mail_host
+    local app_port
+    local app_name
+    local max_attachment_mb
+    local auth_secret
+
+    allowed_domains="$(prompt_required "Allowed email domains, comma separated" "${ALLOWED_EMAIL_DOMAINS:-}")"
+    allowed_domains="$(printf '%s' "${allowed_domains}" | tr -d ' ')"
+    first_domain="$(printf '%s' "${allowed_domains}" | cut -d',' -f1)"
+    mail_host="$(prompt_default "Mail server host" "mail.${first_domain}" "${MAIL_HOST:-}")"
+    app_port="$(prompt_default "Local webmail port" "3000" "${PORT:-}")"
+    app_name="$(prompt_default "Webmail display name" "BNIX WEBMAIL" "${NEXT_PUBLIC_WEBMAIL_NAME:-}")"
+    max_attachment_mb="$(prompt_default "Max attachment size in MB" "10" "${NEXT_PUBLIC_MAX_ATTACHMENT_MB:-}")"
+    auth_secret="${AUTH_SECRET:-$(generate_secret)}"
+
+    cat > "${ENV_FILE}" <<EOF
+AUTH_SECRET=${auth_secret}
+MAIL_HOST=${mail_host}
 IMAP_PORT=993
 SMTP_PORT=465
-ALLOWED_EMAIL_DOMAINS=your-domain.com
-NEXT_PUBLIC_WEBMAIL_NAME=BNIX WEBMAIL
+IMAP_SECURE=true
+SMTP_SECURE=true
+ALLOWED_EMAIL_DOMAINS=${allowed_domains}
+NEXT_PUBLIC_WEBMAIL_NAME="${app_name}"
+NEXT_PUBLIC_MAX_ATTACHMENT_MB=${max_attachment_mb}
+PORT=${app_port}
 EOF
   fi
 
@@ -146,6 +210,8 @@ install_service() {
 }
 
 main() {
+  local installed_port
+
   require_root
   require_supported_os
   install_packages
@@ -156,10 +222,12 @@ main() {
   assemble_runtime
   install_service
 
+  installed_port="$(grep -E '^PORT=' "${ENV_FILE}" | tail -n 1 | cut -d'=' -f2- | tr -cd '0-9')"
+
   log "Done."
   log "Service: systemctl status ${APP_NAME}"
   log "Environment: ${ENV_FILE}"
-  log "Local URL for Caddy: http://127.0.0.1:\${PORT:-3000}"
+  log "Loopback URL: http://127.0.0.1:${installed_port:-3000}"
 }
 
 main "$@"

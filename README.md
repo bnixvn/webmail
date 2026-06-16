@@ -73,7 +73,7 @@ The app verifies those credentials by opening an IMAP connection. After login, e
 - Add rate limiting at the proxy or middleware layer.
 - Consider Redis-backed sessions if you do not want encrypted mailbox credentials in cookies.
 
-## Linux Setup Package
+## Linux Setup
 
 Supported:
 
@@ -84,10 +84,19 @@ Supported:
 Install:
 
 ```bash
-sudo bash deploy/linux/install.sh
+sudo bash install-webmail.sh
 ```
 
 The installer builds the Next.js standalone runtime, installs it under `/opt/bnix-webmail`, creates `/etc/bnix-webmail.env`, and starts `bnix-webmail.service`.
+
+If `/etc/bnix-webmail.env` does not exist, the script asks for:
+
+- allowed email domain list
+- mail server host
+- local loopback port
+- display name and attachment limit
+
+It also generates a strong `AUTH_SECRET`.
 
 The service is loopback-only:
 
@@ -95,14 +104,7 @@ The service is loopback-only:
 127.0.0.1:${PORT:-3000}
 ```
 
-Caddy example:
-
-```caddyfile
-webmail.example.com {
-  encode zstd gzip
-  reverse_proxy 127.0.0.1:3000
-}
-```
+This installer does not install Caddy. Add Caddy or another reverse proxy separately.
 
 Config and logs:
 
