@@ -1,3 +1,5 @@
+import { resolveMx } from "dns/promises";
+
 export type MailServerConfig = {
   imapHost: string;
   imapPort: number;
@@ -31,41 +33,46 @@ export function assertAllowedDomain(email: string) {
   }
 }
 
-function parseHostMap(value?: string) {
-  const hosts = new Map<string, string>();
+const mxCache = new Map<string, string>();
 
-  for (const entry of value?.split(/[\n,;]+/) || []) {
-    const [rawDomain, ...rawHostParts] = entry.split("=");
-    const domain = rawDomain?.trim().toLowerCase();
-    const host = rawHostParts.join("=").trim();
+async function getMxHost(domain: string) {
+  const cached = mxCache.get(domain);
 
-    if (domain && host) {
-      hosts.set(domain, host);
-    }
+  if (cached) {
+    return cached;
   }
 
-  return hosts;
+  try {
+    const records = await resolveMx(domain);
+    const exchange = records
+      .filter((record) => record.exchange && record.exchange !== ".")
+      .sort((a, b) => a.priority - b.priority)[0]?.exchange
+      ?.replace(/\.$/, "");
+
+    if (exchange) {
+      mxCache.set(domain, exchange);
+      return exchange;
+    }
+  } catch {
+    // Fall back below when the domain has no MX or DNS is temporarily unavailable.
+  }
+
+  const fallback = `mail.${domain}`;
+  mxCache.set(domain, fallback);
+  return fallback;
 }
 
-function mappedHost(value: string | undefined, domain: string) {
-  const hosts = parseHostMap(value);
-  return hosts.get(domain) || hosts.get("*") || "";
-}
-
-export function getMailServerConfig(email: string): MailServerConfig {
+export async function getMailServerConfig(email: string): Promise<MailServerConfig> {
   const domain = getEmailDomain(email);
-  const fallbackHost = `mail.${domain}`;
-  const sharedHost = process.env.MAIL_HOST?.trim();
-  const mappedSharedHost = mappedHost(process.env.MAIL_HOST_MAP, domain);
-  const mappedImapHost = mappedHost(process.env.IMAP_HOST_MAP, domain);
-  const mappedSmtpHost = mappedHost(process.env.SMTP_HOST_MAP, domain);
+  const mxHost = await getMxHost(domain);
+  const fixedHost = process.env.MAIL_HOST?.trim();
   const smtpPort = Number(process.env.SMTP_PORT || 465);
 
   return {
-    imapHost: mappedImapHost || mappedSharedHost || process.env.IMAP_HOST?.trim() || sharedHost || fallbackHost,
+    imapHost: process.env.IMAP_HOST?.trim() || fixedHost || mxHost,
     imapPort: Number(process.env.IMAP_PORT || 993),
     imapSecure: process.env.IMAP_SECURE !== "false",
-    smtpHost: mappedSmtpHost || mappedSharedHost || process.env.SMTP_HOST?.trim() || sharedHost || fallbackHost,
+    smtpHost: process.env.SMTP_HOST?.trim() || fixedHost || mxHost,
     smtpPort,
     smtpSecure:
       process.env.SMTP_SECURE === "false" ? false : smtpPort === 465 || process.env.SMTP_SECURE === "true"

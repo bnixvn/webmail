@@ -20,9 +20,9 @@ The installer:
 - creates user `bnix-webmail`
 - installs and starts `bnix-webmail.service`
 
-If `/etc/bnix-webmail.env` does not exist, the installer asks for optional domain allowlist, optional mail host map, local port, display name, and attachment limit. It also generates a strong `AUTH_SECRET`.
+If `/etc/bnix-webmail.env` does not exist, the installer asks for optional domain allowlist, local port, display name, and attachment limit. It also generates a strong `AUTH_SECRET`.
 
-Mail server selection is dynamic. For `user@example.com`, the app uses `MAIL_HOST_MAP` when configured, otherwise it falls back to `mail.example.com`.
+Mail server selection is automatic. For `user@example.com`, the app checks the MX record of `example.com` and uses the best MX host. If no MX record exists, it falls back to `mail.example.com`.
 
 The service is intentionally bound to loopback only:
 

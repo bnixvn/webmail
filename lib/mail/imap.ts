@@ -56,9 +56,9 @@ export type MessageDetail = MessageSummary & {
   }>;
 };
 
-function getImapClient(session: MailSession) {
+async function getImapClient(session: MailSession) {
   assertAllowedDomain(session.email);
-  const config = getMailServerConfig(session.email);
+  const config = await getMailServerConfig(session.email);
 
   return new ImapFlow({
     host: config.imapHost,
@@ -73,7 +73,7 @@ function getImapClient(session: MailSession) {
 }
 
 async function withImap<T>(session: MailSession, handler: (client: ImapFlow) => Promise<T>) {
-  const client = getImapClient(session);
+  const client = await getImapClient(session);
   await client.connect();
 
   try {

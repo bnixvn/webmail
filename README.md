@@ -34,23 +34,17 @@ Trong lúc cài, script sẽ hỏi:
 
 ```txt
 Allowed email domains, comma separated, blank allows all domains:
-Mail host map, domain=host pairs, blank uses mail.<login-domain>:
-Default mail host override, blank uses mail.<login-domain>:
 Local webmail port [3000]: 3000
 Webmail display name [BNIX WEBMAIL]: BNIX WEBMAIL
 Max attachment size in MB [10]: 10
 ```
 
-Nếu để trống `Mail host map` và `Default mail host override`, khi login `user@domain.com` app sẽ tự kết nối tới:
+Khi login `user@domain.com`, app tự check MX record của `domain.com`, chọn MX priority tốt nhất, rồi dùng host đó cho IMAP/SMTP.
+
+Nếu domain không có MX record, app fallback sang:
 
 ```txt
 mail.domain.com
-```
-
-Nếu mỗi domain nằm ở một mail server khác nhau, nhập map dạng:
-
-```txt
-bnix.io.vn=mail1.bnix.vn,example.com=mail2.bnix.vn
 ```
 
 Sau khi chạy xong, app nằm tại:
@@ -120,13 +114,10 @@ Ví dụ:
 ```env
 AUTH_SECRET=auto-generated-secret
 MAIL_HOST=
-MAIL_HOST_MAP=bnix.io.vn=mail1.bnix.vn,example.com=mail2.bnix.vn
 IMAP_HOST=
-IMAP_HOST_MAP=
 IMAP_PORT=993
 IMAP_SECURE=true
 SMTP_HOST=
-SMTP_HOST_MAP=
 SMTP_PORT=465
 SMTP_SECURE=true
 ALLOWED_EMAIL_DOMAINS=
@@ -135,33 +126,19 @@ NEXT_PUBLIC_MAX_ATTACHMENT_MB=10
 PORT=3000
 ```
 
-Thứ tự chọn mail server khi user login `name@domain.com`:
+Thông thường không cần cấu hình `MAIL_HOST`, `IMAP_HOST`, `SMTP_HOST`.
 
-1. `IMAP_HOST_MAP` / `SMTP_HOST_MAP` nếu domain có cấu hình riêng
-2. `MAIL_HOST_MAP` nếu domain có trong map chung
-3. `IMAP_HOST` / `SMTP_HOST` nếu cấu hình host cố định
-4. `MAIL_HOST` nếu cấu hình host cố định chung
-5. fallback tự động `mail.domain.com`
-
-Ví dụ dùng chung một mail server cho tất cả domain:
+Chỉ dùng override nếu thật sự cần ép tất cả domain về một host cố định:
 
 ```env
 MAIL_HOST=mail.shared-server.vn
-MAIL_HOST_MAP=
 ```
 
-Ví dụ nhiều domain ở nhiều server:
+Hoặc ép riêng IMAP/SMTP:
 
 ```env
-MAIL_HOST=
-MAIL_HOST_MAP=domain1.com=mail1.provider.vn,domain2.com=mail2.provider.vn
-```
-
-Ví dụ IMAP và SMTP khác host:
-
-```env
-IMAP_HOST_MAP=domain1.com=imap1.provider.vn,domain2.com=imap2.provider.vn
-SMTP_HOST_MAP=domain1.com=smtp1.provider.vn,domain2.com=smtp2.provider.vn
+IMAP_HOST=imap.shared-server.vn
+SMTP_HOST=smtp.shared-server.vn
 ```
 
 Sau khi sửa:
@@ -223,7 +200,7 @@ sudo groupdel bnix-webmail 2>/dev/null || true
 
 ## Ghi Chú Bảo Mật
 
-- Nên đặt `ALLOWED_EMAIL_DOMAINS` nếu chỉ muốn webmail phục vụ một nhóm domain cụ thể. Để trống nghĩa là cho phép mọi domain và mail host sẽ được resolve theo cấu hình bên trên.
+- Nên đặt `ALLOWED_EMAIL_DOMAINS` nếu chỉ muốn webmail phục vụ một nhóm domain cụ thể. Để trống nghĩa là cho phép mọi domain và mail host sẽ được lấy từ MX record của domain login.
 - `AUTH_SECRET` phải mạnh và giữ kín.
 - App chỉ nên chạy sau Caddy/reverse proxy có HTTPS.
 - Service systemd đã force `HOSTNAME=127.0.0.1`, kể cả khi env bị cấu hình nhầm.

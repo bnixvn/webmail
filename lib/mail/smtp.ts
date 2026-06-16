@@ -43,7 +43,7 @@ function recipientAddress(value: string) {
 
 export async function sendMail(session: MailSession, input: SendMailInput) {
   assertAllowedDomain(session.email);
-  const config = getMailServerConfig(session.email);
+  const config = await getMailServerConfig(session.email);
   const parsed = sendMailSchema.parse(input);
 
   const toRecipients = splitRecipients(parsed.to);

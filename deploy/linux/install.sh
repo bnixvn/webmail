@@ -154,8 +154,6 @@ prepare_env() {
     cp "${SOURCE_DIR}/.env.local" "${ENV_FILE}"
   else
     local allowed_domains
-    local mail_host_map
-    local mail_host
     local app_port
     local app_name
     local max_attachment_mb
@@ -163,9 +161,6 @@ prepare_env() {
 
     allowed_domains="$(prompt_optional "Allowed email domains, comma separated, blank allows all domains" "${ALLOWED_EMAIL_DOMAINS:-}")"
     allowed_domains="$(printf '%s' "${allowed_domains}" | tr -d ' ')"
-    mail_host_map="$(prompt_optional "Mail host map, domain=host pairs, blank uses mail.<login-domain>" "${MAIL_HOST_MAP:-}")"
-    mail_host_map="$(printf '%s' "${mail_host_map}" | tr -d ' ')"
-    mail_host="$(prompt_optional "Default mail host override, blank uses mail.<login-domain>" "${MAIL_HOST:-}")"
     app_port="$(prompt_default "Local webmail port" "3000" "${PORT:-}")"
     app_name="$(prompt_default "Webmail display name" "BNIX WEBMAIL" "${NEXT_PUBLIC_WEBMAIL_NAME:-}")"
     max_attachment_mb="$(prompt_default "Max attachment size in MB" "10" "${NEXT_PUBLIC_MAX_ATTACHMENT_MB:-}")"
@@ -173,14 +168,11 @@ prepare_env() {
 
     cat > "${ENV_FILE}" <<EOF
 AUTH_SECRET=${auth_secret}
-MAIL_HOST=${mail_host}
-MAIL_HOST_MAP=${mail_host_map}
+MAIL_HOST=
 IMAP_HOST=
-IMAP_HOST_MAP=
 IMAP_PORT=993
 IMAP_SECURE=true
 SMTP_HOST=
-SMTP_HOST_MAP=
 SMTP_PORT=465
 SMTP_SECURE=true
 ALLOWED_EMAIL_DOMAINS=${allowed_domains}
