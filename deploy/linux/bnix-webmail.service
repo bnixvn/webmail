@@ -10,6 +10,7 @@ Group=bnix-webmail
 WorkingDirectory=/opt/bnix-webmail/runtime
 Environment=NODE_ENV=production
 Environment=PORT=3000
+Environment=DATA_DIR=/opt/bnix-webmail/data
 EnvironmentFile=-/etc/bnix-webmail.env
 ExecStart=/bin/sh -c 'HOSTNAME=127.0.0.1 PORT="${PORT:-3000}" exec /usr/bin/node server.js'
 Restart=always

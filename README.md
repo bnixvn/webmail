@@ -58,6 +58,12 @@ File cấu hình nằm tại:
 /etc/bnix-webmail.env
 ```
 
+Chữ ký và cấu hình người dùng được lưu tại:
+
+```txt
+/opt/bnix-webmail/data
+```
+
 Systemd service:
 
 ```txt
@@ -192,6 +198,7 @@ sudo groupdel bnix-webmail 2>/dev/null || true
 - Gửi nhiều người nhận To/Cc/Bcc
 - Rich text editor cơ bản
 - Attachments
+- Signature settings
 - Mark spam / Not spam
 - Star, delete, mark read/unread
 - Session cookie HttpOnly có mã hóa

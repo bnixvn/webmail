@@ -6,6 +6,7 @@ APP_USER="bnix-webmail"
 APP_ROOT="/opt/${APP_NAME}"
 SRC_DIR="${APP_ROOT}/src"
 RUNTIME_DIR="${APP_ROOT}/runtime"
+DATA_DIR="${APP_ROOT}/data"
 ENV_FILE="/etc/${APP_NAME}.env"
 SERVICE_FILE="/etc/systemd/system/${APP_NAME}.service"
 
@@ -132,7 +133,7 @@ create_user() {
 
 copy_source() {
   log "Copying source to ${SRC_DIR}"
-  install -d -m 0755 "${APP_ROOT}" "${SRC_DIR}"
+  install -d -m 0755 "${APP_ROOT}" "${SRC_DIR}" "${DATA_DIR}"
   rsync -a --delete \
     --exclude '.git' \
     --exclude '.next' \

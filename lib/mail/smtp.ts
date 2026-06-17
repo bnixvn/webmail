@@ -11,6 +11,8 @@ const attachmentSchema = z.object({
 });
 
 export const sendMailSchema = z.object({
+  fromName: z.string().max(200).optional().default(""),
+  replyTo: z.string().email().or(z.literal("")).optional().default(""),
   to: z.string().optional().default(""),
   cc: z.string().optional().default(""),
   bcc: z.string().optional().default(""),
@@ -56,7 +58,8 @@ export async function sendMail(session: MailSession, input: SendMailInput) {
   }
 
   const mailOptions = {
-    from: session.email,
+    from: parsed.fromName ? { name: parsed.fromName, address: session.email } : session.email,
+    replyTo: parsed.replyTo || undefined,
     to: toRecipients,
     cc: ccRecipients.length ? ccRecipients : undefined,
     bcc: bccRecipients.length ? bccRecipients : undefined,

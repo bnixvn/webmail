@@ -2,7 +2,11 @@
 
 import {
   Archive,
+  AlignCenter,
+  AlignLeft,
+  AlignRight,
   Bold,
+  Check,
   Circle,
   Code2,
   FilePenLine,
@@ -28,6 +32,7 @@ import {
   ReplyAll,
   Search,
   Send,
+  Settings,
   ShieldAlert,
   ShieldCheck,
   Star,
@@ -94,6 +99,8 @@ type AttachmentDraft = {
 };
 
 type ComposeDraft = {
+  fromName?: string;
+  replyTo?: string;
   to: string;
   cc: string;
   bcc: string;
@@ -101,6 +108,17 @@ type ComposeDraft = {
   text: string;
   html: string;
   attachments: AttachmentDraft[];
+};
+
+type SignatureSettings = {
+  displayName: string;
+  email: string;
+  organization: string;
+  replyTo: string;
+  bcc: string;
+  defaultEnabled: boolean;
+  html: string;
+  text: string;
 };
 
 const appName = process.env.NEXT_PUBLIC_WEBMAIL_NAME || "BNIX WEBMAIL";
@@ -196,6 +214,8 @@ function fullDate(value?: string) {
 
 function emptyCompose(): ComposeDraft {
   return {
+    fromName: "",
+    replyTo: "",
     to: "",
     cc: "",
     bcc: "",
@@ -203,6 +223,19 @@ function emptyCompose(): ComposeDraft {
     text: "",
     html: "",
     attachments: []
+  };
+}
+
+function emptySignature(email = ""): SignatureSettings {
+  return {
+    displayName: "",
+    email,
+    organization: "",
+    replyTo: "",
+    bcc: "",
+    defaultEnabled: true,
+    html: "",
+    text: ""
   };
 }
 
@@ -223,6 +256,16 @@ function textToHtml(value: string) {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/\n/g, "<br>");
+}
+
+function htmlToText(value: string) {
+  if (typeof document === "undefined") {
+    return value.replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]+>/g, "");
+  }
+
+  const container = document.createElement("div");
+  container.innerHTML = value;
+  return container.innerText || "";
 }
 
 function foldText(value: string) {
@@ -436,6 +479,10 @@ function isRecipientEmailValid(value: string) {
 
 function hasValidRecipients(...values: string[]) {
   return values.some((value) => splitRecipientValues(value).some(isRecipientEmailValid));
+}
+
+function hasSignatureContent(signature: SignatureSettings) {
+  return Boolean(signature.defaultEnabled && (signature.html.trim() || signature.text.trim()));
 }
 
 function contactValue(contact: Contact) {
@@ -686,9 +733,14 @@ export function WebmailApp() {
   const [quickReply, setQuickReply] = useState("");
   const [quickSending, setQuickSending] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
+  const [signature, setSignature] = useState<SignatureSettings>(emptySignature());
+  const [signatureOpen, setSignatureOpen] = useState(false);
+  const [signatureSaving, setSignatureSaving] = useState(false);
+  const [signatureSaved, setSignatureSaved] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const folderInputRef = useRef<HTMLInputElement | null>(null);
   const editorRef = useRef<HTMLDivElement | null>(null);
+  const signatureEditorRef = useRef<HTMLDivElement | null>(null);
 
   const currentMailbox = useMemo(
     () => mailboxes.find((mailbox) => mailbox.path === folder) || null,
@@ -838,6 +890,47 @@ export function WebmailApp() {
     await loadMessages("INBOX");
   }
 
+  async function loadSignatureSettings(email: string) {
+    const payload = await api<{ settings: SignatureSettings }>("/api/settings/signature");
+    setSignature({
+      ...emptySignature(email),
+      ...payload.settings,
+      email
+    });
+  }
+
+  function applySignatureToDraft(draft: ComposeDraft, mode: "new" | "quoted" = "new") {
+    if (!signature.defaultEnabled) {
+      return draft;
+    }
+
+    let nextDraft = {
+      ...draft,
+      fromName: signature.displayName.trim(),
+      replyTo: signature.replyTo.trim()
+    };
+
+    if (signature.bcc.trim()) {
+      nextDraft = {
+        ...nextDraft,
+        bcc: uniqueRecipients([...splitRecipientValues(nextDraft.bcc), ...splitRecipientValues(signature.bcc)]).join(", ")
+      };
+    }
+
+    if (hasSignatureContent(signature)) {
+      const html = signature.html.trim() || textToHtml(signature.text.trim());
+      const text = signature.text.trim() || htmlToText(signature.html).trim();
+
+      nextDraft = {
+        ...nextDraft,
+        html: mode === "quoted" ? `<br><br>${html}${nextDraft.html}` : `<br><br>${html}`,
+        text: mode === "quoted" ? `\n\n${text}${nextDraft.text}` : `\n\n${text}`
+      };
+    }
+
+    return nextDraft;
+  }
+
   useEffect(() => {
     let active = true;
 
@@ -853,6 +946,7 @@ export function WebmailApp() {
           email: payload.email,
           domain: payload.domain
         });
+        await loadSignatureSettings(payload.email).catch(() => undefined);
         setReady(true);
 
         try {
@@ -870,6 +964,7 @@ export function WebmailApp() {
           setSelectedUid(null);
           setSelectedMessage(null);
           setSelectedUids([]);
+          setSignature(emptySignature());
           setLoginError(`${message} Please sign in again.`);
         }
       } catch {
@@ -906,6 +1001,7 @@ export function WebmailApp() {
       setFolder("INBOX");
       setSelectedUid(null);
       setSelectedMessage(null);
+      await loadSignatureSettings(payload.email).catch(() => setSignature(emptySignature(payload.email)));
       await bootstrap();
     } catch (err) {
       setLoginError(err instanceof Error ? err.message : "Sign in failed.");
@@ -921,13 +1017,17 @@ export function WebmailApp() {
     setSelectedMessage(null);
     setSelectedUids([]);
     setCompose(null);
+    setSignature(emptySignature());
+    setSignatureOpen(false);
   }
 
-  function openCompose(draft = emptyCompose()) {
-    setCompose(draft);
+  function openCompose(draft = emptyCompose(), signatureMode: "new" | "quoted" | false = "new") {
+    const nextDraft = signatureMode ? applySignatureToDraft(draft, signatureMode) : draft;
+
+    setCompose(nextDraft);
     setComposeId((value) => value + 1);
-    setShowCc(Boolean(draft.cc));
-    setShowBcc(Boolean(draft.bcc));
+    setShowCc(Boolean(nextDraft.cc));
+    setShowBcc(Boolean(nextDraft.bcc));
     setMessageMenuOpen(false);
   }
 
@@ -950,7 +1050,7 @@ export function WebmailApp() {
       text: quoteText(message),
       html: textToHtml(quoteText(message)),
       attachments: []
-    });
+    }, "quoted");
   }
 
   function replyAll(message: MessageDetail) {
@@ -968,7 +1068,7 @@ export function WebmailApp() {
       text: quoteText(message),
       html: textToHtml(quoteText(message)),
       attachments: []
-    });
+    }, "quoted");
   }
 
   function forwardMessage(message: MessageDetail) {
@@ -989,7 +1089,7 @@ export function WebmailApp() {
       text,
       html: textToHtml(text),
       attachments: []
-    });
+    }, "quoted");
   }
 
   async function onAttach(files: FileList | null) {
@@ -1277,17 +1377,26 @@ export function WebmailApp() {
     setError("");
 
     try {
+      const signatureHtml = signature.html.trim() || textToHtml(signature.text.trim());
+      const signatureText = signature.text.trim() || htmlToText(signature.html).trim();
+      const quickText = hasSignatureContent(signature) ? `${quickReply}\n\n${signatureText}` : quickReply;
+      const quickHtml = hasSignatureContent(signature)
+        ? `${textToHtml(quickReply)}<br><br>${signatureHtml}`
+        : textToHtml(quickReply);
+
       await api("/api/messages/send", {
         method: "POST",
         body: JSON.stringify({
+          fromName: signature.defaultEnabled ? signature.displayName.trim() : "",
+          replyTo: signature.defaultEnabled ? signature.replyTo.trim() : "",
           to: displayEmail(selectedMessage.from),
           cc: "",
-          bcc: "",
+          bcc: signature.defaultEnabled ? signature.bcc.trim() : "",
           subject: selectedMessage.subject.toLowerCase().startsWith("re:")
             ? selectedMessage.subject
             : `Re: ${selectedMessage.subject}`,
-          text: quickReply,
-          html: textToHtml(quickReply),
+          text: quickText,
+          html: quickHtml,
           attachments: []
         })
       });
@@ -1301,9 +1410,13 @@ export function WebmailApp() {
     }
   }
 
-  function runEditorCommand(command: string, value?: string) {
-    editorRef.current?.focus();
+  function runContentCommand(ref: { current: HTMLDivElement | null }, command: string, value?: string) {
+    ref.current?.focus();
     document.execCommand(command, false, value);
+  }
+
+  function runEditorCommand(command: string, value?: string) {
+    runContentCommand(editorRef, command, value);
   }
 
   function addEditorLink() {
@@ -1314,6 +1427,51 @@ export function WebmailApp() {
     }
 
     runEditorCommand("createLink", url);
+  }
+
+  function addSignatureLink() {
+    const url = window.prompt("URL");
+
+    if (!url) {
+      return;
+    }
+
+    runContentCommand(signatureEditorRef, "createLink", url);
+  }
+
+  async function saveSignatureSettings(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!account) {
+      return;
+    }
+
+    const html = signatureEditorRef.current?.innerHTML || signature.html;
+    const text = signatureEditorRef.current?.innerText || htmlToText(html);
+
+    setSignatureSaving(true);
+    setSignatureSaved(false);
+    setError("");
+
+    try {
+      const payload = await api<{ settings: SignatureSettings }>("/api/settings/signature", {
+        method: "PUT",
+        body: JSON.stringify({
+          ...signature,
+          email: account.email,
+          html,
+          text
+        })
+      });
+
+      setSignature(payload.settings);
+      setSignatureSaved(true);
+      window.setTimeout(() => setSignatureSaved(false), 1800);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Cannot save signature settings.");
+    } finally {
+      setSignatureSaving(false);
+    }
   }
 
   if (!ready) {
@@ -1546,6 +1704,18 @@ export function WebmailApp() {
         </nav>
 
         <div className="border-t border-slate-200 p-4">
+          <button
+            type="button"
+            onClick={() => {
+              setSignatureOpen(true);
+              setSignatureSaved(false);
+            }}
+            className="mb-2 flex h-10 w-full items-center gap-3 rounded-md px-2 text-sm text-slate-700 hover:bg-white"
+            title="Signature settings"
+          >
+            <Settings className="h-4 w-4" />
+            {sidebarOpen ? <span className="truncate">Signature settings</span> : null}
+          </button>
           <button
             type="button"
             onClick={onLogout}
@@ -1972,6 +2142,198 @@ export function WebmailApp() {
           </>
         ) : null}
       </section>
+
+      {signatureOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4">
+          <form
+            onSubmit={saveSignatureSettings}
+            className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-md bg-white shadow-2xl"
+          >
+            <header className="flex h-14 shrink-0 items-center justify-between border-b border-slate-200 px-5">
+              <h2 className="text-lg font-bold">Signature settings</h2>
+              <button
+                type="button"
+                onClick={() => setSignatureOpen(false)}
+                className="flex h-9 w-9 items-center justify-center rounded-md hover:bg-slate-100"
+                title="Close"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </header>
+
+            <div className="mail-scroll min-h-0 flex-1 overflow-y-auto px-5 py-4">
+              <div className="grid gap-3">
+                <label className="grid gap-2 sm:grid-cols-[220px_minmax(0,1fr)] sm:items-center">
+                  <span className="text-sm font-medium text-slate-700">Display name</span>
+                  <input
+                    value={signature.displayName}
+                    onChange={(event) => setSignature({ ...signature, displayName: event.target.value })}
+                    className="h-9 rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  />
+                </label>
+
+                <label className="grid gap-2 sm:grid-cols-[220px_minmax(0,1fr)] sm:items-center">
+                  <span className="text-sm font-medium text-slate-700">Email address</span>
+                  <input
+                    value={account.email}
+                    readOnly
+                    className="h-9 rounded-md border border-slate-300 bg-slate-50 px-3 text-sm text-slate-600 outline-none"
+                  />
+                </label>
+
+                <label className="grid gap-2 sm:grid-cols-[220px_minmax(0,1fr)] sm:items-center">
+                  <span className="text-sm font-medium text-slate-700">Organization</span>
+                  <input
+                    value={signature.organization}
+                    onChange={(event) => setSignature({ ...signature, organization: event.target.value })}
+                    className="h-9 rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  />
+                </label>
+
+                <label className="grid gap-2 sm:grid-cols-[220px_minmax(0,1fr)] sm:items-center">
+                  <span className="text-sm font-medium text-slate-700">Reply-To</span>
+                  <input
+                    type="email"
+                    value={signature.replyTo}
+                    onChange={(event) => setSignature({ ...signature, replyTo: event.target.value })}
+                    className="h-9 rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  />
+                </label>
+
+                <label className="grid gap-2 sm:grid-cols-[220px_minmax(0,1fr)] sm:items-start">
+                  <span className="pt-2 text-sm font-medium text-slate-700">Blind copy</span>
+                  <input
+                    value={signature.bcc}
+                    onChange={(event) => setSignature({ ...signature, bcc: event.target.value })}
+                    placeholder="email@example.com, another@example.com"
+                    className="h-9 rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  />
+                </label>
+
+                <label className="grid gap-2 sm:grid-cols-[220px_minmax(0,1fr)] sm:items-center">
+                  <span className="text-sm font-medium text-slate-700">Use by default</span>
+                  <span>
+                    <input
+                      type="checkbox"
+                      checked={signature.defaultEnabled}
+                      onChange={(event) => setSignature({ ...signature, defaultEnabled: event.target.checked })}
+                      className="h-4 w-4 rounded border-slate-300 accent-blue-500"
+                    />
+                  </span>
+                </label>
+              </div>
+
+              <div className="mt-6">
+                <h3 className="mb-3 text-base font-bold text-slate-900">Signature</h3>
+                <div className="overflow-hidden rounded-md border border-slate-300">
+                  <div className="flex h-10 flex-wrap items-center gap-1 border-b border-slate-300 bg-slate-100 px-2">
+                    <button
+                      type="button"
+                      onMouseDown={(event) => {
+                        event.preventDefault();
+                        runContentCommand(signatureEditorRef, "bold");
+                      }}
+                      className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-white"
+                      title="Bold"
+                    >
+                      <Bold className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onMouseDown={(event) => {
+                        event.preventDefault();
+                        runContentCommand(signatureEditorRef, "italic");
+                      }}
+                      className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-white"
+                      title="Italic"
+                    >
+                      <Italic className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onMouseDown={(event) => {
+                        event.preventDefault();
+                        runContentCommand(signatureEditorRef, "underline");
+                      }}
+                      className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-white"
+                      title="Underline"
+                    >
+                      <Underline className="h-4 w-4" />
+                    </button>
+                    <div className="mx-1 h-6 w-px bg-slate-300" />
+                    <button
+                      type="button"
+                      onMouseDown={(event) => {
+                        event.preventDefault();
+                        runContentCommand(signatureEditorRef, "justifyLeft");
+                      }}
+                      className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-white"
+                      title="Align left"
+                    >
+                      <AlignLeft className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onMouseDown={(event) => {
+                        event.preventDefault();
+                        runContentCommand(signatureEditorRef, "justifyCenter");
+                      }}
+                      className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-white"
+                      title="Align center"
+                    >
+                      <AlignCenter className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onMouseDown={(event) => {
+                        event.preventDefault();
+                        runContentCommand(signatureEditorRef, "justifyRight");
+                      }}
+                      className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-white"
+                      title="Align right"
+                    >
+                      <AlignRight className="h-4 w-4" />
+                    </button>
+                    <div className="mx-1 h-6 w-px bg-slate-300" />
+                    <button
+                      type="button"
+                      onMouseDown={(event) => {
+                        event.preventDefault();
+                        addSignatureLink();
+                      }}
+                      className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-white"
+                      title="Insert link"
+                    >
+                      <Link className="h-4 w-4" />
+                    </button>
+                  </div>
+                  <div
+                    key={`${signature.email}-${signature.html}`}
+                    ref={signatureEditorRef}
+                    contentEditable
+                    suppressContentEditableWarning
+                    data-placeholder="Create your signature..."
+                    className="signature-editor min-h-[300px] bg-white px-4 py-4 text-sm leading-6 outline-none"
+                    dangerouslySetInnerHTML={{ __html: signature.html }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <footer className="flex h-16 shrink-0 items-center justify-between border-t border-slate-200 px-5">
+              <span className="text-sm text-emerald-600">{signatureSaved ? "Saved" : ""}</span>
+              <button
+                type="submit"
+                disabled={signatureSaving}
+                className="flex h-10 items-center gap-2 rounded-md bg-blue-500 px-5 text-sm font-medium text-white hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {signatureSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                Save
+              </button>
+            </footer>
+          </form>
+        </div>
+      ) : null}
 
       {compose ? (
         <div

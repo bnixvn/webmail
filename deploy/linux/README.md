@@ -17,6 +17,7 @@ The installer:
 - copies the app to `/opt/bnix-webmail`
 - builds the Next.js standalone runtime
 - creates `/etc/bnix-webmail.env`
+- stores signature/user settings in `/opt/bnix-webmail/data`
 - creates user `bnix-webmail`
 - installs and starts `bnix-webmail.service`
 
