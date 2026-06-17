@@ -614,10 +614,10 @@ function RecipientInput({
   }
 
   return (
-    <div className="relative flex min-h-12 items-start gap-3 px-5 py-1.5">
+    <div className="relative flex min-h-12 w-full items-start gap-3 px-5 py-1.5">
       <span className="mt-2.5 w-28 shrink-0 text-sm text-slate-700">{label}</span>
       <div
-        className={`flex min-h-10 min-w-0 flex-1 flex-wrap items-center gap-1.5 rounded-md border bg-white px-2 py-1 shadow-sm transition ${
+        className={`flex min-h-10 min-w-0 flex-1 flex-wrap items-center gap-1.5 rounded-md border bg-white px-2 py-1 pr-24 shadow-sm transition ${
           focused ? "border-blue-500 ring-2 ring-blue-100" : "border-slate-300"
         }`}
         onClick={() => inputRef.current?.focus()}
@@ -685,7 +685,11 @@ function RecipientInput({
           className="h-7 min-w-[160px] flex-1 bg-transparent text-sm outline-none"
         />
       </div>
-      {actions ? <div className="mt-2.5 flex shrink-0 items-center gap-3">{actions}</div> : null}
+      {actions ? (
+        <div className="absolute right-5 top-1/2 flex -translate-y-1/2 items-center gap-3 bg-white pl-2">
+          {actions}
+        </div>
+      ) : null}
 
       {focused && suggestions.length ? (
         <div className="absolute left-[144px] top-[calc(100%-2px)] z-30 w-[min(360px,calc(100vw-180px))] overflow-hidden rounded-md border border-slate-200 bg-white py-1 shadow-soft">
