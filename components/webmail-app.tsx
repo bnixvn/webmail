@@ -121,8 +121,15 @@ type SignatureSettings = {
   text: string;
 };
 
+type AvatarSources = {
+  bimiUrl: string | null;
+  gravatarUrl: string;
+};
+
 const appName = process.env.NEXT_PUBLIC_WEBMAIL_NAME || "BNIX WEBMAIL";
 const maxAttachmentMb = Number(process.env.NEXT_PUBLIC_MAX_ATTACHMENT_MB || 10);
+const avatarSourcesCache = new Map<string, AvatarSources>();
+const avatarSourcesPending = new Map<string, Promise<AvatarSources>>();
 
 async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(path, {
@@ -168,6 +175,10 @@ function initials(value: string) {
     .join("");
 }
 
+function normalizeEmailKey(email?: string) {
+  return email?.trim().toLowerCase() || "";
+}
+
 function formatTime(value?: string) {
   if (!value) {
     return "";
@@ -210,6 +221,134 @@ function fullDate(value?: string) {
     hour: "numeric",
     minute: "2-digit"
   }).format(new Date(value));
+}
+
+function useAvatarSources(email?: string) {
+  const normalizedEmail = useMemo(() => normalizeEmailKey(email), [email]);
+  const [sources, setSources] = useState<AvatarSources | null>(() =>
+    normalizedEmail ? avatarSourcesCache.get(normalizedEmail) || null : null
+  );
+
+  useEffect(() => {
+    if (!normalizedEmail) {
+      setSources(null);
+      return;
+    }
+
+    const cached = avatarSourcesCache.get(normalizedEmail);
+
+    if (cached) {
+      setSources(cached);
+      return;
+    }
+
+    setSources(null);
+
+    let active = true;
+    let pending = avatarSourcesPending.get(normalizedEmail);
+
+    if (!pending) {
+      pending = api<AvatarSources>(`/api/avatar?email=${encodeURIComponent(normalizedEmail)}`)
+        .then((payload) => {
+          avatarSourcesCache.set(normalizedEmail, payload);
+          return payload;
+        })
+        .finally(() => {
+          avatarSourcesPending.delete(normalizedEmail);
+        });
+      avatarSourcesPending.set(normalizedEmail, pending);
+    }
+
+    pending
+      .then((payload) => {
+        if (active) {
+          setSources(payload);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setSources(null);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [normalizedEmail]);
+
+  return sources;
+}
+
+function AvatarBadge({
+  email,
+  name,
+  sizeClass,
+  fallbackClassName,
+  textClassName
+}: {
+  email?: string;
+  name?: string;
+  sizeClass: string;
+  fallbackClassName: string;
+  textClassName: string;
+}) {
+  const normalizedEmail = useMemo(() => normalizeEmailKey(email), [email]);
+  const sources = useAvatarSources(normalizedEmail);
+  const [stage, setStage] = useState<"initials" | "bimi" | "gravatar">("initials");
+  const label = name || email || "Avatar";
+  const fallback = initials(name || email || "");
+
+  useEffect(() => {
+    if (sources?.bimiUrl) {
+      setStage("bimi");
+      return;
+    }
+
+    if (sources?.gravatarUrl) {
+      setStage("gravatar");
+      return;
+    }
+
+    setStage("initials");
+  }, [normalizedEmail, sources?.bimiUrl, sources?.gravatarUrl]);
+
+  const wrapperClassName = `flex shrink-0 items-center justify-center overflow-hidden rounded-full ${
+    stage === "initials" ? fallbackClassName : "bg-slate-100"
+  } ${sizeClass}`;
+
+  if (stage === "bimi" && sources?.bimiUrl) {
+    return (
+      <div className={wrapperClassName} title={label}>
+        <img
+          src={sources.bimiUrl}
+          alt={label}
+          className="h-full w-full object-cover"
+          referrerPolicy="no-referrer"
+          onError={() => setStage(sources.gravatarUrl ? "gravatar" : "initials")}
+        />
+      </div>
+    );
+  }
+
+  if (stage === "gravatar" && sources?.gravatarUrl) {
+    return (
+      <div className={wrapperClassName} title={label}>
+        <img
+          src={sources.gravatarUrl}
+          alt={label}
+          className="h-full w-full object-cover"
+          referrerPolicy="no-referrer"
+          onError={() => setStage("initials")}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className={wrapperClassName} title={label}>
+      <span className={textClassName}>{fallback || "?"}</span>
+    </div>
+  );
 }
 
 function emptyCompose(): ComposeDraft {
@@ -615,7 +754,7 @@ function RecipientInput({
 
   return (
     <div className="relative flex min-h-12 w-full items-start gap-3 px-5 py-1.5">
-      <span className="mt-2.5 w-28 shrink-0 text-sm text-slate-700">{label}</span>
+      <span className="mt-2.5 w-14 shrink-0 text-sm text-slate-700">{label}</span>
       <div
         className={`flex min-h-10 min-w-0 flex-1 flex-wrap items-center gap-1.5 rounded-md border bg-white px-2 py-1 pr-24 shadow-sm transition ${
           focused ? "border-blue-500 ring-2 ring-blue-100" : "border-slate-300"
@@ -1862,9 +2001,14 @@ export function WebmailApp() {
                       {!message.seen ? (
                         <span className="absolute -left-2 top-6 h-2 w-2 rounded-full bg-blue-600" />
                       ) : null}
-                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-lime-400 text-sm font-semibold text-white">
-                        {initials(displayName(message.from))}
-                      </div>
+                      <AvatarBadge
+                        key={message.uid}
+                        email={displayEmail(message.from)}
+                        name={displayName(message.from)}
+                        sizeClass="h-10 w-10"
+                        fallbackClassName="bg-lime-400 text-white"
+                        textClassName="text-sm font-semibold text-white"
+                      />
                     </div>
                     <div className="min-w-0">
                       <div className="flex items-center gap-1">
@@ -2032,9 +2176,14 @@ export function WebmailApp() {
               </div>
 
               <div className="mt-5 flex items-start gap-4">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-lime-400 font-semibold text-white">
-                  {initials(displayName(selectedMessage.from))}
-                </div>
+                <AvatarBadge
+                  key={selectedMessage.uid}
+                  email={displayEmail(selectedMessage.from)}
+                  name={displayName(selectedMessage.from)}
+                  sizeClass="h-12 w-12"
+                  fallbackClassName="bg-lime-400 text-white"
+                  textClassName="text-sm font-semibold text-white"
+                />
                 <div className="min-w-0">
                   <p className="truncate font-bold">
                     {displayName(selectedMessage.from)}
@@ -2123,9 +2272,14 @@ export function WebmailApp() {
                 className="mt-4 flex items-center gap-3 rounded-md border border-slate-200 bg-white p-4 shadow-sm"
                 onSubmit={sendQuickReply}
               >
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-red-500 text-xs font-bold text-white">
-                  {initials(account.email)}
-                </div>
+                <AvatarBadge
+                  key={account.email}
+                  email={account.email}
+                  name={account.email}
+                  sizeClass="h-9 w-9"
+                  fallbackClassName="bg-red-500 text-white"
+                  textClassName="text-xs font-bold text-white"
+                />
                 <input
                   name="quickReply"
                   value={quickReply}
