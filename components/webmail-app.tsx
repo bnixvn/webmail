@@ -754,8 +754,8 @@ function RecipientInput({
   }
 
   return (
-    <div className="relative flex min-h-12 w-full items-start gap-2 px-3 py-1.5 sm:gap-3 sm:px-5">
-      <span className="mt-2.5 w-10 shrink-0 text-sm text-slate-700 sm:w-14">{label}</span>
+    <div className="relative grid min-h-12 w-full grid-cols-[4.25rem_minmax(0,1fr)] items-start gap-2 px-3 py-1.5 sm:gap-3 sm:px-5">
+      <span className="mt-2.5 text-sm text-slate-700">{label}</span>
       <div
         className={`flex min-h-10 min-w-0 flex-1 flex-wrap items-center gap-1.5 rounded-md border bg-white px-2 py-1 pr-20 shadow-sm transition sm:pr-24 ${
           focused ? "border-blue-500 ring-2 ring-blue-100" : "border-slate-300"
@@ -832,7 +832,7 @@ function RecipientInput({
       ) : null}
 
       {focused && suggestions.length ? (
-        <div className="absolute left-3 right-3 top-[calc(100%-2px)] z-30 overflow-hidden rounded-md border border-slate-200 bg-white py-1 shadow-soft sm:left-[144px] sm:right-auto sm:w-[min(360px,calc(100vw-180px))]">
+        <div className="absolute left-3 right-3 top-[calc(100%-2px)] z-30 overflow-hidden rounded-md border border-slate-200 bg-white py-1 shadow-soft sm:left-[100px] sm:right-auto sm:w-[min(360px,calc(100vw-136px))]">
           {suggestions.map((contact, index) => (
             <button
               type="button"
@@ -2871,8 +2871,8 @@ export function WebmailApp() {
             </header>
 
             <div className="mail-scroll min-h-0 flex-1 overflow-y-auto">
-              <div className="flex min-h-12 items-center gap-2 border-b border-slate-200 px-3 sm:gap-3 sm:px-5">
-                <span className="w-10 text-sm text-slate-500 sm:w-14">From:</span>
+              <div className="grid min-h-12 grid-cols-[4.25rem_minmax(0,1fr)] items-center gap-2 border-b border-slate-200 px-3 sm:gap-3 sm:px-5">
+                <span className="text-sm text-slate-500">From:</span>
                 <span className="min-w-0 flex-1 truncate text-sm text-slate-900">{account.email}</span>
               </div>
 
@@ -2920,8 +2920,8 @@ export function WebmailApp() {
                 />
               ) : null}
 
-              <div className="flex min-h-14 items-center gap-2 border-b border-slate-200 px-3 sm:gap-3 sm:px-5">
-                <span className="w-10 text-sm text-slate-500 sm:w-14">Subject:</span>
+              <div className="grid min-h-14 grid-cols-[4.25rem_minmax(0,1fr)] items-center gap-2 border-b border-slate-200 px-3 sm:gap-3 sm:px-5">
+                <span className="text-sm text-slate-500">Subject:</span>
                 <input
                   value={compose.subject}
                   onChange={(event) => setCompose({ ...compose, subject: event.target.value })}
