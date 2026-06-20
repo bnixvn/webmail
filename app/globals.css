@@ -75,8 +75,44 @@ button {
 }
 
 .email-html table {
-  max-width: 100%;
   border-collapse: collapse;
+  border-spacing: 0;
+  max-width: 100%;
+  font-size: inherit;
+  line-height: inherit;
+}
+
+/* Only add defaults for tables without inline styles */
+.email-html table:not([style]) {
+  border: 1px solid #d1d5db;
+}
+
+.email-html table:not([style]) th,
+.email-html table:not([style]) td {
+  padding: 10px 14px;
+  border: 1px solid #e2e8f0;
+  vertical-align: top;
+}
+
+.email-html table:not([style]) th {
+  font-weight: 600;
+  text-align: left;
+  background: #f1f5f9;
+}
+
+.email-html table:not([style]) td:first-child {
+  font-weight: 500;
+  white-space: nowrap;
+  width: 1%;
+  background: #f8fafc;
+}
+
+.email-html table:not([style]) tr:nth-child(even) {
+  background: #f8fafc;
+}
+
+.email-html table:not([style]) tr:hover {
+  background: #eff6ff;
 }
 
 .email-html pre {
