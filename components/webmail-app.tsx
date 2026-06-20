@@ -7,6 +7,7 @@ import {
   AlignRight,
   Bold,
   Check,
+  ChevronLeft,
   Circle,
   Code2,
   FilePenLine,
@@ -753,10 +754,10 @@ function RecipientInput({
   }
 
   return (
-    <div className="relative flex min-h-12 w-full items-start gap-3 px-5 py-1.5">
-      <span className="mt-2.5 w-14 shrink-0 text-sm text-slate-700">{label}</span>
+    <div className="relative flex min-h-12 w-full items-start gap-2 px-3 py-1.5 sm:gap-3 sm:px-5">
+      <span className="mt-2.5 w-10 shrink-0 text-sm text-slate-700 sm:w-14">{label}</span>
       <div
-        className={`flex min-h-10 min-w-0 flex-1 flex-wrap items-center gap-1.5 rounded-md border bg-white px-2 py-1 pr-24 shadow-sm transition ${
+        className={`flex min-h-10 min-w-0 flex-1 flex-wrap items-center gap-1.5 rounded-md border bg-white px-2 py-1 pr-20 shadow-sm transition sm:pr-24 ${
           focused ? "border-blue-500 ring-2 ring-blue-100" : "border-slate-300"
         }`}
         onClick={() => inputRef.current?.focus()}
@@ -821,17 +822,17 @@ function RecipientInput({
           autoFocus={autoFocus}
           inputMode="email"
           autoComplete="email"
-          className="h-7 min-w-[160px] flex-1 bg-transparent text-sm outline-none"
+          className="h-7 min-w-[120px] flex-1 bg-transparent text-sm outline-none sm:min-w-[160px]"
         />
       </div>
       {actions ? (
-        <div className="absolute right-5 top-1/2 flex -translate-y-1/2 items-center gap-3 bg-white pl-2">
+        <div className="absolute right-3 top-1/2 flex -translate-y-1/2 items-center gap-3 bg-white pl-2 sm:right-5">
           {actions}
         </div>
       ) : null}
 
       {focused && suggestions.length ? (
-        <div className="absolute left-[144px] top-[calc(100%-2px)] z-30 w-[min(360px,calc(100vw-180px))] overflow-hidden rounded-md border border-slate-200 bg-white py-1 shadow-soft">
+        <div className="absolute left-3 right-3 top-[calc(100%-2px)] z-30 overflow-hidden rounded-md border border-slate-200 bg-white py-1 shadow-soft sm:left-[144px] sm:right-auto sm:w-[min(360px,calc(100vw-180px))]">
           {suggestions.map((contact, index) => (
             <button
               type="button"
@@ -871,6 +872,7 @@ export function WebmailApp() {
   const [showCc, setShowCc] = useState(false);
   const [showBcc, setShowBcc] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [selectedUids, setSelectedUids] = useState<number[]>([]);
   const [messageMenuOpen, setMessageMenuOpen] = useState(false);
   const [quickReply, setQuickReply] = useState("");
@@ -882,6 +884,7 @@ export function WebmailApp() {
   const [signatureSaved, setSignatureSaved] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const folderInputRef = useRef<HTMLInputElement | null>(null);
+  const mobileFolderInputRef = useRef<HTMLInputElement | null>(null);
   const editorRef = useRef<HTMLDivElement | null>(null);
   const signatureEditorRef = useRef<HTMLDivElement | null>(null);
 
@@ -1001,6 +1004,7 @@ export function WebmailApp() {
   }
 
   async function openMessage(uid: number) {
+    setMobileSidebarOpen(false);
     setSelectedUid(uid);
     setLoadingMessage(true);
     setError("");
@@ -1162,6 +1166,7 @@ export function WebmailApp() {
     setCompose(null);
     setSignature(emptySignature());
     setSignatureOpen(false);
+    setMobileSidebarOpen(false);
   }
 
   function openCompose(draft = emptyCompose(), signatureMode: "new" | "quoted" | false = "new") {
@@ -1172,9 +1177,11 @@ export function WebmailApp() {
     setShowCc(Boolean(nextDraft.cc));
     setShowBcc(Boolean(nextDraft.bcc));
     setMessageMenuOpen(false);
+    setMobileSidebarOpen(false);
   }
 
   async function selectFolder(nextFolder: string) {
+    setMobileSidebarOpen(false);
     setFolder(nextFolder);
     setSelectedUid(null);
     setSelectedMessage(null);
@@ -1686,7 +1693,178 @@ export function WebmailApp() {
   }
 
   return (
-    <main className="flex h-screen overflow-hidden bg-slate-50 text-slate-900">
+    <main className="flex h-[100dvh] overflow-hidden bg-slate-50 text-slate-900 md:h-screen">
+      {mobileSidebarOpen ? (
+        <div className="fixed inset-0 z-40 md:hidden">
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/40"
+            onClick={() => setMobileSidebarOpen(false)}
+            aria-label="Close menu"
+          />
+          <aside className="relative flex h-full w-[min(86vw,340px)] flex-col border-r border-slate-200 bg-slate-100 shadow-2xl">
+            <div className="flex h-16 shrink-0 items-center gap-3 px-4">
+              <button
+                type="button"
+                className="flex h-10 w-10 items-center justify-center rounded-md text-slate-900 hover:bg-white"
+                onClick={() => setMobileSidebarOpen(false)}
+                title="Close menu"
+              >
+                <X className="h-5 w-5" />
+              </button>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-bold text-slate-950">{appName}</p>
+                <p className="truncate text-xs text-slate-500">{account.email}</p>
+              </div>
+            </div>
+
+            <div className="px-4 pb-3">
+              <button
+                type="button"
+                onClick={() => openCompose(emptyCompose())}
+                className="flex h-11 w-full items-center justify-center gap-2 rounded-md bg-blue-500 px-4 font-medium text-white shadow-soft hover:bg-blue-600"
+              >
+                <PencilLine className="h-4 w-4" />
+                Compose
+              </button>
+            </div>
+
+            <div className="px-4 pb-3">
+              <label className="flex h-10 items-center gap-2 rounded-md border border-slate-300 bg-white px-3 text-slate-500">
+                <Search className="h-4 w-4" />
+                <input
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Search mail..."
+                  className="min-w-0 flex-1 bg-transparent text-sm text-slate-900 outline-none"
+                />
+              </label>
+            </div>
+
+            <nav className="mail-scroll flex-1 overflow-y-auto py-1">
+              <section className="pb-2">
+                <div className="px-4 pb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  Main
+                </div>
+                <div className="space-y-1">
+                  {mainFolders.map((mailbox) => {
+                    const active = mailbox.path === folder;
+                    const kind = getMailboxKind(mailbox);
+
+                    return (
+                      <button
+                        type="button"
+                        key={mailbox.path}
+                        onClick={() => selectFolder(mailbox.path)}
+                        title={getMailboxLabel(mailbox)}
+                        className={`flex h-10 w-full items-center gap-3 px-5 text-left text-sm font-medium ${
+                          active ? "bg-blue-100 text-blue-700" : "text-slate-900 hover:bg-white"
+                        }`}
+                      >
+                        {getMailboxIcon(kind, active)}
+                        <span className="min-w-0 flex-1 truncate">{getMailboxLabel(mailbox)}</span>
+                        {mailbox.unseen ? (
+                          <span className="rounded-full bg-blue-500 px-2 py-0.5 text-xs text-white">
+                            {mailbox.unseen}
+                          </span>
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+
+              <section className="border-t border-slate-200 pt-2">
+                <div className="flex items-center justify-between px-4 pb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  <span>Folders</span>
+                  <button
+                    type="button"
+                    onClick={() => mobileFolderInputRef.current?.focus()}
+                    className="flex items-center gap-1 rounded-md px-1 py-0.5 text-[11px] font-semibold text-slate-600 hover:bg-white"
+                    title="Create folder"
+                  >
+                    <FolderPlus className="h-3.5 w-3.5" />
+                    Create
+                  </button>
+                </div>
+
+                <form onSubmit={createFolder} className="px-4 pb-3">
+                  <div className="flex h-10 items-center gap-2 rounded-md border border-slate-300 bg-white px-3">
+                    <Folder className="h-4 w-4 text-slate-500" />
+                    <input
+                      ref={mobileFolderInputRef}
+                      value={newFolderName}
+                      onChange={(event) => setNewFolderName(event.target.value)}
+                      placeholder="New folder name"
+                      className="min-w-0 flex-1 bg-transparent text-sm outline-none"
+                    />
+                    <button
+                      type="submit"
+                      className="rounded-md bg-blue-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-600"
+                    >
+                      Create
+                    </button>
+                  </div>
+                </form>
+
+                <div className="space-y-1">
+                  {customFolders.map((mailbox) => {
+                    const active = mailbox.path === folder;
+                    const kind = getMailboxKind(mailbox);
+
+                    return (
+                      <button
+                        type="button"
+                        key={mailbox.path}
+                        onClick={() => selectFolder(mailbox.path)}
+                        title={mailbox.name}
+                        style={{ paddingLeft: `${20 + mailbox.depth * 12}px` }}
+                        className={`flex h-10 w-full items-center gap-3 text-left text-sm font-medium ${
+                          active ? "bg-blue-100 text-blue-700" : "text-slate-900 hover:bg-white"
+                        }`}
+                      >
+                        {getMailboxIcon(kind, active)}
+                        <span className="min-w-0 flex-1 truncate">{mailbox.name}</span>
+                        {mailbox.unseen ? (
+                          <span className="rounded-full bg-blue-500 px-2 py-0.5 text-xs text-white">
+                            {mailbox.unseen}
+                          </span>
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            </nav>
+
+            <div className="border-t border-slate-200 p-4">
+              <button
+                type="button"
+                onClick={() => {
+                  setSignatureOpen(true);
+                  setSignatureSaved(false);
+                  setMobileSidebarOpen(false);
+                }}
+                className="mb-2 flex h-10 w-full items-center gap-3 rounded-md px-2 text-sm text-slate-700 hover:bg-white"
+                title="Signature settings"
+              >
+                <Settings className="h-4 w-4" />
+                <span className="truncate">Signature settings</span>
+              </button>
+              <button
+                type="button"
+                onClick={onLogout}
+                className="flex h-10 w-full items-center gap-3 rounded-md px-2 text-sm text-slate-700 hover:bg-white"
+                title="Sign out"
+              >
+                <LogOut className="h-4 w-4" />
+                <span className="truncate">Sign out</span>
+              </button>
+            </div>
+          </aside>
+        </div>
+      ) : null}
+
       <aside
         className={`${
           sidebarOpen ? "w-64" : "w-16"
@@ -1871,16 +2049,18 @@ export function WebmailApp() {
         </div>
       </aside>
 
-      <section className="flex w-full min-w-0 md:w-96 md:shrink-0 md:border-r md:border-slate-200">
+      <section
+        className={`${selectedUid ? "hidden md:flex" : "flex"} w-full min-w-0 md:w-96 md:shrink-0 md:border-r md:border-slate-200`}
+      >
         <div className="flex w-full flex-col bg-white">
-          <header className="flex h-12 shrink-0 items-center gap-3 border-b border-slate-200 px-4">
+          <header className="flex h-14 shrink-0 items-center gap-2 border-b border-slate-200 px-3 sm:px-4 md:h-12">
             <button
               type="button"
               className="flex h-9 w-9 items-center justify-center rounded-md hover:bg-slate-100 md:hidden"
-              onClick={() => openCompose(emptyCompose())}
-              title="Compose"
+              onClick={() => setMobileSidebarOpen(true)}
+              title="Menu"
             >
-              <PencilLine className="h-5 w-5 text-blue-600" />
+              <Menu className="h-5 w-5" />
             </button>
             <button
               type="button"
@@ -1890,7 +2070,7 @@ export function WebmailApp() {
             >
               <RefreshCw className={`h-4 w-4 ${loadingMessages ? "animate-spin" : ""}`} />
             </button>
-            <div className="flex min-w-0 items-center gap-3 text-sm font-semibold">
+            <div className="flex min-w-0 flex-1 items-center gap-3 text-sm font-semibold">
               <button
                 type="button"
                 onClick={toggleSelectAllVisible}
@@ -1939,10 +2119,40 @@ export function WebmailApp() {
                   </button>
                 </div>
               ) : (
-                <span className="truncate">{filteredMessages.length} conversations</span>
+                <span className="truncate">
+                  {currentMailbox ? getMailboxLabel(currentMailbox) : folder} - {filteredMessages.length}
+                </span>
               )}
             </div>
+            <button
+              type="button"
+              className="flex h-9 w-9 items-center justify-center rounded-md hover:bg-slate-100 md:hidden"
+              onClick={() => loadMessages(folder)}
+              title="Refresh"
+            >
+              <RefreshCw className={`h-4 w-4 ${loadingMessages ? "animate-spin" : ""}`} />
+            </button>
+            <button
+              type="button"
+              className="flex h-9 w-9 items-center justify-center rounded-md hover:bg-slate-100 md:hidden"
+              onClick={() => openCompose(emptyCompose())}
+              title="Compose"
+            >
+              <PencilLine className="h-5 w-5 text-blue-600" />
+            </button>
           </header>
+
+          <div className="border-b border-slate-200 px-3 py-2 md:hidden">
+            <label className="flex h-10 items-center gap-2 rounded-md border border-slate-300 bg-white px-3 text-slate-500">
+              <Search className="h-4 w-4" />
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search mail..."
+                className="min-w-0 flex-1 bg-transparent text-sm text-slate-900 outline-none"
+              />
+            </label>
+          </div>
 
           {error ? (
             <div className="border-b border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
@@ -2046,7 +2256,7 @@ export function WebmailApp() {
         </div>
       </section>
 
-      <section className="hidden min-w-0 flex-1 flex-col bg-slate-50 md:flex">
+      <section className={`${selectedUid ? "flex" : "hidden md:flex"} min-w-0 flex-1 flex-col bg-slate-50`}>
         {!selectedUid ? (
           <div className="flex flex-1 flex-col items-center justify-center px-8 text-center">
             <div className="mb-7 flex h-20 w-20 items-center justify-center rounded-full bg-white shadow-soft">
@@ -2063,15 +2273,29 @@ export function WebmailApp() {
           </div>
         ) : selectedMessage ? (
           <>
-            <header className="shrink-0 border-b border-slate-200 bg-white px-6 py-4">
+            <header className="shrink-0 border-b border-slate-200 bg-white px-4 py-3 md:px-6 md:py-4">
               <div className="flex items-start justify-between gap-4">
-                <div className="min-w-0">
-                  <h2 className="truncate text-2xl font-bold tracking-normal">
-                    {selectedMessage.subject}
-                  </h2>
-                  <p className="mt-2 text-sm text-slate-500">{fullDate(selectedMessage.date)}</p>
+                <div className="flex min-w-0 flex-1 items-start gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedUid(null);
+                      setSelectedMessage(null);
+                      setMessageMenuOpen(false);
+                    }}
+                    className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-slate-700 hover:bg-slate-100 md:hidden"
+                    title="Back"
+                  >
+                    <ChevronLeft className="h-5 w-5" />
+                  </button>
+                  <div className="min-w-0">
+                    <h2 className="truncate text-lg font-bold tracking-normal md:text-2xl">
+                      {selectedMessage.subject}
+                    </h2>
+                    <p className="mt-1 text-sm text-slate-500 md:mt-2">{fullDate(selectedMessage.date)}</p>
+                  </div>
                 </div>
-                <div className="flex shrink-0 items-center gap-2">
+                <div className="hidden shrink-0 items-center gap-2 md:flex">
                   <button
                     type="button"
                     onClick={() => archiveMessages([selectedMessage.uid])}
@@ -2175,7 +2399,110 @@ export function WebmailApp() {
                 </div>
               </div>
 
-              <div className="mt-5 flex items-start gap-4">
+              <div className="mt-3 flex flex-wrap items-center gap-1 md:hidden">
+                <button
+                  type="button"
+                  onClick={() => archiveMessages([selectedMessage.uid])}
+                  className="flex h-9 w-9 items-center justify-center rounded-md text-slate-600 hover:bg-slate-100"
+                  title="Archive"
+                >
+                  <Archive className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => markSpamMessages([selectedMessage.uid])}
+                  className="flex h-9 w-9 items-center justify-center rounded-md text-slate-600 hover:bg-slate-100"
+                  title={spamActionLabel}
+                >
+                  <SpamActionIcon className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => deleteMessages([selectedMessage.uid])}
+                  className="flex h-9 w-9 items-center justify-center rounded-md text-slate-600 hover:bg-slate-100"
+                  title="Delete"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={toggleStar}
+                  className="flex h-9 w-9 items-center justify-center rounded-md text-slate-600 hover:bg-slate-100"
+                  title="Star"
+                >
+                  <Star
+                    className={`h-4 w-4 ${
+                      selectedMessage.flagged ? "fill-amber-400 text-amber-400" : ""
+                    }`}
+                  />
+                </button>
+                <button
+                  type="button"
+                  onClick={toggleCurrentReadState}
+                  className="flex h-9 w-9 items-center justify-center rounded-md text-slate-600 hover:bg-slate-100"
+                  title={selectedMessage.seen ? "Mark as unread" : "Mark as read"}
+                >
+                  <Circle className="h-4 w-4" />
+                </button>
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setMessageMenuOpen(!messageMenuOpen)}
+                    className="flex h-9 w-9 items-center justify-center rounded-md text-slate-600 hover:bg-slate-100"
+                    title="More actions"
+                  >
+                    <MoreVertical className="h-4 w-4" />
+                  </button>
+                  {messageMenuOpen ? (
+                    <div className="absolute left-0 top-10 z-20 w-48 overflow-hidden rounded-md border border-slate-200 bg-white py-1 text-sm shadow-soft">
+                      <button
+                        type="button"
+                        onClick={() => replyAll(selectedMessage)}
+                        className="block w-full px-3 py-2 text-left hover:bg-slate-100"
+                      >
+                        Reply all
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => forwardMessage(selectedMessage)}
+                        className="block w-full px-3 py-2 text-left hover:bg-slate-100"
+                      >
+                        Forward
+                      </button>
+                      <button
+                        type="button"
+                        onClick={toggleCurrentReadState}
+                        className="block w-full px-3 py-2 text-left hover:bg-slate-100"
+                      >
+                        {selectedMessage.seen ? "Mark unread" : "Mark read"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => archiveMessages([selectedMessage.uid])}
+                        className="block w-full px-3 py-2 text-left hover:bg-slate-100"
+                      >
+                        Archive
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => markSpamMessages([selectedMessage.uid])}
+                        className="block w-full px-3 py-2 text-left hover:bg-slate-100"
+                      >
+                        {spamActionLabel}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => deleteMessages([selectedMessage.uid])}
+                        className="block w-full px-3 py-2 text-left text-red-600 hover:bg-red-50"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="mt-4 flex items-start gap-3 md:mt-5 md:gap-4">
                 <AvatarBadge
                   key={selectedMessage.uid}
                   email={displayEmail(selectedMessage.from)}
@@ -2200,8 +2527,8 @@ export function WebmailApp() {
               </div>
             </header>
 
-            <div className="mail-scroll flex-1 overflow-y-auto p-6">
-              <article className="rounded-md border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="mail-scroll flex-1 overflow-y-auto p-4 md:p-6">
+              <article className="rounded-md border border-slate-200 bg-white p-4 shadow-sm md:p-6">
                 {selectedMessage.html ? (
                   <div
                     className="email-html text-sm leading-7"
@@ -2269,7 +2596,7 @@ export function WebmailApp() {
               </div>
 
               <form
-                className="mt-4 flex items-center gap-3 rounded-md border border-slate-200 bg-white p-4 shadow-sm"
+                className="mt-4 flex items-center gap-2 rounded-md border border-slate-200 bg-white p-3 shadow-sm md:gap-3 md:p-4"
                 onSubmit={sendQuickReply}
               >
                 <AvatarBadge
@@ -2300,6 +2627,18 @@ export function WebmailApp() {
           </>
         ) : null}
       </section>
+
+      {!compose && !signatureOpen && !mobileSidebarOpen ? (
+        <button
+          type="button"
+          onClick={() => openCompose(emptyCompose())}
+          className="fixed bottom-5 right-5 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-blue-500 text-white shadow-2xl hover:bg-blue-600 md:hidden"
+          title="Compose"
+          aria-label="Compose"
+        >
+          <PencilLine className="h-6 w-6" />
+        </button>
+      ) : null}
 
       {signatureOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4">
@@ -2496,7 +2835,9 @@ export function WebmailApp() {
       {compose ? (
         <div
           className={`fixed inset-0 z-50 flex ${
-            composeFullPage ? "items-stretch justify-stretch bg-white" : "items-center justify-center bg-black/45 px-4"
+            composeFullPage
+              ? "items-stretch justify-stretch bg-white"
+              : "items-stretch justify-stretch bg-white sm:items-center sm:justify-center sm:bg-black/45 sm:px-4"
           }`}
         >
           <form
@@ -2504,10 +2845,10 @@ export function WebmailApp() {
             className={`flex flex-col overflow-hidden bg-white ${
               composeFullPage
                 ? "h-full w-full rounded-none"
-                : "max-h-[90vh] w-full max-w-3xl rounded-md shadow-2xl"
+                : "h-full w-full rounded-none sm:h-auto sm:max-h-[90vh] sm:max-w-3xl sm:rounded-md sm:shadow-2xl"
             }`}
           >
-            <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 px-5">
+            <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 px-4 sm:px-5">
               <h2 className="text-lg font-bold">New Message</h2>
               <div className="flex items-center gap-1">
                 <button
@@ -2530,8 +2871,8 @@ export function WebmailApp() {
             </header>
 
             <div className="mail-scroll min-h-0 flex-1 overflow-y-auto">
-              <div className="flex min-h-12 items-center gap-3 border-b border-slate-200 px-5">
-                <span className="w-14 text-sm text-slate-500">From:</span>
+              <div className="flex min-h-12 items-center gap-2 border-b border-slate-200 px-3 sm:gap-3 sm:px-5">
+                <span className="w-10 text-sm text-slate-500 sm:w-14">From:</span>
                 <span className="min-w-0 flex-1 truncate text-sm text-slate-900">{account.email}</span>
               </div>
 
@@ -2579,8 +2920,8 @@ export function WebmailApp() {
                 />
               ) : null}
 
-              <div className="flex min-h-14 items-center gap-3 border-b border-slate-200 px-5">
-                <span className="w-14 text-sm text-slate-500">Subject:</span>
+              <div className="flex min-h-14 items-center gap-2 border-b border-slate-200 px-3 sm:gap-3 sm:px-5">
+                <span className="w-10 text-sm text-slate-500 sm:w-14">Subject:</span>
                 <input
                   value={compose.subject}
                   onChange={(event) => setCompose({ ...compose, subject: event.target.value })}
@@ -2588,7 +2929,7 @@ export function WebmailApp() {
                 />
               </div>
 
-              <div className="flex h-12 items-center gap-1 border-b border-slate-200 px-5">
+              <div className="mail-scroll flex h-12 items-center gap-1 overflow-x-auto border-b border-slate-200 px-3 sm:px-5">
                 <button
                   type="button"
                   onMouseDown={(event) => {
@@ -2676,8 +3017,8 @@ export function WebmailApp() {
                 contentEditable
                 suppressContentEditableWarning
                 data-placeholder="Write your message..."
-                className={`compose-editor w-full border-b border-slate-200 px-5 py-4 text-sm leading-7 outline-none ${
-                  composeFullPage ? "min-h-[calc(100vh-320px)]" : "min-h-56"
+                className={`compose-editor w-full border-b border-slate-200 px-3 py-4 text-sm leading-7 outline-none sm:px-5 ${
+                  composeFullPage ? "min-h-[calc(100dvh-320px)]" : "min-h-[calc(100dvh-320px)] sm:min-h-56"
                 }`}
                 dangerouslySetInnerHTML={{
                   __html: compose.html || textToHtml(compose.text)
@@ -2685,7 +3026,7 @@ export function WebmailApp() {
               />
 
               {compose.attachments.length ? (
-                <div className="grid gap-2 border-b border-slate-200 px-5 py-3">
+                <div className="grid gap-2 border-b border-slate-200 px-3 py-3 sm:px-5">
                   {compose.attachments.map((attachment, index) => (
                     <div
                       key={`${attachment.filename}-${index}`}
@@ -2712,7 +3053,7 @@ export function WebmailApp() {
               ) : null}
             </div>
 
-            <footer className="flex h-16 shrink-0 items-center justify-between px-5">
+            <footer className="flex h-16 shrink-0 items-center justify-between px-3 sm:px-5">
               <div>
                 <input
                   ref={fileInputRef}
