@@ -6,10 +6,12 @@ import {
   AlignLeft,
   AlignRight,
   Bold,
+  CalendarDays,
   Check,
   ChevronLeft,
   Circle,
   Code2,
+  Contact,
   FilePenLine,
   Folder,
   FolderPlus,
@@ -43,6 +45,8 @@ import {
 } from "lucide-react";
 import type { FormEvent, KeyboardEvent, ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { ContactsView } from "./contacts-view";
+import { CalendarView } from "./calendar-view";
 
 type Account = {
   email: string;
@@ -855,6 +859,7 @@ function RecipientInput({
 export function WebmailApp() {
   const [ready, setReady] = useState(false);
   const [account, setAccount] = useState<Account | null>(null);
+  const [view, setView] = useState<"mail" | "contacts" | "calendar">("mail");
   const [mailboxes, setMailboxes] = useState<Mailbox[]>([]);
   const [folder, setFolder] = useState("INBOX");
   const [messages, setMessages] = useState<MessageSummary[]>([]);
@@ -1718,6 +1723,7 @@ export function WebmailApp() {
               </div>
             </div>
 
+            {view === "mail" ? (
             <div className="px-4 pb-3">
               <button
                 type="button"
@@ -1728,7 +1734,9 @@ export function WebmailApp() {
                 Compose
               </button>
             </div>
+            ) : null}
 
+            {view === "mail" ? (
             <div className="px-4 pb-3">
               <label className="flex h-10 items-center gap-2 rounded-md border border-slate-300 bg-white px-3 text-slate-500">
                 <Search className="h-4 w-4" />
@@ -1740,7 +1748,42 @@ export function WebmailApp() {
                 />
               </label>
             </div>
+            ) : null}
 
+            <div className="space-y-1 px-3 pb-2">
+              <button
+                type="button"
+                onClick={() => { setView("mail"); setMobileSidebarOpen(false); }}
+                className={`flex h-9 w-full items-center gap-3 rounded-md px-3 text-left text-sm font-medium ${
+                  view === "mail" ? "bg-blue-100 text-blue-700" : "text-slate-900 hover:bg-white"
+                }`}
+              >
+                <Mail className="h-4 w-4" />
+                <span>Mail</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => { setView("contacts"); setMobileSidebarOpen(false); }}
+                className={`flex h-9 w-full items-center gap-3 rounded-md px-3 text-left text-sm font-medium ${
+                  view === "contacts" ? "bg-blue-100 text-blue-700" : "text-slate-900 hover:bg-white"
+                }`}
+              >
+                <Contact className="h-4 w-4" />
+                <span>Contacts</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => { setView("calendar"); setMobileSidebarOpen(false); }}
+                className={`flex h-9 w-full items-center gap-3 rounded-md px-3 text-left text-sm font-medium ${
+                  view === "calendar" ? "bg-blue-100 text-blue-700" : "text-slate-900 hover:bg-white"
+                }`}
+              >
+                <CalendarDays className="h-4 w-4" />
+                <span>Calendar</span>
+              </button>
+            </div>
+
+            {view === "mail" ? (
             <nav className="mail-scroll flex-1 overflow-y-auto py-1">
               <section className="pb-2">
                 <div className="px-4 pb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
@@ -1836,6 +1879,7 @@ export function WebmailApp() {
                 </div>
               </section>
             </nav>
+            ) : null}
 
             <div className="border-t border-slate-200 p-4">
               <button
@@ -1879,7 +1923,7 @@ export function WebmailApp() {
           >
             <Menu className="h-5 w-5" />
           </button>
-          {sidebarOpen ? (
+          {sidebarOpen && view === "mail" ? (
             <button
               type="button"
               onClick={() => openCompose(emptyCompose())}
@@ -1891,7 +1935,7 @@ export function WebmailApp() {
           ) : null}
         </div>
 
-        {sidebarOpen ? (
+        {sidebarOpen && view === "mail" ? (
           <div className="px-4 pb-3">
             <label className="flex h-10 items-center gap-2 rounded-md border border-slate-300 bg-white px-3 text-slate-500">
               <Search className="h-4 w-4" />
@@ -1905,6 +1949,43 @@ export function WebmailApp() {
           </div>
         ) : null}
 
+        <div className={`space-y-1 px-3 pb-2 ${sidebarOpen ? "" : "py-1"}`}>
+          <button
+            type="button"
+            onClick={() => { setView("mail"); setMobileSidebarOpen(false); }}
+            className={`flex h-9 w-full items-center gap-3 rounded-md px-3 text-left text-sm font-medium ${
+              view === "mail" ? "bg-blue-100 text-blue-700" : "text-slate-900 hover:bg-white"
+            }`}
+            title="Mail"
+          >
+            <Mail className="h-4 w-4" />
+            {sidebarOpen ? <span>Mail</span> : null}
+          </button>
+          <button
+            type="button"
+            onClick={() => { setView("contacts"); setMobileSidebarOpen(false); }}
+            className={`flex h-9 w-full items-center gap-3 rounded-md px-3 text-left text-sm font-medium ${
+              view === "contacts" ? "bg-blue-100 text-blue-700" : "text-slate-900 hover:bg-white"
+            }`}
+            title="Contacts"
+          >
+            <Contact className="h-4 w-4" />
+            {sidebarOpen ? <span>Contacts</span> : null}
+          </button>
+          <button
+            type="button"
+            onClick={() => { setView("calendar"); setMobileSidebarOpen(false); }}
+            className={`flex h-9 w-full items-center gap-3 rounded-md px-3 text-left text-sm font-medium ${
+              view === "calendar" ? "bg-blue-100 text-blue-700" : "text-slate-900 hover:bg-white"
+            }`}
+            title="Calendar"
+          >
+            <CalendarDays className="h-4 w-4" />
+            {sidebarOpen ? <span>Calendar</span> : null}
+          </button>
+        </div>
+
+        {view === "mail" ? (
         <nav className="mail-scroll flex-1 overflow-y-auto py-1">
           {sidebarOpen ? (
             <>
@@ -2023,6 +2104,7 @@ export function WebmailApp() {
             </div>
           )}
         </nav>
+        ) : null}
 
         <div className="border-t border-slate-200 p-4">
           <button
@@ -2049,6 +2131,12 @@ export function WebmailApp() {
         </div>
       </aside>
 
+      {view === "contacts" ? (
+        <ContactsView />
+      ) : view === "calendar" ? (
+        <CalendarView />
+      ) : (
+      <>
       <section
         className={`${selectedUid ? "hidden md:flex" : "flex"} w-full min-w-0 md:w-96 md:shrink-0 md:border-r md:border-slate-200`}
       >
@@ -2627,6 +2715,8 @@ export function WebmailApp() {
           </>
         ) : null}
       </section>
+      </>
+      )}
 
       {!compose && !signatureOpen && !mobileSidebarOpen ? (
         <button

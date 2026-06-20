@@ -71,15 +71,61 @@ async function getImapClient(session: MailSession) {
   });
 }
 
-async function withImap<T>(session: MailSession, handler: (client: ImapFlow) => Promise<T>) {
+// Connection pool — reuse IMAP connections per user
+const pool = new Map<string, { client: ImapFlow; lastUsed: number }>();
+const POOL_TTL_MS = 4 * 60 * 1000; // 4 minutes idle timeout
+
+// Clean up stale connections every minute
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of pool) {
+    if (now - entry.lastUsed > POOL_TTL_MS) {
+      entry.client.logout().catch(() => undefined);
+      pool.delete(key);
+    }
+  }
+}, 60_000).unref();
+
+async function getPooledClient(session: MailSession): Promise<ImapFlow> {
+  const key = session.email;
+  const existing = pool.get(key);
+
+  if (existing) {
+    // Verify connection is still alive
+    try {
+      if (existing.client.usable) {
+        existing.lastUsed = Date.now();
+        return existing.client;
+      }
+    } catch {
+      // Connection dead, remove it
+    }
+    existing.client.logout().catch(() => undefined);
+    pool.delete(key);
+  }
+
   const client = await getImapClient(session);
   await client.connect();
+  pool.set(key, { client, lastUsed: Date.now() });
+  return client;
+}
+
+async function withImap<T>(session: MailSession, handler: (client: ImapFlow) => Promise<T>) {
+  const client = await getPooledClient(session);
 
   try {
     return await handler(client);
-  } finally {
-    await client.logout().catch(() => undefined);
+  } catch (error: unknown) {
+    // If connection died, evict from pool and retry once
+    const msg = error instanceof Error ? error.message : String(error);
+    if (msg.includes("closed") || msg.includes("timeout") || msg.includes("ECONNRESET")) {
+      pool.delete(session.email);
+      const fresh = await getPooledClient(session);
+      return await handler(fresh);
+    }
+    throw error;
   }
+  // Note: do NOT logout — connection stays in pool for reuse
 }
 
 function addresses(value: unknown): Address[] {
