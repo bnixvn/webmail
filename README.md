@@ -165,15 +165,29 @@ Không cần đổi app sang `0.0.0.0`.
 
 ## Update Phiên Bản Mới
 
-Nếu cài từ Git:
+SSH vào VPS, chạy lần lượt:
+
+```bash
+# Clone repo nếu chưa có (lần đầu update)
+git clone https://github.com/bnixvn/webmail.git || true
+
+# Pull code mới
+cd webmail
+git pull
+
+# Build và deploy
+sudo bash install-webmail.sh
+```
+
+Script sẽ build lại app, giữ nguyên `/etc/bnix-webmail.env`, và restart service.
+
+Nếu đã clone trước đó thì bỏ qua bước `git clone`, chỉ cần:
 
 ```bash
 cd webmail
 git pull
 sudo bash install-webmail.sh
 ```
-
-Script sẽ build lại app, giữ nguyên `/etc/bnix-webmail.env`, và restart service.
 
 ## Gỡ Cài Đặt
 
