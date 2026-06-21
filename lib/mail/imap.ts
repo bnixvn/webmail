@@ -59,7 +59,7 @@ export type MessageDetail = MessageSummary & {
 async function getImapClient(session: MailSession) {
   const config = await getMailServerConfig(session.email);
 
-  return new ImapFlow({
+  const client = new ImapFlow({
     host: config.imapHost,
     port: config.imapPort,
     secure: config.imapSecure,
@@ -67,8 +67,24 @@ async function getImapClient(session: MailSession) {
       user: session.email,
       pass: session.password
     },
-    logger: false
+    logger: false,
+    tls: {
+      rejectUnauthorized: false
+    },
+    socketTimeout: 120000
   });
+
+  // Catch unhandled socket timeout errors from imapflow internals
+  // imapflow emits ETIMEOUT on the socket which can bypass our try/catch
+  client.on("error", (err: Error) => {
+    if (err?.message?.includes("timeout") || (err as any)?.code === "ETIMEOUT") {
+      // Silently swallow - the withImap retry logic will handle reconnection
+      return;
+    }
+    console.error("imapflow error:", err);
+  });
+
+  return client;
 }
 
 // Connection pool — reuse IMAP connections per user
@@ -116,10 +132,19 @@ async function withImap<T>(session: MailSession, handler: (client: ImapFlow) => 
   try {
     return await handler(client);
   } catch (error: unknown) {
-    // If connection died, evict from pool and retry once
+    // If connection died or timed out, evict from pool and retry once
     const msg = error instanceof Error ? error.message : String(error);
-    if (msg.includes("closed") || msg.includes("timeout") || msg.includes("ECONNRESET")) {
+    if (
+      msg.includes("closed") ||
+      msg.includes("timeout") ||
+      msg.includes("timed out") ||
+      msg.includes("ECONNRESET")
+    ) {
       pool.delete(session.email);
+      // Don't retry on our own timeout — the email is just too large
+      if (msg.includes("timed out")) {
+        throw error;
+      }
       const fresh = await getPooledClient(session);
       return await handler(fresh);
     }
@@ -347,47 +372,59 @@ export async function getMessage(
   folder: string,
   uid: number
 ): Promise<MessageDetail | null> {
+  const FETCH_TIMEOUT_MS = 60_000; // 60s timeout for full message fetch+parse
+
   return withImap(session, async (client) => {
     const lock = await client.getMailboxLock(folder);
 
     try {
       await client.mailboxOpen(folder);
 
-      for await (const message of client.fetch(
-        String(uid),
-        {
-          uid: true,
-          envelope: true,
-          flags: true,
-          internalDate: true,
-          source: true
-        },
-        { uid: true }
-      )) {
-        const source = message.source as Buffer;
-        const parsed = await simpleParser(source);
-        const summary = envelopeSummary(message, cleanSnippet(parsed.text || ""));
+      // Wrap the entire fetch+parse in a timeout to prevent hanging forever
+      const result = await Promise.race([
+        (async (): Promise<MessageDetail | null> => {
+          for await (const message of client.fetch(
+            String(uid),
+            {
+              uid: true,
+              envelope: true,
+              flags: true,
+              internalDate: true,
+              source: true
+            },
+            { uid: true }
+          )) {
+            const source = message.source as Buffer;
+            const parsed = await simpleParser(source);
+            const summary = envelopeSummary(message, cleanSnippet(parsed.text || ""));
 
-        if (!summary.seen) {
-          await client.messageFlagsAdd(String(uid), ["\\Seen"], { uid: true }).catch(() => undefined);
-        }
+            if (!summary.seen) {
+              await client.messageFlagsAdd(String(uid), ["\\Seen"], { uid: true }).catch(() => undefined);
+            }
 
-        return {
-          ...summary,
-          cc: addresses(message.envelope?.cc),
-          bcc: addresses(message.envelope?.bcc),
-          html: parsed.html ? sanitizeEmailHtml(parsed.html) : undefined,
-          text: parsed.text || undefined,
-          attachments: parsed.attachments.map((attachment) => ({
-            filename: attachment.filename || undefined,
-            contentType: attachment.contentType || undefined,
-            size: attachment.size,
-            cid: attachment.cid || undefined
-          }))
-        };
-      }
+            return {
+              ...summary,
+              cc: addresses(message.envelope?.cc),
+              bcc: addresses(message.envelope?.bcc),
+              html: parsed.html ? sanitizeEmailHtml(parsed.html) : undefined,
+              text: parsed.text || undefined,
+              attachments: parsed.attachments.map((attachment) => ({
+                filename: attachment.filename || undefined,
+                contentType: attachment.contentType || undefined,
+                size: attachment.size,
+                cid: attachment.cid || undefined
+              }))
+            };
+          }
 
-      return null;
+          return null;
+        })(),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("Message fetch timed out. The email may be too large.")), FETCH_TIMEOUT_MS)
+        )
+      ]);
+
+      return result;
     } finally {
       lock.release();
     }
