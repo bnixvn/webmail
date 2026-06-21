@@ -132,19 +132,10 @@ async function withImap<T>(session: MailSession, handler: (client: ImapFlow) => 
   try {
     return await handler(client);
   } catch (error: unknown) {
-    // If connection died or timed out, evict from pool and retry once
+    // If connection died, evict from pool and retry once
     const msg = error instanceof Error ? error.message : String(error);
-    if (
-      msg.includes("closed") ||
-      msg.includes("timeout") ||
-      msg.includes("timed out") ||
-      msg.includes("ECONNRESET")
-    ) {
+    if (msg.includes("closed") || msg.includes("timeout") || msg.includes("ECONNRESET")) {
       pool.delete(session.email);
-      // Don't retry on our own timeout — the email is just too large
-      if (msg.includes("timed out")) {
-        throw error;
-      }
       const fresh = await getPooledClient(session);
       return await handler(fresh);
     }
@@ -380,51 +371,70 @@ export async function getMessage(
     try {
       await client.mailboxOpen(folder);
 
-      // Wrap the entire fetch+parse in a timeout to prevent hanging forever
-      const result = await Promise.race([
-        (async (): Promise<MessageDetail | null> => {
-          for await (const message of client.fetch(
-            String(uid),
-            {
-              uid: true,
-              envelope: true,
-              flags: true,
-              internalDate: true,
-              source: true
-            },
-            { uid: true }
-          )) {
-            const source = message.source as Buffer;
-            const parsed = await simpleParser(source);
-            const summary = envelopeSummary(message, cleanSnippet(parsed.text || ""));
+      // Fetch envelope+flags first (fast, no full source)
+      let summary: MessageDetail | null = null;
 
-            if (!summary.seen) {
-              await client.messageFlagsAdd(String(uid), ["\\Seen"], { uid: true }).catch(() => undefined);
-            }
+      for await (const message of client.fetch(
+        String(uid),
+        {
+          uid: true,
+          envelope: true,
+          flags: true,
+          internalDate: true,
+          bodyStructure: true
+        },
+        { uid: true }
+      )) {
+        summary = {
+          ...envelopeSummary(message, ""),
+          cc: addresses(message.envelope?.cc),
+          bcc: addresses(message.envelope?.bcc),
+          html: undefined,
+          text: undefined,
+          attachments: []
+        };
 
-            return {
-              ...summary,
-              cc: addresses(message.envelope?.cc),
-              bcc: addresses(message.envelope?.bcc),
-              html: parsed.html ? sanitizeEmailHtml(parsed.html) : undefined,
-              text: parsed.text || undefined,
-              attachments: parsed.attachments.map((attachment) => ({
-                filename: attachment.filename || undefined,
-                contentType: attachment.contentType || undefined,
-                size: attachment.size,
-                cid: attachment.cid || undefined
-              }))
-            };
-          }
+        if (!summary.seen) {
+          await client.messageFlagsAdd(String(uid), ["\\Seen"], { uid: true }).catch(() => undefined);
+        }
+      }
 
-          return null;
-        })(),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error("Message fetch timed out. The email may be too large.")), FETCH_TIMEOUT_MS)
-        )
-      ]);
+      if (!summary) {
+        return null;
+      }
 
-      return result;
+      // Now fetch full source with timeout
+      const sourcePromise = (async () => {
+        for await (const message of client.fetch(
+          String(uid),
+          { uid: true, source: true },
+          { uid: true }
+        )) {
+          return message.source as Buffer;
+        }
+        return null;
+      })();
+
+      const timeoutPromise = new Promise<null>((resolve) =>
+        setTimeout(() => resolve(null), FETCH_TIMEOUT_MS)
+      );
+
+      const source = await Promise.race([sourcePromise, timeoutPromise]);
+
+      if (source) {
+        const parsed = await simpleParser(source);
+        summary.snippet = cleanSnippet(parsed.text || "");
+        summary.html = parsed.html ? sanitizeEmailHtml(parsed.html) : undefined;
+        summary.text = parsed.text || undefined;
+        summary.attachments = parsed.attachments.map((attachment) => ({
+          filename: attachment.filename || undefined,
+          contentType: attachment.contentType || undefined,
+          size: attachment.size,
+          cid: attachment.cid || undefined
+        }));
+      }
+
+      return summary;
     } finally {
       lock.release();
     }

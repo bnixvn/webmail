@@ -1014,15 +1014,10 @@ export function WebmailApp() {
     setLoadingMessage(true);
     setError("");
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 90_000); // 90s timeout
-
     try {
       const payload = await api<{ message: MessageDetail }>(
-        `/api/messages/${uid}?folder=${encodeURIComponent(folder)}`,
-        { signal: controller.signal }
+        `/api/messages/${uid}?folder=${encodeURIComponent(folder)}`
       );
-      clearTimeout(timeoutId);
       const message = {
         ...payload.message,
         seen: true,
@@ -1036,14 +1031,8 @@ export function WebmailApp() {
         )
       );
     } catch (err) {
-      clearTimeout(timeoutId);
-      if (err instanceof DOMException && err.name === "AbortError") {
-        setError("Loading timed out. The email may be too large to display.");
-      } else {
-        setError(err instanceof Error ? err.message : "Cannot open message.");
-      }
+      setError(err instanceof Error ? err.message : "Cannot open message.");
     } finally {
-      clearTimeout(timeoutId);
       setLoadingMessage(false);
     }
   }
