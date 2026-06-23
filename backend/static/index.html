@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BNIX Webmail</title>
+  <link rel="icon" href="/brand/bnix-favicon.png">
+  <link rel="apple-touch-icon" href="/brand/bnix-favicon.png">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            ink: '#1e293b',
+            muted: '#64748b',
+            line: '#e2e8f0',
+            panel: '#f8fafc',
+            brand: '#284f7d',
+            'brand-light': '#3d83bd',
+            'brand-hover': '#4f9ade',
+          },
+          boxShadow: {
+            soft: '0 1px 3px 0 rgb(0 0 0 / 0.08), 0 1px 2px -1px rgb(0 0 0 / 0.08)',
+          },
+        },
+      },
+    }
+  </script>
+  <link rel="stylesheet" href="/assets/style.css">
+</head>
+<body class="bg-white text-ink">
+  <div id="app"></div>
+  <script src="/assets/app.js"></script>
+</body>
+</html>

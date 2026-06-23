@@ -5,8 +5,8 @@ APP_NAME="bnix-webmail"
 APP_USER="bnix-webmail"
 APP_ROOT="/opt/${APP_NAME}"
 SRC_DIR="${APP_ROOT}/src"
-RUNTIME_DIR="${APP_ROOT}/runtime"
 DATA_DIR="${APP_ROOT}/data"
+VENV_DIR="${APP_ROOT}/venv"
 ENV_FILE="/etc/${APP_NAME}.env"
 SERVICE_FILE="/etc/systemd/system/${APP_NAME}.service"
 
@@ -23,7 +23,7 @@ die() {
 }
 
 generate_secret() {
-  node -e 'process.stdout.write(require("crypto").randomBytes(32).toString("base64url"))'
+  python3 -c "import secrets; print(secrets.token_urlsafe(32))"
 }
 
 prompt_default() {
@@ -91,29 +91,12 @@ install_packages() {
   log "Installing system packages"
   apt-get update
   DEBIAN_FRONTEND=noninteractive apt-get install -y \
-    build-essential \
+    python3 \
+    python3-venv \
+    python3-pip \
     ca-certificates \
     curl \
-    gnupg \
     rsync
-
-  local node_major
-  node_major="$(node -p "Number(process.versions.node.split('.')[0])" 2>/dev/null || echo 0)"
-
-  if [ "${node_major}" -lt 20 ]; then
-    log "Installing Node.js 22 LTS"
-    curl -fsSL https://deb.nodesource.com/setup_22.x -o /tmp/nodesource_setup.sh
-    bash /tmp/nodesource_setup.sh
-    DEBIAN_FRONTEND=noninteractive apt-get install -y nodejs
-    rm -f /tmp/nodesource_setup.sh
-  elif ! command -v npm >/dev/null 2>&1; then
-    DEBIAN_FRONTEND=noninteractive apt-get install -y npm
-  fi
-
-  node_major="$(node -p "Number(process.versions.node.split('.')[0])")"
-  if [ "${node_major}" -lt 20 ]; then
-    die "Node.js 20+ is required. Installed: $(node -v)"
-  fi
 }
 
 create_user() {
@@ -136,9 +119,10 @@ copy_source() {
   install -d -m 0755 "${APP_ROOT}" "${SRC_DIR}" "${DATA_DIR}"
   rsync -a --delete \
     --exclude '.git' \
-    --exclude '.next' \
     --exclude 'node_modules' \
-    --exclude 'tsconfig.tsbuildinfo' \
+    --exclude 'venv' \
+    --exclude '.venv' \
+    --exclude '__pycache__' \
     "${SOURCE_DIR}/" "${SRC_DIR}/"
 }
 
@@ -149,88 +133,62 @@ prepare_env() {
   fi
 
   log "Creating environment file: ${ENV_FILE}"
-  if [ -f "${SOURCE_DIR}/.env.production" ]; then
-    cp "${SOURCE_DIR}/.env.production" "${ENV_FILE}"
-  elif [ -f "${SOURCE_DIR}/.env.local" ]; then
-    cp "${SOURCE_DIR}/.env.local" "${ENV_FILE}"
-  else
-    local app_port
-    local app_name
-    local max_attachment_mb
-    local auth_secret
+  local auth_secret
+  local imap_host
+  local smtp_host
 
-    app_port="$(prompt_default "Local webmail port" "3000" "${PORT:-}")"
-    app_name="$(prompt_default "Webmail display name" "BNIX WEBMAIL" "${NEXT_PUBLIC_WEBMAIL_NAME:-}")"
-    max_attachment_mb="$(prompt_default "Max attachment size in MB" "10" "${NEXT_PUBLIC_MAX_ATTACHMENT_MB:-}")"
-    auth_secret="${AUTH_SECRET:-$(generate_secret)}"
+  auth_secret="${AUTH_SECRET:-$(generate_secret)}"
+  imap_host="$(prompt_optional "IMAP host (e.g. mail.example.com)" "${IMAP_HOST:-}")"
+  smtp_host="$(prompt_optional "SMTP host (e.g. mail.example.com)" "${SMTP_HOST:-}")"
 
-    cat > "${ENV_FILE}" <<EOF
+  cat > "${ENV_FILE}" <<EOF
 AUTH_SECRET=${auth_secret}
-MAIL_HOST=
-IMAP_HOST=
+IMAP_HOST=${imap_host}
 IMAP_PORT=993
 IMAP_SECURE=true
-SMTP_HOST=
+SMTP_HOST=${smtp_host}
 SMTP_PORT=465
 SMTP_SECURE=true
-NEXT_PUBLIC_WEBMAIL_NAME="${app_name}"
-NEXT_PUBLIC_MAX_ATTACHMENT_MB=${max_attachment_mb}
-PORT=${app_port}
+DAV_HOST=
+DAV_PORT=2080
+DAV_SECURE=false
+HOST=127.0.0.1
+PORT=8000
+DATA_DIR=${DATA_DIR}
 EOF
-  fi
 
   chmod 0600 "${ENV_FILE}"
 }
 
-build_app() {
-  log "Installing npm dependencies"
-  cd "${SRC_DIR}"
-  npm ci --no-audit --no-fund
-
-  log "Building standalone runtime"
-  npm run build
-}
-
-assemble_runtime() {
-  log "Assembling runtime at ${RUNTIME_DIR}"
-  rm -rf "${RUNTIME_DIR}"
-  install -d -m 0755 "${RUNTIME_DIR}"
-
-  cp -a "${SRC_DIR}/.next/standalone/." "${RUNTIME_DIR}/"
-  install -d -m 0755 "${RUNTIME_DIR}/.next"
-  cp -a "${SRC_DIR}/.next/static" "${RUNTIME_DIR}/.next/static"
-  cp -a "${SRC_DIR}/public" "${RUNTIME_DIR}/public"
-
-  chown -R "${APP_USER}:${APP_USER}" "${APP_ROOT}"
+setup_python() {
+  log "Setting up Python virtual environment"
+  python3 -m venv "${VENV_DIR}"
+  "${VENV_DIR}/bin/pip" install --upgrade pip
+  "${VENV_DIR}/bin/pip" install -r "${SRC_DIR}/backend/requirements.txt"
 }
 
 install_service() {
   log "Installing systemd service"
-  install -m 0644 "${SCRIPT_DIR}/${APP_NAME}.service" "${SERVICE_FILE}"
+  install -m 0644 "${SRC_DIR}/deploy/linux/${APP_NAME}.service" "${SERVICE_FILE}"
   systemctl daemon-reload
   systemctl enable "${APP_NAME}"
   systemctl restart "${APP_NAME}"
 }
 
 main() {
-  local installed_port
-
   require_root
   require_supported_os
   install_packages
   create_user
   copy_source
   prepare_env
-  build_app
-  assemble_runtime
+  setup_python
   install_service
-
-  installed_port="$(grep -E '^PORT=' "${ENV_FILE}" | tail -n 1 | cut -d'=' -f2- | tr -cd '0-9')"
 
   log "Done."
   log "Service: systemctl status ${APP_NAME}"
   log "Environment: ${ENV_FILE}"
-  log "Loopback URL: http://127.0.0.1:${installed_port:-3000}"
+  log "Loopback URL: http://127.0.0.1:8000"
 }
 
 main "$@"

@@ -1,0 +1,4 @@
+webmail.bnix.asia {
+    # All requests served by FastAPI (API + static frontend)
+    reverse_proxy 127.0.0.1:8000
+}
