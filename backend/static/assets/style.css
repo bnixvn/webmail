@@ -12,11 +12,21 @@ body {
   padding: 0;
   overflow: hidden;
   height: 100dvh;
+  /* Prevent iOS Safari auto-scroll on input focus */
+  overscroll-behavior: none;
 }
 
 #app {
   height: 100dvh;
   overflow: hidden;
+}
+
+/* Prevent iOS Safari from auto-scrolling and zooming on input focus */
+input, textarea, [contenteditable] {
+  font-size: 16px !important;
+  touch-action: manipulation;
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 /* Email HTML content */

@@ -333,13 +333,16 @@ function fileSize(bytes) {
 
 // Prevent mobile browser from scrolling to top when input/contenteditable gets focus
 function preventMobileScroll(el) {
-  el.addEventListener("focus", () => {
+  el.addEventListener("touchstart", () => {
     const scroller = el.closest(".overflow-y-auto");
-    if (scroller) {
-      const savedTop = scroller.scrollTop;
-      requestAnimationFrame(() => { scroller.scrollTop = savedTop; });
-    }
-  });
+    if (!scroller) return;
+    // Lock scroll position — browser can't change it while locked
+    const lock = () => { scroller.scrollTop = scroller._lockedTop; };
+    scroller._lockedTop = scroller.scrollTop;
+    scroller.addEventListener("scroll", lock, { passive: false });
+    // Release lock after keyboard is fully open (~400ms)
+    setTimeout(() => scroller.removeEventListener("scroll", lock), 400);
+  }, { passive: true });
 }
 
 function textToHtml(text) {
