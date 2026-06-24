@@ -622,7 +622,7 @@ function renderLogin() {
     // Left panel: background + mail screenshot
     h("div", { className: "login-panel-left" },
       h("img", {
-        src: "/brand/mail-bg.png",
+        src: "/brand/mail-view.png",
         alt: "BNIX Webmail",
         className: "login-screenshot",
       }),

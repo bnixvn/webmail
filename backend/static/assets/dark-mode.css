@@ -163,6 +163,9 @@
   border-left-color: #334155;
   padding: 20px;
 }
+.dark .login-panel-left {
+  background-color: #0f172a;
+}
 .dark .login-flag-img {
   opacity: 0.85;
 }
