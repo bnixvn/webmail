@@ -2305,8 +2305,13 @@ function renderComposePage() {
     className: "flex-1 flex flex-col h-full min-w-0 bg-white dark:bg-slate-800",
   });
 
-  // Header with close (X) + send button
-  const hdr = h("div", { className: "flex items-center justify-between h-14 px-4 border-b border-slate-200 dark:border-slate-700 shrink-0" });
+  // Header with back button + title + send button
+  const hdr = h("div", { className: "flex items-center justify-between h-14 px-2 border-b border-slate-200 dark:border-slate-700 shrink-0" });
+  hdr.appendChild(h("button", {
+    className: "p-2 rounded hover:bg-slate-100 md:hidden",
+    onclick() { closeCompose(); },
+    innerHTML: I.chevL,
+  }));
   hdr.appendChild(h("span", { className: "text-base font-semibold" }, t("newMessage")));
   hdr.appendChild(h("button", {
     className: "px-5 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand-hover disabled:opacity-50",
