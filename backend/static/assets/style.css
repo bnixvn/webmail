@@ -395,30 +395,23 @@ input, textarea, [contenteditable] {
 .login-lang-group {
   display: flex;
   gap: 4px;
-  background: #f1f5f9;
-  border-radius: 8px;
-  padding: 3px;
 }
 .login-lang-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 28px;
   border: none;
-  border-radius: 6px;
   background: transparent;
-  color: #64748b;
-  font-size: 16px;
   cursor: pointer;
-  transition: all 0.15s ease;
-  line-height: 1;
+  transition: opacity 0.15s ease;
+  padding: 2px;
 }
-.login-lang-btn:hover { background: #e2e8f0; color: #334155; }
+.login-lang-btn:hover { opacity: 0.7; }
 .login-lang-btn.active {
-  background: #fff;
-  color: #284f7d;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  opacity: 1;
+}
+.login-flag-img {
+  display: block;
 }
 .login-flag { font-size: 16px; line-height: 1; }
 

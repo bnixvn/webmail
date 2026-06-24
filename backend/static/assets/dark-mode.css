@@ -166,24 +166,19 @@
   background-color: #0f172a;
   background-image: url("/brand/mail-view.png");
 }
-.dark .login-flag-img {
-  opacity: 0.85;
-}
 .dark .login-topbar {
   background: transparent;
 }
 .dark .login-lang-group {
-  background: #0f172a;
+  background: transparent;
 }
 .dark .login-lang-btn {
   color: #64748b;
 }
 .dark .login-lang-btn:hover {
-  background: #1e293b;
   color: #94a3b8;
 }
 .dark .login-lang-btn.active {
-  background: #1e3a5f;
   color: #60a5fa;
 }
 .dark .login-theme-btn {
