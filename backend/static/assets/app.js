@@ -57,18 +57,22 @@ const LOCALES = {
     loadingMailbox: "Loading your mailbox...",
     selected: (n) => `${n} selected`,
     messages: (n) => `${n} messages`,
+    filterAll: "All", filterUnread: "Unread", filterStarred: "Starred",
+    noFolders: "No folders",
     // Message view
     noConvSelected: "No conversation selected",
     chooseMessage: "Choose a message from the list",
     to: "To", cc: "Cc",
     reply: "Reply", replyAll: "Reply All", forward: "Forward",
-    archive: "Archive", reportSpam: "Report spam", delete: "Delete",
+    archive: "Archive", reportSpam: "Report spam", delete: "Delete", moveTo: "Move to",
     star: "Star", unstar: "Unstar", markRead: "Mark Read", markUnread: "Mark Unread",
     attachments: (n) => `Attachments (${n})`,
     attachment: (n) => `${n} attachment${n > 1 ? "s" : ""}`,
     quickReplyPh: "Write a quick reply...",
     replyThreadPh: "Reply to thread...",
     sentOk: "Email sent successfully!",
+    sentSavedWarn: "Email sent, but could not save it to Sent.",
+    movedOk: "Moved",
     // Compose
     newMessage: "New Message",
     toPh: "To", ccPh: "Cc", bccPh: "Bcc", subjectPh: "Subject",
@@ -144,18 +148,22 @@ const LOCALES = {
     loadingMailbox: "Đang tải hộp thư...",
     selected: (n) => `Đã chọn ${n}`,
     messages: (n) => `${n} tin nhắn`,
+    filterAll: "Tất cả", filterUnread: "Chưa đọc", filterStarred: "Đánh dấu",
+    noFolders: "Không có thư mục",
     // Xem thư
     noConvSelected: "Chưa chọn hội thoại",
     chooseMessage: "Chọn một thư từ danh sách",
     to: "Đến", cc: "CC",
     reply: "Trả lời", replyAll: "Trả lời tất cả", forward: "Chuyển tiếp",
-    archive: "Lưu trữ", reportSpam: "Báo spam", delete: "Xoá",
+    archive: "Lưu trữ", reportSpam: "Báo spam", delete: "Xoá", moveTo: "Chuyển tới",
     star: "Đánh dấu", unstar: "Bỏ đánh dấu", markRead: "Đánh dấu đã đọc", markUnread: "Đánh dấu chưa đọc",
     attachments: (n) => `Tệp đính kèm (${n})`,
     attachment: (n) => `${n} tệp đính kèm`,
     quickReplyPh: "Trả lời nhanh...",
     replyThreadPh: "Trả lời hội thoại...",
     sentOk: "Đã gửi email thành công!",
+    sentSavedWarn: "Đã gửi email, nhưng chưa lưu được vào Đã gửi.",
+    movedOk: "Đã chuyển thư",
     // Soạn thư
     newMessage: "Thư mới",
     toPh: "Đến", ccPh: "CC", bccPh: "BCC", subjectPh: "Tiêu đề",
@@ -239,6 +247,7 @@ const I = {
   forward:   `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 17 20 12 15 7"/><path d="M4 18v-2a4 4 0 0 1 4-4h12"/></svg>`,
   archive:   `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></svg>`,
   search:    `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>`,
+  filter:    `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18"/><path d="M7 12h10"/><path d="M10 19h4"/></svg>`,
   menu:      `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></svg>`,
   x:         `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>`,
   plus:      `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>`,
@@ -262,6 +271,7 @@ const I = {
   chevR:     `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>`,
   more:      `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>`,
   folder:    `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z"/></svg>`,
+  folderInput: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.69.9H20a2 2 0 0 1 2 2v2"/><path d="M2 13v5a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-5"/><path d="M12 10v7"/><path d="m9 14 3 3 3-3"/></svg>`,
   edit:      `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.376 3.622a1 1 0 0 1 3.002 3.002L7.368 18.635a2 2 0 0 1-.855.506l-2.872.838a.5.5 0 0 1-.62-.62l.838-2.872a2 2 0 0 1 .506-.854z"/></svg>`,
   check:     `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`,
   clock:     `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`,
@@ -436,6 +446,123 @@ function folderTarget(kind) {
   return fallback[wanted] || kind;
 }
 
+function mailboxLabel(mb) {
+  const info = mb._info || classifyFolder(mb);
+  return folderDisplayName(info, mb.name || mb.path);
+}
+
+function moveTargetMailboxes() {
+  const { mainFolders, customFolders } = splitMailboxes();
+  const seen = new Set();
+  return [...mainFolders, ...customFolders].filter(mb => {
+    const key = (mb.path || "").toLowerCase();
+    if (!key || key === (S.folder || "").toLowerCase() || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function renderMoveDropdown(scope, onPick) {
+  if (S.moveMenu !== scope) return null;
+  const targets = moveTargetMailboxes();
+  const pickTarget = (path) => {
+    set({ moveMenu: null });
+    onPick(path);
+  };
+
+  if (window.innerWidth < 769) {
+    const overlay = h("div", {
+      className: "fixed inset-0 z-[80] flex items-end bg-black/35 md:hidden",
+      onclick(e) {
+        e.stopPropagation();
+        set({ moveMenu: null });
+      },
+    });
+    const sheet = h("div", {
+      className: "w-full max-h-[72vh] rounded-t-2xl bg-white dark:bg-slate-800 shadow-2xl overflow-hidden",
+      onclick(e) { e.stopPropagation(); },
+    });
+    sheet.appendChild(h("div", { className: "flex items-center justify-between h-12 px-4 border-b border-line" },
+      h("div", { className: "flex items-center gap-2 min-w-0" },
+        icon("folderInput"),
+        h("span", { className: "text-sm font-semibold truncate" }, t("moveTo")),
+      ),
+      h("button", {
+        className: "p-2 -mr-2 rounded-lg text-slate-500 hover:bg-slate-100",
+        title: "Close",
+        innerHTML: I.x,
+        onclick() { set({ moveMenu: null }); },
+      }),
+    ));
+
+    const list = h("div", { className: "max-h-[calc(72vh-3rem)] overflow-y-auto py-2 pb-4" });
+    if (targets.length === 0) {
+      list.appendChild(h("div", { className: "px-4 py-4 text-sm text-slate-400" }, t("noFolders")));
+    } else {
+      for (const mb of targets) {
+        const info = mb._info || classifyFolder(mb);
+        list.appendChild(h("button", {
+          className: "w-full flex items-center gap-3 px-4 py-3.5 text-left text-slate-700 dark:text-slate-100 active:bg-blue-50 hover:bg-slate-50 dark:hover:bg-slate-700",
+          title: mb.path,
+          onclick() { pickTarget(mb.path); },
+        },
+          icon(info ? info.icon : "folder"),
+          h("span", { className: "min-w-0 flex-1 truncate text-sm" }, mailboxLabel(mb)),
+        ));
+      }
+    }
+    sheet.appendChild(list);
+    overlay.appendChild(sheet);
+    return overlay;
+  }
+
+  const menu = h("div", {
+    className: "absolute right-0 top-8 z-50 w-56 max-h-72 overflow-y-auto rounded-lg border border-line bg-white dark:bg-slate-700 shadow-lg py-1",
+    onclick(e) { e.stopPropagation(); },
+  });
+  if (targets.length === 0) {
+    menu.appendChild(h("div", { className: "px-3 py-2 text-sm text-slate-400" }, t("noFolders")));
+    return menu;
+  }
+  for (const mb of targets) {
+    const info = mb._info || classifyFolder(mb);
+    menu.appendChild(h("button", {
+      className: "w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-slate-50 dark:hover:bg-slate-600",
+      title: mb.path,
+      onclick(e) {
+        e.stopPropagation();
+        pickTarget(mb.path);
+      },
+    },
+      icon(info ? info.icon : "folder"),
+      h("span", { className: "min-w-0 flex-1 truncate" }, mailboxLabel(mb)),
+    ));
+  }
+  return menu;
+}
+
+function moveMenuButton(scope, onPick) {
+  const wrap = h("div", { className: "relative" });
+  wrap.appendChild(h("button", {
+    className: "p-1.5 rounded hover:bg-slate-100 text-slate-500",
+    title: t("moveTo"),
+    innerHTML: I.folderInput,
+    onclick(e) {
+      e.stopPropagation();
+      set({ moveMenu: S.moveMenu === scope ? null : scope, moreMenu: false });
+    },
+  }));
+  const menu = renderMoveDropdown(scope, onPick);
+  if (menu) wrap.appendChild(menu);
+  return wrap;
+}
+
+function messageMatchesFilter(msg) {
+  if (S.msgFilter === "unread") return !msg.seen;
+  if (S.msgFilter === "starred") return !!msg.flagged;
+  return true;
+}
+
 function mailboxRank(mailbox) {
   return (mailbox.path === S.folder ? 1000 : 0) +
     (mailbox.specialUse ? 100 : 0) +
@@ -549,6 +676,7 @@ const S = {
   selectedUid: null,
   selectedMsg: null,
   query: "",
+  msgFilter: "all",
   loginError: "",
   error: "",
   loadingMsgs: false,
@@ -576,6 +704,7 @@ const S = {
   sigSaving: false,
   sigSaved: false,
   moreMenu: false,
+  moveMenu: null,
   contacts: [],
   calendarEvents: [],
   calMonth: new Date(),
@@ -759,6 +888,13 @@ async function bootstrap() {
       await loadMessages();
     }
   }
+}
+
+async function refreshMailboxes() {
+  try {
+    const data = await api("/api/mailboxes");
+    set({ mailboxes: data.mailboxes || [] });
+  } catch {}
 }
 
 async function loadMessages(append = false) {
@@ -1101,8 +1237,7 @@ async function createFolder() {
   try {
     await api("/api/mailboxes", { method: "POST", body: JSON.stringify({ path }) });
     set({ newFolder: "", showNewFolder: false });
-    const data = await api("/api/mailboxes");
-    set({ mailboxes: data.mailboxes || [] });
+    await refreshMailboxes();
   } catch (err) {
     set({ error: err.message });
   }
@@ -1111,13 +1246,14 @@ async function createFolder() {
 // ─── Message List ────────────────────────────────────────────────────────────
 
 function renderMessageList() {
-  const filtered = S.query
-    ? S.messages.filter(m =>
-        m.subject.toLowerCase().includes(S.query.toLowerCase()) ||
-        m.snippet.toLowerCase().includes(S.query.toLowerCase()) ||
-        displayName(m.from).toLowerCase().includes(S.query.toLowerCase())
-      )
-    : S.messages;
+  const q = S.query.trim().toLowerCase();
+  const filtered = S.messages.filter(m => {
+    if (!messageMatchesFilter(m)) return false;
+    if (!q) return true;
+    return (m.subject || "").toLowerCase().includes(q) ||
+      (m.snippet || "").toLowerCase().includes(q) ||
+      displayName(m.from).toLowerCase().includes(q);
+  });
 
   const section = h("section", { className: "flex flex-col h-full bg-white dark:bg-slate-800 border-r border-line shrink-0 w-full md:w-96" });
 
@@ -1154,6 +1290,7 @@ function renderMessageList() {
       className: "p-1.5 rounded hover:bg-slate-100 text-slate-500", title: "Report spam",
       onclick: batchSpam, innerHTML: I.spam,
     }));
+    header.appendChild(moveMenuButton("batch", batchMove));
     header.appendChild(h("button", {
       className: "p-1.5 rounded hover:bg-slate-100 text-slate-500", title: t("deleteContact"),
       onclick: batchDelete, innerHTML: I.trash,
@@ -1179,16 +1316,34 @@ function renderMessageList() {
 
   section.appendChild(header);
 
-  // Mobile search
-  const mobileSearch = h("div", { className: "px-3 py-2 border-b border-line mobile-only" });
-  const msi = h("input", {
-    className: "w-full px-3 py-1.5 text-sm border border-line rounded-lg",
+  // Search and filters
+  const tools = h("div", { className: "px-3 py-2 border-b border-line space-y-2" });
+  const searchBox = h("div", { className: "relative" });
+  searchBox.appendChild(h("span", { className: "absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400", innerHTML: I.search }));
+  const searchInput = h("input", {
+    className: "w-full pl-8 pr-3 py-1.5 text-sm border border-line rounded-lg bg-white dark:bg-slate-800",
     placeholder: t("searchPh"),
     value: S.query,
   });
-  msi.addEventListener("input", e => set({ query: e.target.value }));
-  mobileSearch.appendChild(msi);
-  section.appendChild(mobileSearch);
+  searchInput.addEventListener("input", e => set({ query: e.target.value }));
+  tools.appendChild(searchBox);
+  searchBox.appendChild(searchInput);
+
+  const filters = h("div", { className: "flex items-center gap-1" });
+  const filterDefs = [
+    { key: "all", label: t("filterAll") },
+    { key: "unread", label: t("filterUnread") },
+    { key: "starred", label: t("filterStarred") },
+  ];
+  for (const f of filterDefs) {
+    const active = S.msgFilter === f.key;
+    filters.appendChild(h("button", {
+      className: `px-2.5 py-1 rounded-md border text-xs ${active ? "border-brand bg-blue-50 text-brand font-medium" : "border-line text-slate-500 hover:bg-slate-50"}`,
+      onclick() { set({ msgFilter: f.key, selectedUids: [] }); },
+    }, f.label));
+  }
+  tools.appendChild(filters);
+  section.appendChild(tools);
 
   // Error
   if (S.error) {
@@ -1711,6 +1866,9 @@ function renderThreadView(section, threadMsgs) {
   const actions = h("div", { className: "hidden md:flex items-center gap-1 shrink-0" });
   actions.appendChild(actionBtn("reply", t("reply"), () => openCompose({ replyTo: lastMsg })));
   actions.appendChild(actionBtn("forward", t("forward"), () => openCompose({ forward: lastMsg })));
+  actions.appendChild(actionBtn("archive", t("archive"), () => moveMsg(folderTarget("archive"))));
+  actions.appendChild(actionBtn("spam", t("reportSpam"), () => moveMsg(folderTarget("spam"))));
+  actions.appendChild(moveMenuButton("thread-message", moveMsg));
   actions.appendChild(actionBtn("trash", t("delete"), () => deleteMsg()));
   actions.appendChild(h("button", {
     className: "p-1.5 rounded hover:bg-slate-100",
@@ -1724,6 +1882,9 @@ function renderThreadView(section, threadMsgs) {
   const mobileActions = h("div", { className: "flex items-center gap-1 mt-2 md:hidden" });
   mobileActions.appendChild(actionBtn("reply", t("reply"), () => openCompose({ replyTo: lastMsg })));
   mobileActions.appendChild(actionBtn("forward", t("forward"), () => openCompose({ forward: lastMsg })));
+  mobileActions.appendChild(actionBtn("archive", t("archive"), () => moveMsg(folderTarget("archive"))));
+  mobileActions.appendChild(actionBtn("spam", t("reportSpam"), () => moveMsg(folderTarget("spam"))));
+  mobileActions.appendChild(moveMenuButton("thread-message-mobile", moveMsg));
   mobileActions.appendChild(actionBtn("trash", t("delete"), () => deleteMsg()));
   header.appendChild(mobileActions);
   section.appendChild(header);
@@ -1805,6 +1966,7 @@ function renderMessageView() {
   actions.appendChild(actionBtn("forward", t("forward"), () => openCompose({ forward: msg })));
   actions.appendChild(actionBtn("archive", t("archive"), () => moveMsg(folderTarget("archive"))));
   actions.appendChild(actionBtn("spam", t("reportSpam"), () => moveMsg(folderTarget("spam"))));
+  actions.appendChild(moveMenuButton("message", moveMsg));
   actions.appendChild(actionBtn("trash", t("delete"), () => deleteMsg()));
 
   // Star
@@ -1855,6 +2017,7 @@ function renderMessageView() {
   mobileActions.appendChild(actionBtn("forward", t("forward"), () => openCompose({ forward: msg })));
   mobileActions.appendChild(actionBtn("archive", t("archive"), () => moveMsg(folderTarget("archive"))));
   mobileActions.appendChild(actionBtn("spam", t("reportSpam"), () => moveMsg(folderTarget("spam"))));
+  mobileActions.appendChild(moveMenuButton("message-mobile", moveMsg));
   mobileActions.appendChild(actionBtn("trash", t("delete"), () => deleteMsg()));
   mobileActions.appendChild(h("button", {
     className: "p-1.5 rounded hover:bg-slate-100",
@@ -1979,7 +2142,9 @@ async function moveMsg(dest) {
       method: "POST",
       body: JSON.stringify({ folder: S.folder, destination: dest }),
     });
-    set({ selectedUid: null, selectedMsg: null });
+    set({ selectedUid: null, selectedMsg: null, threadMsgs: [], moveMenu: null });
+    showToast(t("movedOk"));
+    await refreshMailboxes();
     await loadMessages();
   } catch (err) {
     set({ error: err.message });
@@ -1990,11 +2155,31 @@ async function deleteMsg() {
   if (!S.selectedMsg) return;
   try {
     await api(`/api/messages/${S.selectedMsg.uid}?folder=${encodeURIComponent(S.folder)}`, { method: "DELETE" });
-    set({ selectedUid: null, selectedMsg: null });
+    set({ selectedUid: null, selectedMsg: null, threadMsgs: [] });
+    await refreshMailboxes();
     await loadMessages();
   } catch (err) {
     set({ error: err.message });
   }
+}
+
+async function batchMove(destination) {
+  let failed = 0;
+  for (const uid of S.selectedUids) {
+    try {
+      await api(`/api/messages/${uid}/move`, {
+        method: "POST",
+        body: JSON.stringify({ folder: S.folder, destination }),
+      });
+    } catch {
+      failed += 1;
+    }
+  }
+  set({ selectedUids: [], moveMenu: null });
+  if (failed) set({ error: `${failed} message(s) could not be moved.` });
+  else showToast(t("movedOk"));
+  await refreshMailboxes();
+  await loadMessages();
 }
 
 async function batchArchive() {
@@ -2008,6 +2193,7 @@ async function batchArchive() {
     } catch {}
   }
   set({ selectedUids: [] });
+  await refreshMailboxes();
   await loadMessages();
 }
 
@@ -2022,6 +2208,7 @@ async function batchSpam() {
     } catch {}
   }
   set({ selectedUids: [] });
+  await refreshMailboxes();
   await loadMessages();
 }
 
@@ -2032,6 +2219,7 @@ async function batchDelete() {
     } catch {}
   }
   set({ selectedUids: [] });
+  await refreshMailboxes();
   await loadMessages();
 }
 
@@ -2062,14 +2250,15 @@ async function sendQuickReply() {
         data: a.data.includes(",") ? a.data.split(",")[1] : a.data,
       }));
     }
-    await api("/api/messages/send", { method: "POST", body: JSON.stringify(body) });
+    const result = await api("/api/messages/send", { method: "POST", body: JSON.stringify(body) });
 
     S.quickSending = false;
     S.quickReply = "";
     S.quickAttachments = [];
     if (editor) { editor.value = ""; editor.style.height = "auto"; }
     if (sendBtn) sendBtn.disabled = true;
-    showToast(t("sentOk"));
+    showToast(result.sentSaved === false ? t("sentSavedWarn") : t("sentOk"), result.sentSaved === false ? "error" : "success");
+    await refreshMailboxes();
   } catch (err) {
     S.quickSending = false;
     if (sendBtn) sendBtn.disabled = false;
@@ -2368,12 +2557,13 @@ async function sendCompose(e) {
         data: a.data.includes(",") ? a.data.split(",")[1] : a.data,
       }));
     }
-    await api("/api/messages/send", {
+    const result = await api("/api/messages/send", {
       method: "POST",
       body: JSON.stringify(payload),
     });
     set({ sending: false, compose: null });
-    showToast(t("sentOk"));
+    showToast(result.sentSaved === false ? t("sentSavedWarn") : t("sentOk"), result.sentSaved === false ? "error" : "success");
+    await refreshMailboxes();
     await loadMessages();
   } catch (err) {
     set({ sending: false, error: err.message });
@@ -2893,9 +3083,9 @@ function render() {
     const app = $("#app");
     clear(app);
 
-    // Close more menu on outside click
-    if (S.moreMenu) {
-      document.addEventListener("click", () => set({ moreMenu: false }), { once: true });
+    // Close floating menus on outside click
+    if (S.moreMenu || S.moveMenu) {
+      document.addEventListener("click", () => set({ moreMenu: false, moveMenu: null }), { once: true });
     }
 
     if (!S.account) {
@@ -3028,8 +3218,10 @@ function goCompose() {
 function onPopState() {
   // Browser back/forward — sync state from URL
   const { view, folder, uid } = parseHash();
+  // Compose is an in-panel overlay, not a separate view — always keep S.view = "mail"
+  const effectiveView = view === "compose" ? "mail" : view;
   const needsLoad =
-    view !== S.view ||
+    effectiveView !== S.view ||
     folder !== S.folder ||
     (uid && uid !== S.selectedUid) ||
     (uid === null && S.selectedUid !== null);
@@ -3041,7 +3233,7 @@ function onPopState() {
       return;
     }
     set({
-      view,
+      view: effectiveView,
       folder: folder || "INBOX",
       selectedUid: uid,
       selectedMsg: null,
@@ -3057,7 +3249,8 @@ function onPopState() {
 (async function init() {
   // Restore state from URL before first render
   const { view, folder, uid } = parseHash();
-  S.view = view;
+  // Compose is an in-panel overlay, not a separate view — always keep S.view = "mail"
+  S.view = view === "compose" ? "mail" : view;
   S.folder = folder || "INBOX";
   S.selectedUid = uid || null;
 

@@ -12,6 +12,7 @@ import re
 import socket
 import ssl
 import time
+import unicodedata
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
@@ -608,6 +609,213 @@ def _require_imap_ok(response, action: str):
         raise HTTPException(502, f"IMAP {action} failed: {detail or result}")
 
 
+SPECIAL_MAILBOXES = {
+    "sent": {
+        "special": "\\Sent",
+        "names": ["Sent", "Sent Messages", "Sent Items", "Sent Mail", "INBOX.Sent", "INBOX/Sent"],
+    },
+    "archive": {
+        "special": "\\Archive",
+        "names": ["Archive", "Archives", "INBOX.Archive", "INBOX/Archive"],
+    },
+    "junk": {
+        "special": "\\Junk",
+        "names": ["Junk", "Spam", "Bulk Mail", "INBOX.Junk", "INBOX.Spam", "INBOX/Junk", "INBOX/Spam"],
+    },
+    "trash": {
+        "special": "\\Trash",
+        "names": ["Trash", "Deleted Messages", "Deleted Items", "Deleted", "Bin", "INBOX.Trash", "INBOX/Trash"],
+    },
+    "drafts": {
+        "special": "\\Drafts",
+        "names": ["Drafts", "Draft", "INBOX.Drafts", "INBOX/Drafts"],
+    },
+}
+
+
+def _imap_ok(response) -> bool:
+    result = _imap_result(response)
+    return bool(result and result.upper() == "OK")
+
+
+def _imap_response_detail(response) -> str:
+    return "; ".join(_imap_text(line) for line in _imap_lines(response)[:3]) or (_imap_result(response) or "")
+
+
+def _fold_mailbox_text(value: str) -> str:
+    value = (value or "").replace("Đ", "D").replace("đ", "d")
+    value = unicodedata.normalize("NFKD", value)
+    value = "".join(ch for ch in value if not unicodedata.combining(ch))
+    return value.casefold().strip()
+
+
+def _mailbox_leaf(path: str) -> str:
+    parts = re.split(r"[./\\]+", path or "")
+    return next((p for p in reversed(parts) if p), path or "")
+
+
+def _canonical_mailbox_role(role: str | None) -> str | None:
+    role = (role or "").casefold().strip().lstrip("\\")
+    if role == "spam":
+        role = "junk"
+    return role if role in SPECIAL_MAILBOXES else None
+
+
+def _role_for_mailbox_name(name: str) -> str | None:
+    folded = _fold_mailbox_text(name)
+    leaf = _fold_mailbox_text(_mailbox_leaf(name))
+    for role, info in SPECIAL_MAILBOXES.items():
+        aliases = {_fold_mailbox_text(n) for n in info["names"]}
+        aliases.add(role)
+        if role == "junk":
+            aliases.add("spam")
+        if folded in aliases or leaf in aliases:
+            return role
+    return None
+
+
+def _special_use_from_flags(flags: list[str]) -> str | None:
+    lowered = {flag.casefold(): flag for flag in flags}
+    for info in SPECIAL_MAILBOXES.values():
+        special = info["special"]
+        if special.casefold() in lowered:
+            return special
+    return None
+
+
+def _mailbox_exact(path_a: str, path_b: str) -> bool:
+    return (path_a or "") == (path_b or "") or _fold_mailbox_text(path_a) == _fold_mailbox_text(path_b)
+
+
+def _mailbox_info_matches_role(mailbox: dict, role: str) -> bool:
+    role = _canonical_mailbox_role(role)
+    if not role:
+        return False
+    special = (mailbox.get("specialUse") or "").casefold()
+    if special and special == SPECIAL_MAILBOXES[role]["special"].casefold():
+        return True
+    return _role_for_mailbox_name(mailbox.get("path") or mailbox.get("name") or "") == role
+
+
+def _parse_mailbox_list_line(line: Any) -> dict | None:
+    line_text = _imap_text(line).strip()
+    if not line_text:
+        return None
+    match = re.match(
+        r"^(?:\* LIST\s+)?\((?P<flags>.*?)\)\s+"
+        r"(?P<delim>NIL|\"(?:\\.|[^\"])*\"|\S+)\s+"
+        r"(?P<name>\"(?:\\.|[^\"])*\"|.+)$",
+        line_text,
+        flags=re.IGNORECASE,
+    )
+    if not match:
+        return None
+    flags = match.group("flags").split()
+    delim = _unquote_imap_token(match.group("delim")) or "/"
+    name = _unquote_imap_token(match.group("name"))
+    if not name:
+        return None
+    return {"flags": flags, "delimiter": delim, "path": name}
+
+
+async def _list_mailboxes_for_client(client, include_status: bool = False) -> list[dict]:
+    list_resp = await client.list('""', "*")
+    _require_imap_ok(list_resp, "LIST")
+
+    mailboxes = []
+    for line in _imap_lines(list_resp):
+        parsed = _parse_mailbox_list_line(line)
+        if not parsed:
+            continue
+
+        name = parsed["path"]
+        delim = parsed["delimiter"]
+        flags = parsed["flags"]
+        msgs, unseen = 0, 0
+
+        if include_status:
+            try:
+                status_resp = await client.status(_quote_imap_folder(name), "(MESSAGES UNSEEN)")
+                _require_imap_ok(status_resp, f"STATUS {name}")
+                status_str = next(
+                    (_imap_text(item) for item in _imap_lines(status_resp) if "MESSAGES" in _imap_text(item)),
+                    "",
+                )
+                msgs_match = re.search(r"MESSAGES\s+(\d+)", status_str)
+                unseen_match = re.search(r"UNSEEN\s+(\d+)", status_str)
+                msgs = int(msgs_match.group(1)) if msgs_match else 0
+                unseen = int(unseen_match.group(1)) if unseen_match else 0
+            except Exception:
+                msgs, unseen = 0, 0
+
+        mailboxes.append({
+            "path": name,
+            "name": name,
+            "delimiter": delim,
+            "specialUse": _special_use_from_flags(flags),
+            "total": msgs,
+            "unseen": unseen,
+            "depth": name.count(delim) if delim and delim in name else 0,
+        })
+
+    return mailboxes
+
+
+async def _create_mailbox_if_missing(client, path: str) -> str:
+    create_resp = await client.create(_quote_imap_folder(path))
+    if _imap_ok(create_resp):
+        try:
+            await client.subscribe(_quote_imap_folder(path))
+        except Exception:
+            pass
+        return path
+
+    detail = _imap_response_detail(create_resp)
+    if "exist" in detail.casefold() or "already" in detail.casefold():
+        return path
+    raise HTTPException(502, f"IMAP CREATE {path} failed: {detail or _imap_result(create_resp)}")
+
+
+async def _ensure_mailbox(client, destination: str, role: str | None = None) -> str:
+    destination = (destination or "").strip()
+    if not destination and not role:
+        raise HTTPException(400, "Destination folder is required.")
+
+    role = _canonical_mailbox_role(role) or _role_for_mailbox_name(destination)
+    mailboxes = await _list_mailboxes_for_client(client)
+
+    if destination:
+        for mb in mailboxes:
+            if _mailbox_exact(mb["path"], destination):
+                return mb["path"]
+
+    if role:
+        for mb in mailboxes:
+            if _mailbox_info_matches_role(mb, role):
+                return mb["path"]
+
+        candidates = []
+        if destination:
+            candidates.append(destination)
+        candidates.extend(SPECIAL_MAILBOXES[role]["names"])
+        last_error: HTTPException | None = None
+        seen: set[str] = set()
+        for candidate in candidates:
+            folded = _fold_mailbox_text(candidate)
+            if not candidate or folded in seen:
+                continue
+            seen.add(folded)
+            try:
+                return await _create_mailbox_if_missing(client, candidate)
+            except HTTPException as exc:
+                last_error = exc
+                continue
+        if last_error:
+            raise last_error
+
+    return await _create_mailbox_if_missing(client, destination)
+
+
 def _decode_header_value(value) -> str:
     if not value:
         return ""
@@ -874,59 +1082,7 @@ async def list_mailboxes(request: Request):
     session = await require_session(request)
 
     async def _do(client):
-        # Dovecot expects an explicit empty reference name.
-        list_resp = await client.list('""', "*")
-        _require_imap_ok(list_resp, "LIST")
-        mailboxes = []
-        for line in _imap_lines(list_resp):
-            if not line:
-                continue
-            # aioimaplib stores: b'(\\HasNoChildren) "/" "INBOX"' (no LIST prefix)
-            line_text = _imap_text(line)
-            match = re.match(r"^\((?P<flags>.*?)\)\s+(?P<delim>NIL|\".*?\"|\S+)\s+(?P<name>.+)$", line_text)
-            if not match:
-                continue
-
-            flags = match.group("flags").split()
-            delim = _unquote_imap_token(match.group("delim")) or "/"
-            name = _unquote_imap_token(match.group("name"))
-            if not name:
-                continue
-
-            path = name
-            special_use = None
-            if "\\Sent" in flags:
-                special_use = "\\Sent"
-            elif "\\Trash" in flags:
-                special_use = "\\Trash"
-            elif "\\Drafts" in flags:
-                special_use = "\\Drafts"
-            elif "\\Junk" in flags:
-                special_use = "\\Junk"
-
-            # Get status
-            try:
-                status_resp = await client.status(_quote_imap_folder(name), "(MESSAGES UNSEEN)")
-                _require_imap_ok(status_resp, f"STATUS {name}")
-                status_str = next(
-                    (_imap_text(item) for item in _imap_lines(status_resp) if "MESSAGES" in _imap_text(item)),
-                    "",
-                )
-                msgs = int(re.search(r"MESSAGES\s+(\d+)", status_str).group(1)) if re.search(r"MESSAGES\s+(\d+)", status_str) else 0
-                unseen = int(re.search(r"UNSEEN\s+(\d+)", status_str).group(1)) if re.search(r"UNSEEN\s+(\d+)", status_str) else 0
-            except Exception:
-                msgs, unseen = 0, 0
-
-            mailboxes.append({
-                "path": path,
-                "name": path,
-                "delimiter": delim,
-                "specialUse": special_use,
-                "total": msgs,
-                "unseen": unseen,
-                "depth": 0,
-            })
-        return mailboxes
+        return await _list_mailboxes_for_client(client, include_status=True)
 
     mailboxes = await with_imap_retry(session, _do)
     return JSONResponse({"mailboxes": mailboxes})
@@ -940,7 +1096,7 @@ async def create_mailbox(request: Request, body: dict):
         raise HTTPException(400, "Path is required.")
 
     async def _do(client):
-        await client.create(_quote_imap_folder(path))
+        await _create_mailbox_if_missing(client, path)
 
     await with_imap_retry(session, _do)
     return JSONResponse({"ok": True, "path": path}, status_code=201)
@@ -1052,14 +1208,9 @@ async def get_thread(request: Request):
 
     # Discover Sent folder name
     async def _find_sent_folder(client):
-        list_resp = await client.list("", "*")
-        for item in _imap_lines(list_resp):
-            txt = _imap_text(item)
-            if "\\Sent" in txt:
-                # parse last token as folder name
-                parts = re.split(r'\s+"?\.?"?\s+', txt.strip())
-                if parts:
-                    return _unquote_imap_token(parts[-1])
+        for mailbox in await _list_mailboxes_for_client(client):
+            if _mailbox_info_matches_role(mailbox, "sent"):
+                return mailbox["path"]
         return None
 
     sent_folder = None
@@ -1249,17 +1400,24 @@ async def move_message(request: Request, uid: int, body: dict):
     destination = body.get("destination", "Trash")
 
     async def _do(client):
+        target = await _ensure_mailbox(client, destination)
         select_resp = await client.select(_quote_imap_folder(folder))
         _require_imap_ok(select_resp, f"SELECT {folder}")
-        copy_resp = await client.uid("COPY", str(uid), _quote_imap_folder(destination))
+
+        copy_resp = await client.uid("COPY", str(uid), _quote_imap_folder(target))
+        if not _imap_ok(copy_resp) and "TRYCREATE" in _imap_response_detail(copy_resp).upper():
+            target = await _create_mailbox_if_missing(client, target)
+            copy_resp = await client.uid("COPY", str(uid), _quote_imap_folder(target))
         _require_imap_ok(copy_resp, "UID COPY")
+
         store_resp = await client.uid("STORE", str(uid), "+FLAGS", "\\Deleted")
         _require_imap_ok(store_resp, "UID STORE")
         expunge_resp = await client.expunge()
         _require_imap_ok(expunge_resp, "EXPUNGE")
+        return target
 
-    await with_imap_retry(session, _do)
-    return JSONResponse({"ok": True})
+    target = await with_imap_retry(session, _do)
+    return JSONResponse({"ok": True, "destination": target})
 
 
 @app.delete("/api/messages/{uid}")
@@ -1391,53 +1549,33 @@ async def send_message(request: Request, body: dict):
         print(f"[SMTP] Failed: {e}")
         raise HTTPException(502, f"SMTP error: {e}")
 
-    # Save copy to Sent folder
-    sent_folder = body.get("sentFolder", "")
-    if not sent_folder:
-        # Auto-detect Sent folder from mailboxes
-        try:
-            async def _find_sent(client):
-                list_resp = await client.list("", "*")
-                for item in _imap_lines(list_resp):
-                    txt = _imap_text(item)
-                    if "\\Sent" in txt or re.search(r'"?Sent"?', txt, re.IGNORECASE):
-                        parts = txt.strip().split('"."')
-                        if len(parts) >= 2:
-                            return _unquote_imap_token(parts[-1])
-                        parts2 = txt.strip().split()
-                        if parts2:
-                            return _unquote_imap_token(parts2[-1])
-                return None
-            sent_folder = await with_imap_retry(session, _find_sent) or "Sent"
-        except Exception:
-            sent_folder = "Sent"
+    # Save copy to Sent folder. Do not fail the SMTP send if IMAP append fails,
+    # but surface the warning to the UI so the user is not misled.
+    sent_folder = (body.get("sentFolder") or "").strip()
+    sent_saved = False
+    sent_error = None
 
     try:
         raw_bytes = mime_message.as_bytes()
 
         async def _append_sent(client):
-            try:
-                quoted = _quote_imap_folder(sent_folder)
-                await client.append(quoted, raw_bytes, flags=["\\Seen"])
-                print(f"[SENT] Saved to '{quoted}' ok — from {email}")
-            except Exception as ex:
-                print(f"[SENT] Failed to save to '{sent_folder}': {ex}")
-                # Try common alternatives
-                for alt in ["Sent Messages", "Sent Items", "INBOX.Sent"]:
-                    try:
-                        await client.append(alt, raw_bytes, flags=["\\Seen"])
-                        print(f"[SENT] Saved to alternate '{alt}' ok")
-                        return
-                    except Exception as alt_ex:
-                        print(f"[SENT] Alternate '{alt}' also failed: {alt_ex}")
-                        continue
+            target = await _ensure_mailbox(client, sent_folder or "Sent", role="sent")
+            append_resp = await client.append(raw_bytes, _quote_imap_folder(target), flags="\\Seen")
+            if not _imap_ok(append_resp) and "TRYCREATE" in _imap_response_detail(append_resp).upper():
+                await _create_mailbox_if_missing(client, target)
+                append_resp = await client.append(raw_bytes, _quote_imap_folder(target), flags="\\Seen")
+            _require_imap_ok(append_resp, f"APPEND {target}")
+            print(f"[SENT] Saved to '{target}' ok — from {email}")
+            return target
 
-        await with_imap_retry(session, _append_sent)
+        saved_target = await with_imap_retry(session, _append_sent)
+        sent_saved = True
+        sent_folder = saved_target
     except Exception as outer_ex:
-        print(f"[SENT] Outer exception: {outer_ex}")
-        pass  # Don't fail the send just because saving to Sent failed
+        sent_error = str(outer_ex)
+        print(f"[SENT] Failed to save sent copy: {sent_error}")
 
-    return JSONResponse({"ok": True})
+    return JSONResponse({"ok": True, "sentSaved": sent_saved, "sentFolder": sent_folder, "sentError": sent_error})
 
 
 # ── Avatar ─────────────────────────────────────────────────────────────────────
