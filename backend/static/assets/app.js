@@ -2097,42 +2097,37 @@ function openCompose(opts = {}) {
     draft.text = `\n\n--- Forwarded Message ---\nFrom: ${displayName(opts.forward.from)} <${displayEmail(opts.forward.from)}>\nDate: ${fullDate(opts.forward.date)}\nSubject: ${opts.forward.subject}\n\n${opts.forward.text || ""}`;
   }
 
-  set({ compose: draft, composeId: S.composeId + 1, showCc: !!draft.cc, showBcc: false, composeFullPage: false });
+  set({ compose: draft, showCc: !!draft.cc, showBcc: false });
+  goCompose();
 }
 
 function closeCompose() {
   set({ compose: null, showCc: false, showBcc: false });
+  goBackFromCompose();
 }
 
-function renderCompose() {
+function renderComposePage() {
   if (!S.compose) return h("div", { style: { display: "none" } });
 
-  const overlay = h("div", {
-    className: "fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/30",
-    onclick(e) { if (e.target === overlay) closeCompose(); },
+  const page = h("div", {
+    className: "flex-1 flex flex-col overflow-hidden min-w-0 bg-white dark:bg-slate-800",
   });
 
-  const modal = h("div", {
-    className: `compose-modal bg-white dark:bg-slate-800 flex flex-col ${S.composeFullPage ? "w-full h-full" : "w-full h-full md:max-w-3xl md:h-[85vh] md:rounded-xl"} shadow-2xl`,
-    onclick(e) { e.stopPropagation(); },
-  });
-
-  // Header
-  const hdr = h("div", { className: "flex items-center justify-between h-16 px-4 border-b border-line shrink-0" });
-  hdr.appendChild(h("h2", { className: "text-lg font-semibold" }, t("newMessage")));
-  const hdrActions = h("div", { className: "flex items-center gap-1" });
-  hdrActions.appendChild(h("button", {
-    className: "p-1.5 rounded hover:bg-slate-100 text-slate-500 hidden md:block",
-    title: S.composeFullPage ? t("restore") : t("maximize"),
-    innerHTML: S.composeFullPage ? I.min : I.max,
-    onclick() { set({ composeFullPage: !S.composeFullPage }); },
+  // Header with back button + send button
+  const hdr = h("div", { className: "flex items-center justify-between h-14 px-4 border-b border-slate-200 dark:border-slate-700 shrink-0" });
+  hdr.appendChild(h("button", {
+    className: "p-2 rounded hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500",
+    onclick: closeCompose,
+    innerHTML: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>`,
+    title: t("discard") || "Back",
   }));
-  hdrActions.appendChild(h("button", {
-    className: "p-1.5 rounded hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500",
-    onclick: closeCompose, innerHTML: I.x,
-  }));
-  hdr.appendChild(hdrActions);
-  modal.appendChild(hdr);
+  hdr.appendChild(h("span", { className: "text-base font-semibold" }, t("newMessage")));
+  hdr.appendChild(h("button", {
+    className: "px-5 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand-hover disabled:opacity-50",
+    onclick() { sendCompose(); },
+    disabled: S.sending ? "disabled" : undefined,
+  }, S.sending ? (t("sending") || "Sending...") : (t("send") || "Send")));
+  page.appendChild(hdr);
 
   // Form
   const form = h("form", {
@@ -2141,17 +2136,17 @@ function renderCompose() {
   });
 
   // Fields
-  const fields = h("div", { className: "px-4 py-3 space-y-2 border-b border-line shrink-0" });
+  const fields = h("div", { className: "px-4 py-3 space-y-2 border-b border-slate-200 dark:border-slate-700 shrink-0" });
 
   // From
   fields.appendChild(h("div", { className: "flex items-center gap-2" },
-    h("span", { className: "text-sm text-slate-500 w-12" }, t("from") + ":"),
+    h("span", { className: "text-sm text-slate-500 dark:text-slate-400 w-12" }, t("from") + ":"),
     h("span", { className: "text-sm" }, S.account?.email || ""),
   ));
 
   // To
   const toRow = h("div", { className: "flex items-center gap-2" });
-  toRow.appendChild(h("span", { className: "text-sm text-slate-500 w-12" }, t("to") + ":"));
+  toRow.appendChild(h("span", { className: "text-sm text-slate-500 dark:text-slate-400 w-12" }, t("to") + ":"));
   toRow.appendChild(renderRecipientInput("to", t("recipients")));
   if (!S.showCc && !S.showBcc) {
     toRow.appendChild(h("button", {
@@ -2170,7 +2165,7 @@ function renderCompose() {
   // Cc
   if (S.showCc) {
     fields.appendChild(h("div", { className: "flex items-center gap-2" },
-      h("span", { className: "text-sm text-slate-500 w-12" }, t("cc") + ":"),
+      h("span", { className: "text-sm text-slate-500 dark:text-slate-400 w-12" }, t("cc") + ":"),
       renderRecipientInput("cc", t("ccRecipients")),
     ));
   }
@@ -2178,21 +2173,29 @@ function renderCompose() {
   // Bcc
   if (S.showBcc) {
     fields.appendChild(h("div", { className: "flex items-center gap-2" },
-      h("span", { className: "text-sm text-slate-500 w-12" }, t("bcc") + ":"),
+      h("span", { className: "text-sm text-slate-500 dark:text-slate-400 w-12" }, t("bcc") + ":"),
       renderRecipientInput("bcc", t("bccRecipients")),
     ));
   }
 
   // Subject
   fields.appendChild(h("div", { className: "flex items-center gap-2" },
-    h("span", { className: "text-sm text-slate-500 w-12" }, t("subj") + ":"),
-    (() => { const i = h("input", { className: "flex-1 px-2 py-1.5 text-sm border border-line rounded outline-none focus:ring-2 focus:ring-blue-300", value: S.compose.subject }); i.addEventListener("input", e => { S.compose.subject = e.target.value; }); preventMobileScroll(i); return i; })(),
+    h("span", { className: "text-sm text-slate-500 dark:text-slate-400 w-12" }, t("subj") + ":"),
+    (() => {
+      const i = h("input", {
+        className: "flex-1 px-2 py-1.5 text-sm border border-slate-200 dark:border-slate-600 rounded outline-none focus:ring-2 focus:ring-blue-300 bg-transparent",
+        value: S.compose.subject,
+      });
+      i.addEventListener("input", e => { S.compose.subject = e.target.value; });
+      preventMobileScroll(i);
+      return i;
+    })(),
   ));
 
   form.appendChild(fields);
 
   // Rich text toolbar
-  const toolbar = h("div", { className: "flex items-center gap-0.5 px-4 h-10 border-b border-line bg-slate-50 dark:bg-slate-900 shrink-0 overflow-x-auto" });
+  const toolbar = h("div", { className: "flex items-center gap-0.5 px-4 h-10 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 shrink-0 overflow-x-auto" });
   toolbar.appendChild(toolbarBtn("bold", () => document.execCommand("bold")));
   toolbar.appendChild(toolbarBtn("italic", () => document.execCommand("italic")));
   toolbar.appendChild(toolbarBtn("underline", () => document.execCommand("underline")));
@@ -2208,7 +2211,7 @@ function renderCompose() {
 
   // Editor
   const editor = h("div", {
-    className: "compose-editor flex-1 overflow-y-auto",
+    className: "compose-editor flex-1 overflow-y-auto px-4 py-3",
     contenteditable: "true",
     "data-placeholder": "Write your message...",
   });
@@ -2219,7 +2222,7 @@ function renderCompose() {
 
   // Attachments
   if (S.compose.attachments.length > 0) {
-    const attDiv = h("div", { className: "px-4 py-2 border-t border-line flex flex-wrap gap-2 shrink-0" });
+    const attDiv = h("div", { className: "px-4 py-2 border-t border-slate-200 dark:border-slate-700 flex flex-wrap gap-2 shrink-0" });
     for (let i = 0; i < S.compose.attachments.length; i++) {
       const att = S.compose.attachments[i];
       attDiv.appendChild(h("div", { className: "attachment-item" },
@@ -2237,11 +2240,11 @@ function renderCompose() {
   }
 
   // Footer
-  const footer = h("div", { className: "flex items-center gap-3 px-4 h-16 border-t border-line shrink-0" });
+  const footer = h("div", { className: "flex items-center gap-3 px-4 h-14 border-t border-slate-200 dark:border-slate-700 shrink-0" });
   const fileInput = h("input", { type: "file", multiple: "multiple", className: "hidden" });
   fileInput.addEventListener("change", e => {
     for (const file of e.target.files) {
-      if (file.size > 10 * 1024 * 1024) continue; // 10MB limit
+      if (file.size > 10 * 1024 * 1024) continue;
       const reader = new FileReader();
       reader.onload = () => {
         S.compose.attachments.push({ name: file.name, type: file.type, size: file.size, data: reader.result });
@@ -2259,18 +2262,9 @@ function renderCompose() {
     onclick() { fileInput.click(); },
   }));
   footer.appendChild(fileInput);
-  footer.appendChild(h("div", { className: "flex-1" }));
-  footer.appendChild(h("button", {
-    className: "px-6 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand-hover disabled:opacity-50",
-    type: "submit",
-    disabled: S.sending ? "disabled" : undefined,
-  }, S.sending ? t("sending") : t("send")));
-  form.appendChild(footer);
 
-  form.addEventListener("submit", sendCompose);
-  modal.appendChild(form);
-  overlay.appendChild(modal);
-  return overlay;
+  page.appendChild(form);
+  return page;
 }
 
 function renderRecipientInput(field, placeholder) {
@@ -2893,6 +2887,10 @@ function renderSignatureModal() {
 
 function render() {
   _rendering = true;
+  // Preserve contenteditable editor content across re-renders so typing isn't lost
+  const savedHtml = S.view === "compose" && S.compose
+    ? document.querySelector(".compose-editor")?.innerHTML || null
+    : null;
   try {
     const app = $("#app");
     clear(app);
@@ -2914,49 +2912,58 @@ function render() {
       ));
     } else {
       const shell = h("div", { className: "flex h-screen overflow-hidden" });
-      shell.appendChild(renderSidebar());
 
-      const main = h("div", { className: "flex-1 flex flex-col overflow-hidden min-w-0" });
+      if (S.view === "compose") {
+        // Full-page compose — no sidebar, no mail list
+        const main = h("div", { className: "flex-1 flex flex-col overflow-hidden min-w-0" });
+        main.appendChild(renderComposePage());
+        shell.appendChild(main);
+      } else {
+        shell.appendChild(renderSidebar());
+        const main = h("div", { className: "flex-1 flex flex-col overflow-hidden min-w-0" });
 
-      if (S.view === "mail") {
-        const mailView = h("div", { className: "flex-1 flex overflow-hidden relative" });
+        if (S.view === "mail") {
+          const mailView = h("div", { className: "flex-1 flex overflow-hidden relative" });
 
-        // ── Desktop (≥768px): 3-panel layout ─────────────────────────────────
-        if (window.innerWidth >= 769) {
-          // Panel 1 — message list (always visible on desktop)
-          mailView.appendChild(renderMessageList());
+          // ── Desktop (≥768px): 3-panel layout ─────────────────────────────────
+          if (window.innerWidth >= 769) {
+            mailView.appendChild(renderMessageList());
+            mailView.appendChild(renderMessageView());
+          // ── Mobile (<768px): list OR detail, not both ──────────────────────
+          } else if (S.selectedUid) {
+            mailView.appendChild(renderMessageView());
+          } else {
+            mailView.appendChild(renderMessageList());
+          }
 
-          // Panel 2 — reading pane (selected message content)
-          mailView.appendChild(renderMessageView());
+          // Mobile FAB: compose button (bottom-right, mobile-only)
+          const fab = h("button", {
+            className: "fab-compose md:hidden",
+            title: t("compose"),
+            onclick() { openCompose(); },
+            innerHTML: I.edit,
+          });
+          mailView.appendChild(fab);
 
-        // ── Mobile (<768px): list OR detail, not both ──────────────────────
-        } else if (S.selectedUid) {
-          mailView.appendChild(renderMessageView());
-        } else {
-          mailView.appendChild(renderMessageList());
+          main.appendChild(mailView);
+        } else if (S.view === "contacts") {
+          main.appendChild(renderContactsView());
+        } else if (S.view === "calendar") {
+          main.appendChild(renderCalendarView());
         }
 
-        // Mobile FAB: compose button (bottom-right, mobile-only)
-        const fab = h("button", {
-          className: "fab-compose md:hidden",
-          title: t("compose"),
-          onclick() { openCompose(); },
-          innerHTML: I.edit,
-        });
-        mailView.appendChild(fab);
-
-        main.appendChild(mailView);
-      } else if (S.view === "contacts") {
-        main.appendChild(renderContactsView());
-      } else if (S.view === "calendar") {
-        main.appendChild(renderCalendarView());
+        shell.appendChild(main);
+        app.appendChild(renderMobileSidebar());
       }
 
-      shell.appendChild(main);
       app.appendChild(shell);
-      app.appendChild(renderMobileSidebar());
-      app.appendChild(renderCompose());
       app.appendChild(renderSignatureModal());
+
+      // Restore editor content after DOM is rebuilt so typing is never lost
+      if (savedHtml !== null) {
+        const editor = document.querySelector(".compose-editor");
+        if (editor) editor.innerHTML = savedHtml;
+      }
     }
   } catch (err) {
     console.error("Render error:", err);
@@ -2975,6 +2982,7 @@ function parseHash() {
   const parts = hash.split("/").filter(Boolean);
   if (parts[0] === "contacts") return { view: "contacts", folder: null };
   if (parts[0] === "calendar") return { view: "calendar", folder: null };
+  if (parts[0] === "compose") return { view: "compose", folder: null };
   // Default: mail — /mail, /mail/INBOX, /mail/Sent/uid123
   return {
     view: "mail",
@@ -2986,6 +2994,7 @@ function parseHash() {
 function buildHash(view, folder, uid) {
   if (view === "contacts") return "#/contacts";
   if (view === "calendar") return "#/calendar";
+  if (view === "compose") return "#/compose";
   let h = "#/mail";
   if (folder) h += "/" + encodeURIComponent(folder);
   if (uid) h += "/" + uid;
@@ -3009,6 +3018,25 @@ function navigate(opts = {}) {
   }
 }
 
+function goCompose() {
+  if (window.location.hash !== "#/compose") {
+    if (window.history.pushState) {
+      window.history.pushState(null, "", "#/compose");
+    } else {
+      window.location.hash = "#/compose";
+    }
+  }
+}
+
+function goBackFromCompose() {
+  // Restore previous view/folder from browser history stack
+  if (window.history.length > 1) {
+    window.history.back();
+  } else {
+    navigate({ view: "mail", folder: "INBOX", clearUid: true });
+  }
+}
+
 function onPopState() {
   // Browser back/forward — sync state from URL
   const { view, folder, uid } = parseHash();
@@ -3019,6 +3047,11 @@ function onPopState() {
     (uid === null && S.selectedUid !== null);
 
   if (needsLoad) {
+    // If navigating to compose page but compose state is missing, create a blank draft
+    if (view === "compose" && !S.compose) {
+      openCompose();
+      return;
+    }
     set({
       view,
       folder: folder || "INBOX",
@@ -3048,6 +3081,8 @@ function onPopState() {
     if (data.authenticated) {
       S.account = { email: data.email, domain: data.domain };
       S.ready = true;
+      // If deep-linking to compose, open blank draft
+      if (view === "compose") openCompose();
       await bootstrap();
       return;
     }
