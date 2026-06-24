@@ -72,7 +72,7 @@ Restart the service:
 sudo systemctl restart bnix-webmail
 ```
 
-> **Multi-domain support**: Users can log in with any email address. The app auto-discovers the correct IMAP/SMTP server for each domain via DNS SRV records, common hostnames, and MX fallback. No per-domain configuration needed.
+> **Multi-domain support**: Users can log in with any email address. The app resolves the MX record for each email domain to find the correct IMAP/SMTP server. No per-domain configuration needed. If auto-detection fails, users can enter the server manually via "Mail server settings" on the login page.
 
 ### Caddy Reverse Proxy
 

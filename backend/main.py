@@ -110,50 +110,17 @@ async def _get_imap_for_session(session: dict) -> aioimaplib.IMAP4_SSL:
 
 
 async def _discover_mail_host(domain: str, service: str = "imap") -> str:
-    """Auto-discover mail server for a domain.
-
-    Tries in order:
-    1. SRV records (_imaps._tcp / _submission._tcp) — RFC 6186
-    2. Common hostnames (mail., imap., smtp.)
-    3. MX record fallback
-    """
-    loop = asyncio.get_event_loop()
-
-    # 1. Try SRV records
-    try:
-        import dns.resolver
-        srv_name = f"_imaps._tcp.{domain}" if service == "imap" else f"_submission._tcp.{domain}"
-        resolver = dns.resolver.Resolver()
-        resolver.timeout = 3
-        answers = resolver.resolve(srv_name, "SRV")
-        records = sorted([(r.priority, r.weight, str(r.target).rstrip("."), r.port) for r in answers])
-        if records:
-            return records[0][2]
-    except Exception:
-        pass
-
-    # 2. Try common hostnames
-    prefixes = ["mail", "imap", "smtp"] if service == "imap" else ["mail", "smtp"]
-    for prefix in prefixes:
-        hostname = f"{prefix}.{domain}"
-        try:
-            await loop.run_in_executor(None, socket.gethostbyname, hostname)
-            return hostname
-        except Exception:
-            continue
-
-    # 3. MX fallback
+    """Auto-discover mail server via MX record."""
     try:
         import dns.resolver
         resolver = dns.resolver.Resolver()
-        resolver.timeout = 3
+        resolver.timeout = 5
         answers = resolver.resolve(domain, "MX")
         records = sorted([(r.preference, str(r.exchange).rstrip(".")) for r in answers])
         if records:
             return records[0][1]
     except Exception:
         pass
-
     return f"mail.{domain}"
 
 
