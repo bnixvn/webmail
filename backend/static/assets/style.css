@@ -27,6 +27,8 @@ input, textarea, [contenteditable] {
   touch-action: manipulation;
   -webkit-user-select: text;
   user-select: text;
+  /* Disable tap highlight on mobile so touching inputs doesn't flash a highlight */
+  -webkit-tap-highlight-color: transparent;
 }
 
 /* Email HTML content */
