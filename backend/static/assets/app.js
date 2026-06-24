@@ -1813,6 +1813,11 @@ function render() {
   }
 
   if (!S.ready) {
+    // Still loading — show nothing
+    return;
+  }
+
+  if (!S.account) {
     app.appendChild(renderLogin());
   } else {
     const shell = h("div", { className: "flex h-screen overflow-hidden" });
@@ -1857,10 +1862,12 @@ function render() {
     const data = await api("/api/auth/me");
     if (data.authenticated) {
       S.account = { email: data.email, domain: data.domain };
+      S.ready = true;
       await bootstrap();
       return;
     }
   } catch {}
+  // Not authenticated — show login
   S.ready = true;
   render();
 })();
