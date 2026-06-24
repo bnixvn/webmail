@@ -340,9 +340,10 @@ input, textarea, [contenteditable] {
 .login-screenshot {
   width: 100%;
   height: 100%;
-  object-fit: cover;
-  object-position: top left;
+  object-fit: contain;
+  object-position: center center;
   display: block;
+  padding: 5%;
 }
 
 /* Right panel: form */
@@ -352,6 +353,7 @@ input, textarea, [contenteditable] {
   flex-direction: column;
   overflow-y: auto;
   background: #fff;
+  border-left: 1px solid #e8e8e8;
 }
 
 /* Top bar */

@@ -160,6 +160,7 @@
 /* ── Login form ── */
 .dark .login-panel-right {
   background: #1e293b;
+  border-left-color: #334155;
 }
 .dark .login-topbar {
   background: transparent;
