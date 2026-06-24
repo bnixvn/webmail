@@ -62,17 +62,15 @@ async def _get_pooled_imap(email: str, password: str, imap_host: str, imap_port:
         if entry:
             client, last_used = entry
             if now - last_used < POOL_TTL:
-                try:
-                    await client.noop()
-                    _pool[email] = (client, now)
-                    return client
-                except Exception:
-                    pass
+                # Trust connection is alive — NOOP can corrupt protocol state
+                _pool[email] = (client, now)
+                return client
+            # Stale — evict
+            del _pool[email]
             try:
                 await client.logout()
             except Exception:
                 pass
-            del _pool[email]
 
         client = aioimaplib.IMAP4_SSL(
             host=imap_host,
@@ -86,18 +84,46 @@ async def _get_pooled_imap(email: str, password: str, imap_host: str, imap_port:
         return client
 
 
+async def _evict_imap(email: str):
+    """Remove a broken connection from the pool."""
+    async with _pool_lock:
+        entry = _pool.pop(email, None)
+        if entry:
+            try:
+                await entry[0].logout()
+            except Exception:
+                pass
+
+
 async def _evict_pool():
     """Periodic cleanup of stale IMAP connections."""
     async with _pool_lock:
         now = time.time()
         for email in list(_pool.keys()):
-            client, last_used = _pool[email]
+            _, last_used = _pool[email]
             if now - last_used > POOL_TTL:
-                try:
-                    await client.logout()
-                except Exception:
-                    pass
                 del _pool[email]
+
+
+async def with_imap_retry(session: dict, coro_factory):
+    """
+    Execute an IMAP operation with automatic retry on connection failure.
+    coro_factory: a callable that takes (client) and returns a coroutine.
+    """
+    email = session["email"]
+    domain = email.split("@")[1].lower()
+    imap_host = session.get("imap_host") or os.environ.get("IMAP_HOST", "").strip() or await _discover_mail_host(domain, "imap")
+    imap_port = int(session.get("imap_port") or os.environ.get("IMAP_PORT", "993"))
+
+    for attempt in range(2):
+        try:
+            client = await _get_pooled_imap(email, session["password"], imap_host, imap_port)
+            return await coro_factory(client)
+        except (aioimaplib.Abort, ConnectionError, OSError, asyncio.TimeoutError):
+            if attempt == 0:
+                await _evict_imap(email)
+                continue
+            raise
 
 
 async def _get_imap_for_session(session: dict) -> aioimaplib.IMAP4_SSL:
@@ -488,74 +514,75 @@ async def me(request: Request):
 @app.get("/api/mailboxes")
 async def list_mailboxes(request: Request):
     session = await require_session(request)
-    client = await _get_imap_for_session(session)
 
-    # List with status — aioimaplib.list() requires (reference, pattern)
-    _, folders = await client.list("", "*")
-    mailboxes = []
-    for line in folders:
-        if not line:
-            continue
-        # aioimaplib stores: b'(\\HasNoChildren) "/" "INBOX"' (no LIST prefix)
-        parts = line.split()
-        flags = []
-        delim = "/"
-        name = ""
-        in_flags = False
-        for part in parts:
-            if part.startswith(b"("):
-                in_flags = True
-                flags_str = part.decode()
-                # Handle single-token flags like (\HasNoChildren)
-                if flags_str.endswith(")"):
-                    flags_str = flags_str[1:-1]
-                    in_flags = False
-                else:
-                    flags_str = flags_str[1:]
-                flags.extend(flags_str.split())
-            elif in_flags:
-                if part.endswith(b")"):
-                    flags.extend(part.decode()[:-1].split())
-                    in_flags = False
-                else:
-                    flags.extend(part.decode().split())
-            elif part == b"\"\"":
-                delim = "/"
-            elif part.startswith(b"\"") and not name:
-                name = part.decode().strip('"')
-            elif not name and not part.startswith(b"\\"):
-                name = part.decode()
+    async def _do(client):
+        # List with status — aioimaplib.list() requires (reference, pattern)
+        _, folders = await client.list("", "*")
+        mailboxes = []
+        for line in folders:
+            if not line:
+                continue
+            # aioimaplib stores: b'(\\HasNoChildren) "/" "INBOX"' (no LIST prefix)
+            parts = line.split()
+            flags = []
+            delim = "/"
+            name = ""
+            in_flags = False
+            for part in parts:
+                if part.startswith(b"("):
+                    in_flags = True
+                    flags_str = part.decode()
+                    if flags_str.endswith(")"):
+                        flags_str = flags_str[1:-1]
+                        in_flags = False
+                    else:
+                        flags_str = flags_str[1:]
+                    flags.extend(flags_str.split())
+                elif in_flags:
+                    if part.endswith(b")"):
+                        flags.extend(part.decode()[:-1].split())
+                        in_flags = False
+                    else:
+                        flags.extend(part.decode().split())
+                elif part == b"\"\"":
+                    delim = "/"
+                elif part.startswith(b"\"") and not name:
+                    name = part.decode().strip('"')
+                elif not name and not part.startswith(b"\\"):
+                    name = part.decode()
 
-        path = name
-        special_use = None
-        if "\\Sent" in flags:
-            special_use = "\\Sent"
-        elif "\\Trash" in flags:
-            special_use = "\\Trash"
-        elif "\\Drafts" in flags:
-            special_use = "\\Drafts"
-        elif "\\Junk" in flags:
-            special_use = "\\Junk"
+            path = name
+            special_use = None
+            if "\\Sent" in flags:
+                special_use = "\\Sent"
+            elif "\\Trash" in flags:
+                special_use = "\\Trash"
+            elif "\\Drafts" in flags:
+                special_use = "\\Drafts"
+            elif "\\Junk" in flags:
+                special_use = "\\Junk"
 
-        # Get status
-        try:
-            _, status_data = await client.status(name, "(MESSAGES UNSEEN)")
-            status_str = status_data[0].decode() if status_data else ""
-            msgs = int(re.search(r"MESSAGES\s+(\d+)", status_str).group(1)) if re.search(r"MESSAGES\s+(\d+)", status_str) else 0
-            unseen = int(re.search(r"UNSEEN\s+(\d+)", status_str).group(1)) if re.search(r"UNSEEN\s+(\d+)", status_str) else 0
-        except Exception:
-            msgs, unseen = 0, 0
+            # Get status
+            try:
+                _, status_data = await client.status(name, "(MESSAGES UNSEEN)")
+                status_str = status_data[0].decode() if status_data else ""
+                msgs = int(re.search(r"MESSAGES\s+(\d+)", status_str).group(1)) if re.search(r"MESSAGES\s+(\d+)", status_str) else 0
+                unseen = int(re.search(r"UNSEEN\s+(\d+)", status_str).group(1)) if re.search(r"UNSEEN\s+(\d+)", status_str) else 0
+            except Exception:
+                msgs, unseen = 0, 0
 
-        mailboxes.append({
-            "path": path,
-            "name": path,
-            "delimiter": delim,
-            "specialUse": special_use,
-            "total": msgs,
-            "unseen": unseen,
-            "depth": 0,
-        })
+            mailboxes.append({
+                "path": path,
+                "name": path,
+                "delimiter": delim,
+                "specialUse": special_use,
+                "total": msgs,
+                "unseen": unseen,
+                "depth": 0,
+            })
+        return mailboxes
 
+    mailboxes = await with_imap_retry(session, _do)
     return JSONResponse({"mailboxes": mailboxes})
 
 
@@ -565,8 +592,11 @@ async def create_mailbox(request: Request, body: dict):
     path = (body.get("path") or "").strip()
     if not path:
         raise HTTPException(400, "Path is required.")
-    client = await _get_imap_for_session(session)
-    await client.create(path)
+
+    async def _do(client):
+        await client.create(path)
+
+    await with_imap_retry(session, _do)
     return JSONResponse({"ok": True, "path": path}, status_code=201)
 
 
@@ -578,25 +608,30 @@ async def list_messages(request: Request):
     folder = request.query_params.get("folder", "INBOX")
     limit = int(request.query_params.get("limit", "40"))
 
-    client = await _get_imap_for_session(session)
-    await client.select(folder)
+    async def _do(client):
+        await client.select(folder)
 
-    # Get total message count
-    _, status_data = await client.status(folder, "(MESSAGES)")
-    total = 0
-    if status_data:
-        m = re.search(r"MESSAGES\s+(\d+)", status_data[0].decode())
-        total = int(m.group(1)) if m else 0
+        # Get total message count
+        _, status_data = await client.status(folder, "(MESSAGES)")
+        total = 0
+        if status_data:
+            m = re.search(r"MESSAGES\s+(\d+)", status_data[0].decode())
+            total = int(m.group(1)) if m else 0
 
-    if total == 0:
+        if total == 0:
+            return []
+
+        # Fetch last N messages with envelope + snippet
+        start_uid = max(1, total - min(limit, 100) + 1)
+        _, messages_data = await client.fetch(
+            f"{start_uid}:*",
+            "(UID ENVELOPE FLAGS INTERNALDATE BODY.PEEK[HEADER.FIELDS (SUBJECT FROM TO DATE)])",
+        )
+        return messages_data
+
+    messages_data = await with_imap_retry(session, _do)
+    if not messages_data:
         return JSONResponse({"messages": []})
-
-    # Fetch last N messages with envelope + snippet
-    start_uid = max(1, total - min(limit, 100) + 1)
-    _, messages_data = await client.fetch(
-        f"{start_uid}:*",
-        "(UID ENVELOPE FLAGS INTERNALDATE BODY.PEEK[HEADER.FIELDS (SUBJECT FROM TO DATE)])",
-    )
 
     messages = []
     for uid_str, msg_data in _chunk_messages(messages_data):
@@ -662,16 +697,15 @@ async def get_message(request: Request, uid: int):
     session = await require_session(request)
     folder = request.query_params.get("folder", "INBOX")
 
-    client = await _get_imap_for_session(session)
-    await client.select(folder)
+    async def _do(client):
+        await client.select(folder)
 
-    FETCH_TIMEOUT = 60.0
+        FETCH_TIMEOUT = 60.0
 
-    # Step 1: Fetch envelope + flags (fast, no source)
-    summary = None
-    deadline = time.time() + FETCH_TIMEOUT
+        # Step 1: Fetch envelope + flags (fast, no source)
+        summary = None
+        deadline = time.time() + FETCH_TIMEOUT
 
-    try:
         _, fetch_data = await asyncio.wait_for(
             client.fetch(str(uid), "(UID ENVELOPE FLAGS INTERNALDATE)"),
             timeout=deadline - time.time(),
@@ -705,39 +739,41 @@ async def get_message(request: Request, uid: int):
         if not summary:
             raise HTTPException(404, "Message not found.")
 
+        # Step 2: Fetch full source with timeout
+        try:
+            deadline2 = time.time() + FETCH_TIMEOUT
+
+            async def _fetch_source():
+                _, src_data = await client.fetch(str(uid), "BODY[]")
+                if isinstance(src_data, dict):
+                    for _, v in src_data.items():
+                        if isinstance(v, bytes):
+                            return v
+                elif isinstance(src_data, (list, tuple)):
+                    for item in src_data:
+                        if isinstance(item, bytes):
+                            return item
+                return None
+
+            source = await asyncio.wait_for(_fetch_source(), timeout=deadline2 - time.time())
+
+            if source:
+                parsed = await _async_parse_email(source)
+                summary["snippet"] = _clean_snippet(parsed.get("text", ""))
+                html = parsed.get("html")
+                summary["html"] = _sanitize_html(html) if html else None
+                summary["text"] = parsed.get("text")
+                summary["attachments"] = parsed.get("attachments", [])
+
+        except asyncio.TimeoutError:
+            pass
+
+        return summary
+
+    try:
+        summary = await with_imap_retry(session, _do)
     except asyncio.TimeoutError:
         raise HTTPException(504, "Message fetch timed out.")
-
-    # Step 2: Fetch full source with timeout
-    try:
-        source = None
-        deadline2 = time.time() + FETCH_TIMEOUT
-
-        async def _fetch_source():
-            _, src_data = await client.fetch(str(uid), "BODY[]")
-            if isinstance(src_data, dict):
-                for _, v in src_data.items():
-                    if isinstance(v, bytes):
-                        return v
-            elif isinstance(src_data, (list, tuple)):
-                for item in src_data:
-                    if isinstance(item, bytes):
-                        return item
-            return None
-
-        source = await asyncio.wait_for(_fetch_source(), timeout=deadline2 - time.time())
-
-        if source:
-            parsed = await _async_parse_email(source)
-            summary["snippet"] = _clean_snippet(parsed.get("text", ""))
-            html = parsed.get("html")
-            summary["html"] = _sanitize_html(html) if html else None
-            summary["text"] = parsed.get("text")
-            summary["attachments"] = parsed.get("attachments", [])
-
-    except asyncio.TimeoutError:
-        # Return what we have (envelope) even on timeout
-        pass
 
     return JSONResponse({"message": summary})
 
@@ -749,11 +785,12 @@ async def update_flags(request: Request, uid: int, body: dict):
     flag = body.get("flag", "\\Seen")
     enabled = bool(body.get("enabled", True))
 
-    client = await _get_imap_for_session(session)
-    await client.select(folder)
+    async def _do(client):
+        await client.select(folder)
+        cmd = "+FLAGS" if enabled else "-FLAGS"
+        await client.store(str(uid), cmd, flag)
 
-    cmd = "+FLAGS" if enabled else "-FLAGS"
-    await client.store(str(uid), cmd, flag)
+    await with_imap_retry(session, _do)
     return JSONResponse({"ok": True})
 
 
@@ -763,11 +800,13 @@ async def move_message(request: Request, uid: int, body: dict):
     folder = body.get("folder", "INBOX")
     destination = body.get("destination", "Trash")
 
-    client = await _get_imap_for_session(session)
-    await client.select(folder)
-    await client.copy(str(uid), destination)
-    await client.store(str(uid), "+FLAGS", "\\Deleted")
-    await client.expunge()
+    async def _do(client):
+        await client.select(folder)
+        await client.copy(str(uid), destination)
+        await client.store(str(uid), "+FLAGS", "\\Deleted")
+        await client.expunge()
+
+    await with_imap_retry(session, _do)
     return JSONResponse({"ok": True})
 
 
@@ -776,10 +815,12 @@ async def delete_message(request: Request, uid: int):
     session = await require_session(request)
     folder = request.query_params.get("folder", "INBOX")
 
-    client = await _get_imap_for_session(session)
-    await client.select(folder)
-    await client.store(str(uid), "+FLAGS", "\\Deleted")
-    await client.expunge()
+    async def _do(client):
+        await client.select(folder)
+        await client.store(str(uid), "+FLAGS", "\\Deleted")
+        await client.expunge()
+
+    await with_imap_retry(session, _do)
     return JSONResponse({"ok": True})
 
 
