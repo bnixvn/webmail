@@ -161,6 +161,7 @@
 .dark .login-panel-right {
   background: #1e293b;
   border-left-color: #334155;
+  padding: 20px;
 }
 .dark .login-flag-img {
   opacity: 0.85;
