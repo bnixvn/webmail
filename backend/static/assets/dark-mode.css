@@ -181,6 +181,9 @@
 .dark .login-lang-btn.active {
   color: #60a5fa;
 }
+.dark .login-flag-img {
+  /* inherits opacity from button */
+}
 .dark .login-theme-btn {
   background: #0f172a;
   color: #94a3b8;

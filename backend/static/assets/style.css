@@ -412,6 +412,10 @@ input, textarea, [contenteditable] {
 }
 .login-flag-img {
   display: block;
+  width: 24px;
+  height: 16px;
+  border-radius: 3px;
+  object-fit: cover;
 }
 .login-flag { font-size: 16px; line-height: 1; }
 
