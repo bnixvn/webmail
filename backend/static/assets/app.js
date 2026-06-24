@@ -1732,7 +1732,13 @@ function renderMessageView() {
   row1.appendChild(h("h1", { className: "flex-1 text-lg md:text-2xl font-semibold min-w-0 truncate" }, msg.subject || t("noSubject")));
 
   // Date
-  row1.as.appendChild(actionBtn("archive", t("archive"), () => moveMsg(folderTarget("archive"))));
+  row1.appendChild(h("span", { className: "text-xs text-slate-400 whitespace-nowrap hidden md:block mt-2" }, fullDate(msg.date)));
+
+  // Desktop actions
+  const actions = h("div", { className: "hidden md:flex items-center gap-1 shrink-0" });
+  actions.appendChild(actionBtn("reply", t("reply"), () => openCompose({ replyTo: msg })));
+  actions.appendChild(actionBtn("forward", t("forward"), () => openCompose({ forward: msg })));
+  actions.appendChild(actionBtn("archive", t("archive"), () => moveMsg(folderTarget("archive"))));
   actions.appendChild(actionBtn("spam", t("reportSpam"), () => moveMsg(folderTarget("spam"))));
   actions.appendChild(actionBtn("trash", t("delete"), () => deleteMsg()));
 
