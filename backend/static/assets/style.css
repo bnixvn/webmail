@@ -338,7 +338,6 @@ input, textarea, [contenteditable] {
   background-color: rgb(237, 248, 255);
   display: flex;
   padding: 75px 150px;
-  border-radius: 20px;
   justify-content: center;
 }
 .login-screenshot {
