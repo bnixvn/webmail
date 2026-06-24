@@ -351,6 +351,7 @@ input, textarea, [contenteditable] {
   flex: 0 0 45%;
   display: flex;
   flex-direction: column;
+  align-items: center;
   overflow-y: auto;
   background: #fff;
   border-left: 1px solid #e8e8e8;
@@ -463,8 +464,9 @@ input, textarea, [contenteditable] {
 
 /* Form */
 .login-form {
+  width: 100%;
+  max-width: 360px;
   padding: 0 32px 32px;
-  flex: 1;
 }
 
 /* Field */
