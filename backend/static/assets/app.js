@@ -323,9 +323,13 @@ async function onLogin(e) {
       method: "POST",
       body: JSON.stringify({ email, password, remember, imapHost, imapPort, smtpHost, smtpPort }),
     });
-    set({ account: { email: data.email, domain: data.domain } });
+    S.account = { email: data.email, domain: data.domain };
+    S.ready = false;
+    // Show loading while bootstrap runs
+    render();
     await bootstrap();
   } catch (err) {
+    S.account = null;
     set({ loginError: err.message || "Login failed" });
   }
 }
@@ -1815,7 +1819,15 @@ function render() {
 
     if (!S.account) {
       app.appendChild(renderLogin());
-    } else if (S.ready) {
+    } else if (!S.ready) {
+      // Logged in but still loading data
+      app.appendChild(h("div", { className: "flex items-center justify-center min-h-screen bg-slate-50" },
+        h("div", { className: "text-center" },
+          h("div", { className: "spinner mx-auto mb-4" }),
+          h("p", { className: "text-sm text-slate-500" }, "Loading your mailbox..."),
+        ),
+      ));
+    } else {
       const shell = h("div", { className: "flex h-screen overflow-hidden" });
       shell.appendChild(renderSidebar());
 
