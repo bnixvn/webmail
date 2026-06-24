@@ -8,11 +8,13 @@ function h(tag, attrs, ...children) {
   const el = document.createElement(tag);
   if (attrs) {
     for (const [k, v] of Object.entries(attrs)) {
+      if (v == null || v === false) continue;
       if (k === "className") el.className = v;
       else if (k === "innerHTML") el.innerHTML = v;
       else if (k.startsWith("on")) el.addEventListener(k.slice(2).toLowerCase(), v);
       else if (k === "style" && typeof v === "object") Object.assign(el.style, v);
       else if (k === "dataset") Object.assign(el.dataset, v);
+      else if (v === true) el.setAttribute(k, k);
       else el.setAttribute(k, v);
     }
   }
@@ -28,12 +30,205 @@ function $(sel, ctx) { return (ctx || document).querySelector(sel); }
 function $$(sel, ctx) { return [...(ctx || document).querySelectorAll(sel)]; }
 function esc(s) { const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
 
+// ─── i18n ────────────────────────────────────────────────────────────────────
+const LOCALES = {
+  en: {
+    // Login
+    emailPlaceholder: "Email address",
+    passwordPlaceholder: "Password",
+    staySignedIn: "Stay signed in",
+    serverSettings: "⚙ Mail server settings (optional)",
+    serverSettingsHint: "Auto-detected via DNS. Only fill in if auto-detection fails.",
+    imapHostPh: "IMAP host", imapPortPh: "IMAP port (993)",
+    smtpHostPh: "SMTP host", smtpPortPh: "SMTP port (465)",
+    signIn: "Sign in",
+    loginFailed: "Login failed",
+    sessionExpired: "Session expired. Please sign in again.",
+    // Sidebar
+    compose: "Compose",
+    mail: "Mail", contacts: "Contacts", calendar: "Calendar",
+    mainSection: "Main", foldersSection: "Folders",
+    folderInbox: "Inbox", folderDrafts: "Drafts", folderSent: "Sent",
+    folderArchive: "Archive", folderSpam: "Spam", folderTrash: "Trash",
+    folderNamePh: "Folder name", addFolder: "Add",
+    signature: "Signature", signOut: "Sign out",
+    // Message list
+    noConversations: "No conversations",
+    loadingMailbox: "Loading your mailbox...",
+    selected: (n) => `${n} selected`,
+    messages: (n) => `${n} messages`,
+    // Message view
+    noConvSelected: "No conversation selected",
+    chooseMessage: "Choose a message from the list",
+    to: "To", cc: "Cc",
+    reply: "Reply", replyAll: "Reply All", forward: "Forward",
+    archive: "Archive", reportSpam: "Report spam", delete: "Delete",
+    star: "Star", unstar: "Unstar", markRead: "Mark Read", markUnread: "Mark Unread",
+    attachments: (n) => `Attachments (${n})`,
+    attachment: (n) => `${n} attachment${n > 1 ? "s" : ""}`,
+    quickReplyPh: "Write a quick reply...",
+    replyThreadPh: "Reply to thread...",
+    sentOk: "Email sent successfully!",
+    // Compose
+    newMessage: "New Message",
+    toPh: "To", ccPh: "Cc", bccPh: "Bcc", subjectPh: "Subject",
+    sending: "Sending...", send: "Send",
+    // Contacts
+    newContact: "New Contact",
+    noContacts: "No contacts yet",
+    saving: "Saving...", save: "Save", cancel: "Cancel",
+    firstName: "First name", lastName: "Last name",
+    phone: "Phone", organization: "Organization", title: "Title", notes: "Notes",
+    editContact: "Edit Contact", deleteContact: "Delete",
+    // Calendar
+    newEvent: "New Event", today: "Today",
+    eventTitle: "Event title", startDate: "Start", endDate: "End",
+    allDay: "All day",
+    noEvents: "No events this month",
+    deleteEvent: "Delete",
+    // Signature modal
+    signatureTitle: "Signature Settings",
+    displayName: "Display Name", emailAddress: "Email address",
+    replyTo: "Reply-To", blindCopy: "Blind copy",
+    bcc: "Auto BCC", orgLabel: "Organization",
+    useByDefault: "Use by default", enabled: "Enabled",
+    signatureSaved: "Saved", signaturePlaceholder: "Create your signature...",
+    enterUrl: "Enter URL:",
+    enableSig: "Add signature to outgoing email",
+    // Search
+    searchPh: "Search...", searchMsgsPh: "Search messages...",
+    // Calendar extra
+    editEvent: "Edit Event", noTitle: "(No title)",
+    summary: "Summary", description: "Description", location: "Location",
+    removeRecipient: "Remove recipient",
+    noSubject: "(No subject)",
+    // Compose extra
+    from: "From", recipients: "Recipients",
+    ccRecipients: "Cc recipients", bccRecipients: "Bcc recipients",
+    subj: "Subj",
+    restore: "Restore", maximize: "Maximize",
+    attachFiles: "Attach files",
+    // Contact extra
+    name: "Name",
+    // Date
+    now: "now",
+    // Locale for date formatting
+    dateLocale: "en-US",
+    // Misc
+    invalidRecipient: (e) => `Invalid recipient: ${e}`,
+    couldNotLoad: (e) => `Could not load mailbox: ${e || "Unknown error"}`,
+    threadCount: (n) => `${n} messages`,
+  },
+  vi: {
+    // Đăng nhập
+    emailPlaceholder: "Địa chỉ email",
+    passwordPlaceholder: "Mật khẩu",
+    staySignedIn: "Duy trì đăng nhập",
+    serverSettings: "⚙ Cài đặt máy chủ mail (tuỳ chọn)",
+    serverSettingsHint: "Tự động phát hiện qua DNS. Chỉ điền nếu tự động thất bại.",
+    imapHostPh: "Máy chủ IMAP", imapPortPh: "Cổng IMAP (993)",
+    smtpHostPh: "Máy chủ SMTP", smtpPortPh: "Cổng SMTP (465)",
+    signIn: "Đăng nhập",
+    loginFailed: "Đăng nhập thất bại",
+    sessionExpired: "Phiên đã hết hạn. Vui lòng đăng nhập lại.",
+    // Sidebar
+    compose: "Soạn thư",
+    mail: "Thư", contacts: "Danh bạ", calendar: "Lịch",
+    mainSection: "Chính", foldersSection: "Thư mục",
+    folderInbox: "Hộp thư đến", folderDrafts: "Thư nháp", folderSent: "Đã gửi",
+    folderArchive: "Lưu trữ", folderSpam: "Thư rác", folderTrash: "Thùng rác",
+    folderNamePh: "Tên thư mục", addFolder: "Thêm",
+    signature: "Chữ ký", signOut: "Đăng xuất",
+    // Danh sách thư
+    noConversations: "Không có hội thoại nào",
+    loadingMailbox: "Đang tải hộp thư...",
+    selected: (n) => `Đã chọn ${n}`,
+    messages: (n) => `${n} tin nhắn`,
+    // Xem thư
+    noConvSelected: "Chưa chọn hội thoại",
+    chooseMessage: "Chọn một thư từ danh sách",
+    to: "Đến", cc: "CC",
+    reply: "Trả lời", replyAll: "Trả lời tất cả", forward: "Chuyển tiếp",
+    archive: "Lưu trữ", reportSpam: "Báo spam", delete: "Xoá",
+    star: "Đánh dấu", unstar: "Bỏ đánh dấu", markRead: "Đánh dấu đã đọc", markUnread: "Đánh dấu chưa đọc",
+    attachments: (n) => `Tệp đính kèm (${n})`,
+    attachment: (n) => `${n} tệp đính kèm`,
+    quickReplyPh: "Trả lời nhanh...",
+    replyThreadPh: "Trả lời hội thoại...",
+    sentOk: "Đã gửi email thành công!",
+    // Soạn thư
+    newMessage: "Thư mới",
+    toPh: "Đến", ccPh: "CC", bccPh: "BCC", subjectPh: "Tiêu đề",
+    sending: "Đang gửi...", send: "Gửi",
+    // Danh bạ
+    newContact: "Thêm liên hệ",
+    noContacts: "Chưa có liên hệ",
+    saving: "Đang lưu...", save: "Lưu", cancel: "Huỷ",
+    firstName: "Tên", lastName: "Họ",
+    phone: "Điện thoại", organization: "Tổ chức", title: "Chức danh", notes: "Ghi chú",
+    editContact: "Sửa liên hệ", deleteContact: "Xoá",
+    // Lịch
+    newEvent: "Thêm sự kiện", today: "Hôm nay",
+    eventTitle: "Tiêu đề sự kiện", startDate: "Bắt đầu", endDate: "Kết thúc",
+    allDay: "Cả ngày",
+    noEvents: "Không có sự kiện tháng này",
+    deleteEvent: "Xoá",
+    // Chữ ký
+    signatureTitle: "Cài đặt chữ ký",
+    displayName: "Tên hiển thị", emailAddress: "Địa chỉ email",
+    replyTo: "Reply-To", blindCopy: "Bản sao ẩn",
+    bcc: "BCC tự động", orgLabel: "Tổ chức",
+    useByDefault: "Dùng mặc định", enabled: "Đã bật",
+    signatureSaved: "Đã lưu", signaturePlaceholder: "Tạo chữ ký của bạn...",
+    enterUrl: "Nhập URL:",
+    enableSig: "Thêm chữ ký vào thư gửi đi",
+    // Tìm kiếm
+    searchPh: "Tìm kiếm...", searchMsgsPh: "Tìm kiếm thư...",
+    // Lịch (bổ sung)
+    editEvent: "Sửa sự kiện", noTitle: "(Không có tiêu đề)",
+    summary: "Tiêu đề", description: "Mô tả", location: "Địa điểm",
+    removeRecipient: "Xoá người nhận",
+    noSubject: "(Không có tiêu đề)",
+    // Soạn thư (bổ sung)
+    from: "Từ", recipients: "Người nhận",
+    ccRecipients: "Người nhận CC", bccRecipients: "Người nhận BCC",
+    subj: "Tiêu đề",
+    restore: "Khôi phục", maximize: "Phóng to",
+    attachFiles: "Đính kèm tệp",
+    // Danh bạ (bổ sung)
+    name: "Tên",
+    // Ngày giờ
+    now: "vừa xong",
+    // Định dạng ngày
+    dateLocale: "vi-VN",
+    // Misc
+    invalidRecipient: (e) => `Người nhận không hợp lệ: ${e}`,
+    couldNotLoad: (e) => `Không thể tải hộp thư: ${e || "Lỗi không xác định"}`,
+    threadCount: (n) => `${n} tin nhắn`,
+  },
+};
+
+function getLang() {
+  return localStorage.getItem("webmail_lang") || "en";
+}
+function setLang(lang) {
+  localStorage.setItem("webmail_lang", lang);
+  render();
+}
+function t(key, ...args) {
+  const locale = LOCALES[getLang()] || LOCALES.en;
+  const val = locale[key] ?? LOCALES.en[key] ?? key;
+  return typeof val === "function" ? val(...args) : val;
+}
+
 // ─── Icons (Lucide-style SVGs) ───────────────────────────────────────────────
 
 const I = {
   inbox:     `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>`,
   send:      `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/></svg>`,
   file:      `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></svg>`,
+  download:  `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>`,
+  spam:      `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v4"/><path d="M12 16h.01"/><path d="M7.86 2h8.28L22 7.86v8.28L16.14 22H7.86L2 16.14V7.86z"/></svg>`,
   shield:    `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/></svg>`,
   trash:     `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>`,
   star:      `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`,
@@ -111,20 +306,20 @@ function formatTime(value) {
   const now = new Date();
   const diff = now - date;
   const mins = Math.floor(diff / 60000);
-  if (mins < 1) return "now";
+  if (mins < 1) return t("now");
   if (mins < 60) return `${mins}m`;
   const hours = Math.floor(mins / 60);
   if (hours < 24) return `${hours}h`;
   const days = Math.floor(hours / 24);
   if (days < 7) return `${days}d`;
-  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return date.toLocaleDateString(t("dateLocale"), { month: "short", day: "numeric" });
 }
 
 function fullDate(value) {
   if (!value) return "";
   const d = new Date(value);
   if (isNaN(d)) return value;
-  return d.toLocaleDateString("en-US", {
+  return d.toLocaleDateString(t("dateLocale"), {
     weekday: "short", month: "short", day: "numeric", year: "numeric",
     hour: "numeric", minute: "2-digit",
   });
@@ -142,26 +337,127 @@ function textToHtml(text) {
 }
 
 const VALID_EMAIL = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+const EMAIL_TOKEN = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+
+function recipientTokens(value) {
+  const tokens = [];
+  const seen = new Set();
+  for (const part of String(value || "").split(/[\s,;]+/)) {
+    const clean = part.trim().replace(/^<|>$/g, "");
+    if (!clean) continue;
+    const matches = clean.match(EMAIL_TOKEN);
+    const values = matches && matches.length ? matches : [clean];
+    for (const item of values) {
+      const key = item.toLowerCase();
+      if (!seen.has(key)) {
+        seen.add(key);
+        tokens.push(item);
+      }
+    }
+  }
+  return tokens;
+}
+
+function setRecipientTokens(field, tokens, shouldRender = true) {
+  S.compose[field] = tokens.join(", ");
+  if (shouldRender) render();
+}
+
+function addRecipientText(field, value, shouldRender = true) {
+  const incoming = recipientTokens(value);
+  if (!incoming.length) return false;
+  const current = recipientTokens(S.compose[field]);
+  const seen = new Set(current.map(v => v.toLowerCase()));
+  for (const token of incoming) {
+    const key = token.toLowerCase();
+    if (!seen.has(key)) {
+      seen.add(key);
+      current.push(token);
+    }
+  }
+  setRecipientTokens(field, current, shouldRender);
+  return true;
+}
+
+function collectRecipientInputs() {
+  for (const input of $$(".recipient-entry")) {
+    const field = input.dataset.recipientField;
+    if (field && input.value.trim()) {
+      addRecipientText(field, input.value, false);
+      input.value = "";
+    }
+  }
+}
 
 // Smart folder matching (supports Vietnamese aliases)
 const MAIN_FOLDERS = [
-  { match: ["inbox", "hộp thư", "hop thu"], icon: "inbox", label: "Inbox", special: "inbox" },
-  { match: ["drafts", "draft", "thư nháp", "thu nhap"], icon: "file", label: "Drafts", special: "drafts" },
-  { match: ["sent", "đã gửi", "da gui", "sent mail", "sent messages"], icon: "send", label: "Sent", special: "sent" },
-  { match: ["spam", "junk", "thư rác", "thu rac", "bulk"], icon: "shield", label: "Spam", special: "junk" },
-  { match: ["trash", "deleted", "thùng rác", "thung rac", "bin"], icon: "trash", label: "Trash", special: "trash" },
+  { match: ["inbox", "hộp thư", "hop thu"], icon: "inbox", label: "Inbox", labelKey: "folderInbox", special: "inbox" },
+  { match: ["drafts", "draft", "thư nháp", "thu nhap"], icon: "file", label: "Drafts", labelKey: "folderDrafts", special: "drafts" },
+  { match: ["sent", "đã gửi", "da gui", "sent mail", "sent messages"], icon: "send", label: "Sent", labelKey: "folderSent", special: "sent" },
+  { match: ["archive", "archives"], icon: "archive", label: "Archive", labelKey: "folderArchive", special: "archive" },
+  { match: ["spam", "junk", "thư rác", "thu rac", "bulk"], icon: "spam", label: "Spam", labelKey: "folderSpam", special: "junk" },
+  { match: ["trash", "deleted", "thùng rác", "thung rac", "bin"], icon: "trash", label: "Trash", labelKey: "folderTrash", special: "trash" },
 ];
 
 function classifyFolder(mailbox) {
   const name = (mailbox.name || mailbox.path || "").toLowerCase();
-  const special = (mailbox.specialUse || "").toLowerCase();
+  const leaf = name.split(/[./]/).filter(Boolean).pop() || name;
+  const special = (mailbox.specialUse || "").toLowerCase().replace(/^\\/, "");
   for (const f of MAIN_FOLDERS) {
-    if (special && (special === f.special || special === "\\" + f.label.toLowerCase())) return f;
+    if (special && (special === f.special || special === f.label.toLowerCase())) return f;
     for (const m of f.match) {
-      if (name === m || name.includes(m)) return f;
+      if (name === m || leaf === m) return f;
     }
   }
   return null;
+}
+
+function folderDisplayName(info, fallback = "") {
+  if (!info) return fallback;
+  return info.labelKey ? t(info.labelKey) : (info.label || fallback);
+}
+
+function folderTarget(kind) {
+  const wanted = kind.toLowerCase();
+  for (const mb of S.mailboxes) {
+    const info = classifyFolder(mb);
+    if (!info) continue;
+    if (info.label.toLowerCase() === wanted) return mb.path;
+    if (wanted === "spam" && info.special === "junk") return mb.path;
+  }
+  const fallback = { archive: "Archive", spam: "Spam", trash: "Trash", drafts: "Drafts", sent: "Sent" };
+  return fallback[wanted] || kind;
+}
+
+function mailboxRank(mailbox) {
+  return (mailbox.path === S.folder ? 1000 : 0) +
+    (mailbox.specialUse ? 100 : 0) +
+    ((mailbox.unseen || 0) > 0 ? 10 : 0) +
+    ((mailbox.total || 0) > 0 ? 1 : 0);
+}
+
+function splitMailboxes() {
+  const mainByLabel = new Map();
+  const customFolders = [];
+
+  for (const mb of S.mailboxes) {
+    const info = classifyFolder(mb);
+    if (!info) {
+      customFolders.push(mb);
+      continue;
+    }
+
+    const candidate = { ...mb, _info: info };
+    const existing = mainByLabel.get(info.label);
+    if (!existing || mailboxRank(candidate) > mailboxRank(existing)) {
+      mainByLabel.set(info.label, candidate);
+    }
+  }
+
+  return {
+    mainFolders: [...mainByLabel.values()],
+    customFolders,
+  };
 }
 
 // ─── Avatar Cache ────────────────────────────────────────────────────────────
@@ -186,14 +482,23 @@ function avatarBadge(size, email, sources) {
   const el = h("div", { className: "avatar-badge", style: { width: size + "px", height: size + "px", fontSize: (size * 0.38) + "px", background: "#a3e635" } });
   el.textContent = initialsOf(email);
 
-  if (sources) {
+  function applySources(sources) {
     const src = sources.bimiUrl || sources.gravatarUrl;
     if (src) {
       const img = document.createElement("img");
       img.src = src;
       img.alt = "";
       img.onload = () => { el.textContent = ""; el.appendChild(img); };
+      img.onerror = () => { img.remove(); };
     }
+  }
+
+  if (sources) {
+    applySources(sources);
+  } else if (email) {
+    getAvatarSources(email).then(data => {
+      if (data && el.isConnected) applySources(data);
+    });
   }
   return el;
 }
@@ -243,6 +548,10 @@ const S = {
   selectedUids: [],
   quickReply: "",
   quickSending: false,
+  expandedThreads: new Set(),
+  threadMsgs: [],        // all msgs in current thread (full detail)
+  loadingThread: false,
+  collapsedMsgs: new Set(), // uids collapsed in thread view
   newFolder: "",
   showNewFolder: false,
   signature: null,
@@ -264,6 +573,28 @@ function set(patch) {
   if (!_rendering) render();
 }
 
+function showToast(msg, type = "success", duration = 3000) {
+  const existing = document.getElementById("app-toast");
+  if (existing) existing.remove();
+  const colors = {
+    success: "bg-green-600",
+    error: "bg-red-600",
+    info: "bg-blue-600",
+  };
+  const icons = {
+    success: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`,
+    error: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`,
+    info: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12" y2="16.01"/></svg>`,
+  };
+  const toast = document.createElement("div");
+  toast.id = "app-toast";
+  toast.className = `toast fixed bottom-5 left-1/2 -translate-x-1/2 z-[9999] flex items-center gap-2 px-4 py-2.5 rounded-lg text-white text-sm font-medium shadow-lg ${colors[type] || colors.success}`;
+  toast.style.cssText = "animation: fadeIn 0.25s ease, fadeOut 0.3s ease forwards; animation-delay: 0s, " + (duration / 1000 - 0.3) + "s;";
+  toast.innerHTML = (icons[type] || icons.success) + `<span>${msg}</span>`;
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), duration);
+}
+
 // ─── Login ───────────────────────────────────────────────────────────────────
 
 function renderLogin() {
@@ -277,11 +608,11 @@ function renderLogin() {
         h("img", { src: "/brand/bnix-light.png", alt: "BNIX", className: "mx-auto", style: { width: "260px" } }),
       ),
       h("div", { className: "space-y-4" },
-        h("input", { name: "email", type: "email", placeholder: "Email address", required: "required", className: "w-full px-4 py-3 rounded-[3px] text-ink text-sm outline-none focus:ring-2 focus:ring-[#68b7ff]" }),
-        h("input", { name: "password", type: "password", placeholder: "Password", required: "required", className: "w-full px-4 py-3 rounded-[3px] text-ink text-sm outline-none focus:ring-2 focus:ring-[#68b7ff]" }),
+        h("input", { name: "email", type: "email", placeholder: t("emailPlaceholder"), required: "required", className: "w-full px-4 py-3 rounded-[3px] text-ink text-sm outline-none focus:ring-2 focus:ring-[#68b7ff]" }),
+        h("input", { name: "password", type: "password", placeholder: t("passwordPlaceholder"), required: "required", className: "w-full px-4 py-3 rounded-[3px] text-ink text-sm outline-none focus:ring-2 focus:ring-[#68b7ff]" }),
         h("label", { className: "flex items-center gap-2 text-sm opacity-80" },
           h("input", { name: "remember", type: "checkbox", checked: "checked", className: "rounded" }),
-          " Stay signed in",
+          t("staySignedIn"),
         ),
         // Advanced toggle
         h("button", {
@@ -291,18 +622,18 @@ function renderLogin() {
             const adv = document.getElementById("login-advanced");
             adv.style.display = adv.style.display === "none" ? "block" : "none";
           },
-        }, "⚙ Mail server settings (optional)"),
+        }, t("serverSettings")),
         h("div", { id: "login-advanced", style: { display: "none" }, className: "space-y-3 p-3 rounded bg-white/10" },
-          h("p", { className: "text-xs opacity-70" }, "Auto-detected via DNS. Only fill in if auto-detection fails."),
+          h("p", { className: "text-xs opacity-70" }, t("serverSettingsHint")),
           h("div", { className: "grid grid-cols-2 gap-3" },
-            h("input", { name: "imapHost", placeholder: "IMAP host", className: "px-3 py-2 rounded-[3px] text-ink text-sm outline-none focus:ring-2 focus:ring-[#68b7ff]" }),
-            h("input", { name: "imapPort", placeholder: "IMAP port (993)", className: "px-3 py-2 rounded-[3px] text-ink text-sm outline-none focus:ring-2 focus:ring-[#68b7ff]" }),
-            h("input", { name: "smtpHost", placeholder: "SMTP host", className: "px-3 py-2 rounded-[3px] text-ink text-sm outline-none focus:ring-2 focus:ring-[#68b7ff]" }),
-            h("input", { name: "smtpPort", placeholder: "SMTP port (465)", className: "px-3 py-2 rounded-[3px] text-ink text-sm outline-none focus:ring-2 focus:ring-[#68b7ff]" }),
+            h("input", { name: "imapHost", placeholder: t("imapHostPh"), className: "px-3 py-2 rounded-[3px] text-ink text-sm outline-none focus:ring-2 focus:ring-[#68b7ff]" }),
+            h("input", { name: "imapPort", placeholder: t("imapPortPh"), className: "px-3 py-2 rounded-[3px] text-ink text-sm outline-none focus:ring-2 focus:ring-[#68b7ff]" }),
+            h("input", { name: "smtpHost", placeholder: t("smtpHostPh"), className: "px-3 py-2 rounded-[3px] text-ink text-sm outline-none focus:ring-2 focus:ring-[#68b7ff]" }),
+            h("input", { name: "smtpPort", placeholder: t("smtpPortPh"), className: "px-3 py-2 rounded-[3px] text-ink text-sm outline-none focus:ring-2 focus:ring-[#68b7ff]" }),
           ),
         ),
         S.loginError ? h("p", { className: "text-sm bg-red-500/20 border border-red-400/40 rounded px-3 py-2" }, S.loginError) : null,
-        h("button", { type: "submit", className: "w-[170px] py-3 rounded-[3px] text-sm font-medium transition-colors", style: { background: "#3d83bd" }, onmouseover(e) { e.target.style.background = "#4f9ade" }, onmouseout(e) { e.target.style.background = "#3d83bd" } }, "Sign in"),
+        h("button", { type: "submit", className: "w-[170px] py-3 rounded-[3px] text-sm font-medium transition-colors", style: { background: "#3d83bd" }, onmouseover(e) { e.target.style.background = "#4f9ade" }, onmouseout(e) { e.target.style.background = "#3d83bd" } }, t("signIn")),
       ),
     ),
   );
@@ -332,7 +663,7 @@ async function onLogin(e) {
     await bootstrap();
   } catch (err) {
     S.account = null;
-    set({ loginError: err.message || "Login failed" });
+    set({ loginError: err.message || t("loginFailed") });
   }
 }
 
@@ -354,17 +685,17 @@ async function bootstrap() {
     // Only logout on actual auth errors (401/403)
     if (err.status === 401 || err.status === 403) {
       await doLogout();
-      set({ loginError: "Session expired. Please sign in again." });
+      set({ loginError: t("sessionExpired") });
     } else {
       // IMAP/other error — stay logged in, show error
-      set({ ready: true, error: "Could not load mailbox: " + (err.message || "Unknown error") });
+      set({ ready: true, error: t("couldNotLoad", err.message) });
       await loadMessages();
     }
   }
 }
 
 async function loadMessages() {
-  set({ loadingMsgs: true, error: "" });
+  set({ loadingMsgs: true, error: "", selectedUids: [] });
   try {
     const data = await api(`/api/messages?folder=${encodeURIComponent(S.folder)}&limit=60`);
     set({ messages: data.messages || [], loadingMsgs: false });
@@ -374,15 +705,63 @@ async function loadMessages() {
 }
 
 async function loadMessage(uid) {
-  set({ loadingMsg: true, selectedUid: uid, selectedMsg: null, quickReply: "" });
+  set({ loadingMsg: true, selectedUid: uid, selectedMsg: null, quickReply: "", threadMsgs: [], loadingThread: false });
   try {
     const data = await api(`/api/messages/${uid}?folder=${encodeURIComponent(S.folder)}`);
-    set({ selectedMsg: data.message, loadingMsg: false });
+    const msg = data.message;
     // Mark as read locally
     const msgs = S.messages.map(m => m.uid === uid ? { ...m, seen: true } : m);
-    set({ messages: msgs });
+    set({ selectedMsg: msg, loadingMsg: false, messages: msgs });
+    // Load thread siblings in background
+    loadThread(msg);
   } catch (err) {
     set({ loadingMsg: false, error: err.message });
+  }
+}
+
+async function loadThread(anchorMsg) {
+  set({ loadingThread: true });
+  try {
+    // Search cross-folder (INBOX + Sent) via backend API
+    const data = await api(
+      `/api/thread?subject=${encodeURIComponent(anchorMsg.subject)}&folder=${encodeURIComponent(S.folder)}`
+    );
+    const summaries = data.messages || [];
+
+    if (summaries.length <= 1) {
+      // Single message — no thread view needed, keep what we have
+      set({ threadMsgs: [anchorMsg], loadingThread: false });
+      return;
+    }
+
+    // Fetch full content for each summary (in parallel, max 6 at once)
+    const results = [];
+    const chunkSize = 6;
+    for (let i = 0; i < summaries.length; i += chunkSize) {
+      const chunk = summaries.slice(i, i + chunkSize);
+      const fetched = await Promise.all(chunk.map(async s => {
+        // Reuse already-fetched anchorMsg if uid+folder match
+        if (s.uid === anchorMsg.uid && (s.folder || S.folder) === S.folder) return anchorMsg;
+        try {
+          const folder = s.folder || S.folder;
+          const d = await api(`/api/messages/${s.uid}?folder=${encodeURIComponent(folder)}`);
+          return { ...d.message, folder };
+        } catch {
+          return s; // fallback to summary only
+        }
+      }));
+      results.push(...fetched);
+    }
+
+    // Auto-collapse all except the anchor (the one user clicked)
+    const collapsed = new Set();
+    for (const m of results) {
+      if (m.uid !== anchorMsg.uid) collapsed.add(m.uid);
+    }
+    set({ threadMsgs: results, loadingThread: false, collapsedMsgs: collapsed });
+  } catch (err) {
+    // Fallback: show single message
+    set({ threadMsgs: [anchorMsg], loadingThread: false });
   }
 }
 
@@ -398,13 +777,7 @@ async function doLogout() {
 // ─── Sidebar ─────────────────────────────────────────────────────────────────
 
 function renderSidebar() {
-  const mainFolders = [];
-  const customFolders = [];
-  for (const mb of S.mailboxes) {
-    const info = classifyFolder(mb);
-    if (info) mainFolders.push({ ...mb, _info: info });
-    else customFolders.push(mb);
-  }
+  const { mainFolders, customFolders } = splitMailboxes();
 
   const collapsed = !S.sidebarOpen;
   const w = collapsed ? "w-16" : "w-64";
@@ -421,14 +794,14 @@ function renderSidebar() {
     !collapsed && S.view === "mail" ? h("button", {
       className: "flex-1 flex items-center justify-center gap-2 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand-hover",
       onclick() { openCompose(); },
-    }, icon("edit"), "Compose") : null,
+    }, icon("edit"), t("compose")) : null,
   ));
 
   // View nav
   const views = [
-    { key: "mail", icon: "mail", label: "Mail" },
-    { key: "contacts", icon: "contact", label: "Contacts" },
-    { key: "calendar", icon: "calendar", label: "Calendar" },
+    { key: "mail", icon: "mail", get label() { return t("mail"); } },
+    { key: "contacts", icon: "contact", get label() { return t("contacts"); } },
+    { key: "calendar", icon: "calendar", get label() { return t("calendar"); } },
   ];
   const viewNav = h("div", { className: "px-2 py-2 space-y-0.5" });
   for (const v of views) {
@@ -452,7 +825,7 @@ function renderSidebar() {
     if (!collapsed) {
       // Main folders section
       items.push(h("div", { className: "px-3 pt-3 pb-1" },
-        h("div", { className: "text-[11px] font-semibold uppercase text-slate-400 tracking-wider mb-1 px-2" }, "Main"),
+        h("div", { className: "text-[11px] font-semibold uppercase text-slate-400 tracking-wider mb-1 px-2" }, t("mainSection")),
       ));
       const mainList = h("div", { className: "px-2 space-y-0.5" });
       for (const mb of mainFolders) {
@@ -462,7 +835,7 @@ function renderSidebar() {
           onclick() { set({ folder: mb.path, selectedUid: null, selectedMsg: null }); loadMessages(); },
         },
           icon(mb._info.icon),
-          h("span", { className: "flex-1 text-left truncate" }, mb._info.label),
+          h("span", { className: "flex-1 text-left truncate" }, folderDisplayName(mb._info)),
           mb.unseen > 0 ? h("span", { className: "bg-blue-500 text-white text-[11px] font-medium px-1.5 py-0.5 rounded-full min-w-[20px] text-center" }, String(mb.unseen)) : null,
         ));
       }
@@ -470,7 +843,7 @@ function renderSidebar() {
 
       // Custom folders section
       items.push(h("div", { className: "px-3 pt-4 pb-1 flex items-center justify-between" },
-        h("div", { className: "text-[11px] font-semibold uppercase text-slate-400 tracking-wider" }, "Folders"),
+        h("div", { className: "text-[11px] font-semibold uppercase text-slate-400 tracking-wider" }, t("foldersSection")),
         h("button", {
           className: "text-slate-400 hover:text-slate-600 p-0.5",
           onclick() { set({ showNewFolder: !S.showNewFolder }); },
@@ -482,7 +855,7 @@ function renderSidebar() {
         const folderForm = h("div", { className: "px-2 pb-2 flex gap-1" });
         const input = h("input", {
           className: "flex-1 px-2 py-1 text-sm border border-line rounded",
-          placeholder: "Folder name",
+          placeholder: t("folderNamePh"),
           value: S.newFolder,
         });
         input.addEventListener("input", e => set({ newFolder: e.target.value }));
@@ -491,7 +864,7 @@ function renderSidebar() {
         folderForm.appendChild(h("button", {
           className: "px-2 py-1 text-xs bg-brand text-white rounded hover:bg-brand-hover",
           onclick: createFolder,
-        }, "Add"));
+        }, t("addFolder")));
         items.push(folderForm);
       }
 
@@ -516,7 +889,7 @@ function renderSidebar() {
         const info = mb._info || { icon: "folder" };
         folderIcons.appendChild(h("button", {
           className: `w-full flex justify-center p-2 rounded-lg ${S.folder === mb.path ? "bg-blue-100 text-blue-700" : "text-slate-500 hover:bg-slate-100"}`,
-          title: mb.name || mb.path,
+          title: folderDisplayName(info, mb.name || mb.path),
           onclick() { set({ folder: mb.path, selectedUid: null, selectedMsg: null }); loadMessages(); },
         }, icon(info.icon)));
       }
@@ -529,14 +902,34 @@ function renderSidebar() {
 
   // Footer
   const footer = h("div", { className: "border-t border-line p-2 space-y-1" });
+  // Language switcher
+  if (!collapsed) {
+    const langBtn = h("button", {
+      className: "folder-item w-full text-slate-400 text-xs gap-1.5",
+      onclick() {
+        const next = getLang() === "en" ? "vi" : "en";
+        setLang(next);
+      },
+    },
+      h("span", { style: { fontSize: "14px" } }, getLang() === "en" ? "🇻🇳" : "🇬🇧"),
+      h("span", {}, getLang() === "en" ? "Tiếng Việt" : "English"),
+    );
+    footer.appendChild(langBtn);
+  } else {
+    footer.appendChild(h("button", {
+      className: "folder-item w-full justify-center text-slate-400 text-xs",
+      title: getLang() === "en" ? "Tiếng Việt" : "English",
+      onclick() { setLang(getLang() === "en" ? "vi" : "en"); },
+    }, h("span", { style: { fontSize: "16px" } }, getLang() === "en" ? "🇻🇳" : "🇬🇧")));
+  }
   footer.appendChild(h("button", {
     className: `folder-item w-full ${collapsed ? "justify-center" : ""} text-slate-500`,
     onclick() { set({ sigOpen: true }); },
-  }, icon("settings"), !collapsed ? h("span", {}, "Signature") : null));
+  }, icon("settings"), !collapsed ? h("span", {}, t("signature")) : null));
   footer.appendChild(h("button", {
     className: `folder-item w-full ${collapsed ? "justify-center" : ""} text-slate-500`,
     onclick: doLogout,
-  }, icon("logout"), !collapsed ? h("span", { className: "truncate text-xs" }, S.account?.email || "Sign out") : null));
+  }, icon("logout"), !collapsed ? h("span", { className: "truncate text-xs" }, S.account?.email || t("signOut")) : null));
   items.push(footer);
 
   return h("aside", { className: `sidebar-panel ${w} h-full bg-white border-r border-line flex flex-col shrink-0 desktop-only` }, ...items);
@@ -566,14 +959,14 @@ function renderMobileSidebar() {
     h("button", {
       className: "w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-brand text-white text-sm font-medium",
       onclick() { set({ mobileSidebar: false }); openCompose(); },
-    }, icon("edit"), "Compose"),
+    }, icon("edit"), t("compose")),
   ));
 
   // Search
   const searchWrap = h("div", { className: "px-3 pb-2" });
   const searchInput = h("input", {
     className: "w-full px-3 py-2 text-sm border border-line rounded-lg",
-    placeholder: "Search messages...",
+    placeholder: t("searchMsgsPh"),
     value: S.query,
   });
   searchInput.addEventListener("input", e => set({ query: e.target.value }));
@@ -582,9 +975,9 @@ function renderMobileSidebar() {
 
   // View nav
   const views = [
-    { key: "mail", icon: "mail", label: "Mail" },
-    { key: "contacts", icon: "contact", label: "Contacts" },
-    { key: "calendar", icon: "calendar", label: "Calendar" },
+    { key: "mail", icon: "mail", get label() { return t("mail"); } },
+    { key: "contacts", icon: "contact", get label() { return t("contacts"); } },
+    { key: "calendar", icon: "calendar", get label() { return t("calendar"); } },
   ];
   const viewNav = h("div", { className: "px-2 pb-2 space-y-0.5" });
   for (const v of views) {
@@ -600,9 +993,10 @@ function renderMobileSidebar() {
   panel.appendChild(viewNav);
 
   // Folders (scrollable)
+  const { mainFolders, customFolders } = splitMailboxes();
   const folderSection = h("div", { className: "flex-1 overflow-y-auto px-2 pb-2" });
-  for (const mb of S.mailboxes) {
-    const info = classifyFolder(mb);
+  for (const mb of [...mainFolders, ...customFolders]) {
+    const info = mb._info || classifyFolder(mb);
     const active = S.folder === mb.path;
     folderSection.appendChild(h("button", {
       className: `folder-item w-full ${active ? "active" : ""}`,
@@ -612,7 +1006,7 @@ function renderMobileSidebar() {
       },
     },
       icon(info ? info.icon : "folder"),
-      h("span", { className: "flex-1 text-left truncate" }, info ? info.label : (mb.name || mb.path)),
+      h("span", { className: "flex-1 text-left truncate" }, folderDisplayName(info, mb.name || mb.path)),
       mb.unseen > 0 ? h("span", { className: "bg-blue-500 text-white text-[11px] px-1.5 py-0.5 rounded-full" }, String(mb.unseen)) : null,
     ));
   }
@@ -621,13 +1015,18 @@ function renderMobileSidebar() {
   // Footer
   const footer = h("div", { className: "border-t border-line p-3 space-y-1" });
   footer.appendChild(h("button", {
+    className: "folder-item w-full text-slate-400 text-xs gap-1.5",
+    onclick() { setLang(getLang() === "en" ? "vi" : "en"); set({ mobileSidebar: false }); },
+  }, h("span", { style: { fontSize: "14px" } }, getLang() === "en" ? "🇻🇳" : "🇬🇧"),
+     h("span", {}, getLang() === "en" ? "Tiếng Việt" : "English")));
+  footer.appendChild(h("button", {
     className: "folder-item w-full text-slate-500",
     onclick() { set({ sigOpen: true, mobileSidebar: false }); },
-  }, icon("settings"), h("span", {}, "Signature")));
+  }, icon("settings"), h("span", {}, t("signature"))));
   footer.appendChild(h("button", {
     className: "folder-item w-full text-slate-500",
     onclick() { set({ mobileSidebar: false }); doLogout(); },
-  }, icon("logout"), h("span", {}, "Sign out")));
+  }, icon("logout"), h("span", {}, t("signOut"))));
   panel.appendChild(footer);
 
   return h("div", {}, overlay, panel);
@@ -681,7 +1080,7 @@ function renderMessageList() {
         },
       }),
     ));
-    header.appendChild(h("span", { className: "text-sm text-slate-600 flex-1" }, `${S.selectedUids.length} selected`));
+    header.appendChild(h("span", { className: "text-sm text-slate-600 flex-1" }, t("selected", S.selectedUids.length)));
 
     // Batch actions
     header.appendChild(h("button", {
@@ -689,7 +1088,11 @@ function renderMessageList() {
       onclick: batchArchive, innerHTML: I.archive,
     }));
     header.appendChild(h("button", {
-      className: "p-1.5 rounded hover:bg-slate-100 text-slate-500", title: "Delete",
+      className: "p-1.5 rounded hover:bg-slate-100 text-slate-500", title: "Report spam",
+      onclick: batchSpam, innerHTML: I.spam,
+    }));
+    header.appendChild(h("button", {
+      className: "p-1.5 rounded hover:bg-slate-100 text-slate-500", title: t("deleteContact"),
       onclick: batchDelete, innerHTML: I.trash,
     }));
   } else {
@@ -717,7 +1120,7 @@ function renderMessageList() {
   const mobileSearch = h("div", { className: "px-3 py-2 border-b border-line mobile-only" });
   const msi = h("input", {
     className: "w-full px-3 py-1.5 text-sm border border-line rounded-lg",
-    placeholder: "Search...",
+    placeholder: t("searchPh"),
     value: S.query,
   });
   msi.addEventListener("input", e => set({ query: e.target.value }));
@@ -739,16 +1142,158 @@ function renderMessageList() {
   } else if (filtered.length === 0) {
     list.appendChild(h("div", { className: "flex flex-col items-center justify-center py-12 text-slate-400" },
       icon("mail"),
-      h("p", { className: "mt-2 text-sm" }, "No conversations"),
+      h("p", { className: "mt-2 text-sm" }, t("noConversations")),
     ));
   } else {
-    for (const msg of filtered) {
-      list.appendChild(renderMessageItem(msg));
+    // Group into threads by normalized subject
+    const threads = groupThreads(filtered);
+    for (const thread of threads) {
+      list.appendChild(renderThreadItem(thread));
     }
   }
 
   section.appendChild(list);
   return section;
+}
+
+function normalizeSubject(s) {
+  return (s || "").replace(/^(Re|Fwd|Tr|Fw):\s*/gi, "").trim().toLowerCase();
+}
+
+function groupThreads(messages) {
+  // Group messages by normalized subject; keep newest-first order by first message in group
+  const map = new Map();
+  for (const msg of messages) {
+    const key = normalizeSubject(msg.subject);
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(msg);
+  }
+  // Return threads ordered by the newest message uid
+  const threads = [];
+  for (const [, msgs] of map) {
+    threads.push({
+      key: normalizeSubject(msgs[0].subject),
+      messages: msgs, // already newest-first from server
+      latest: msgs[0],
+      count: msgs.length,
+      hasUnread: msgs.some(m => !m.seen),
+      hasFlagged: msgs.some(m => m.flagged),
+    });
+  }
+  threads.sort((a, b) => b.latest.uid - a.latest.uid);
+  return threads;
+}
+
+function renderThreadItem(thread) {
+  const { latest, messages, count, hasUnread, hasFlagged } = thread;
+  const isSingle = count === 1;
+  const isExpanded = S.expandedThreads?.has(thread.key);
+  const active = isSingle
+    ? S.selectedUid === latest.uid
+    : messages.some(m => m.uid === S.selectedUid);
+
+  const bg = active
+    ? "bg-blue-100"
+    : hasUnread
+    ? "bg-emerald-50 hover:bg-emerald-100"
+    : "bg-white hover:bg-slate-50";
+
+  if (isSingle) {
+    return renderMessageItem(latest);
+  }
+
+  // Multi-message thread
+  const wrap = h("div", { className: "border-b border-line" });
+
+  // Thread header row
+  const item = h("div", {
+    className: `msg-item grid gap-2 px-3 py-2.5 ${bg} cursor-pointer`,
+    style: { gridTemplateColumns: "20px 40px 1fr auto" },
+    onclick(e) {
+      if (e.target.type === "checkbox") return;
+      if (!S.expandedThreads) S.expandedThreads = new Set();
+      if (isExpanded) {
+        S.expandedThreads.delete(thread.key);
+        set({ expandedThreads: new Set(S.expandedThreads) });
+      } else {
+        S.expandedThreads.add(thread.key);
+        set({ expandedThreads: new Set(S.expandedThreads) });
+        // Auto-open first unread or latest
+        const toOpen = messages.find(m => !m.seen) || latest;
+        loadMessage(toOpen.uid);
+      }
+    },
+  });
+
+  // Checkbox column
+  item.appendChild(h("div", { className: "flex items-start pt-2" },
+    h("input", {
+      type: "checkbox",
+      checked: messages.every(m => S.selectedUids.includes(m.uid)) ? "checked" : undefined,
+      onchange(e) {
+        e.stopPropagation();
+        const uids = messages.map(m => m.uid);
+        if (e.target.checked) set({ selectedUids: [...new Set([...S.selectedUids, ...uids])] });
+        else set({ selectedUids: S.selectedUids.filter(u => !uids.includes(u)) });
+      },
+    }),
+  ));
+
+  // Avatar with unread dot
+  const avatarWrap = h("div", { className: "relative" });
+  avatarWrap.appendChild(avatarBadge(40, displayEmail(latest.from)));
+  if (hasUnread) {
+    avatarWrap.appendChild(h("div", { className: "absolute -left-2 top-6 w-2 h-2 rounded-full bg-blue-500" }));
+  }
+  item.appendChild(avatarWrap);
+
+  // Content
+  const content = h("div", { className: "min-w-0" });
+  const fromRow = h("div", { className: "flex items-center gap-1.5" });
+  fromRow.appendChild(h("span", { className: `truncate text-sm ${hasUnread ? "font-semibold" : ""}` }, displayName(latest.from)));
+  if (hasFlagged) fromRow.appendChild(h("span", { innerHTML: I.starFill }));
+  // Thread count badge
+  fromRow.appendChild(h("span", {
+    className: "shrink-0 px-1.5 py-0.5 rounded-full text-[11px] font-medium " + (hasUnread ? "bg-blue-500 text-white" : "bg-slate-200 text-slate-600"),
+  }, String(count)));
+  // Expand/collapse indicator
+  fromRow.appendChild(h("span", {
+    className: "shrink-0 text-slate-400",
+    innerHTML: isExpanded
+      ? `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="18 15 12 9 6 15"/></svg>`
+      : `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>`,
+  }));
+  content.appendChild(fromRow);
+  content.appendChild(h("div", { className: `text-sm truncate ${hasUnread ? "font-medium text-ink" : "text-slate-700"}` }, latest.subject || t("noSubject")));
+  content.appendChild(h("div", { className: "text-xs text-slate-500 line-clamp-2 mt-0.5" }, latest.snippet || ""));
+  item.appendChild(content);
+  item.appendChild(h("div", { className: "text-xs text-slate-400 whitespace-nowrap pt-1" }, formatTime(latest.date)));
+
+  wrap.appendChild(item);
+
+  // Expanded thread messages
+  if (isExpanded) {
+    const subList = h("div", { className: "border-t border-slate-100 bg-slate-50" });
+    for (const msg of messages) {
+      const subActive = S.selectedUid === msg.uid;
+      const subUnread = !msg.seen;
+      const subBg = subActive ? "bg-blue-100" : subUnread ? "bg-emerald-50 hover:bg-emerald-100" : "bg-white hover:bg-slate-50";
+      const subItem = h("div", {
+        className: `flex items-start gap-3 pl-8 pr-3 py-2 border-b border-line cursor-pointer ${subBg}`,
+        onclick() { loadMessage(msg.uid); },
+      });
+      subItem.appendChild(avatarBadge(32, displayEmail(msg.from)));
+      const subContent = h("div", { className: "flex-1 min-w-0" });
+      subContent.appendChild(h("div", { className: `text-sm truncate ${subUnread ? "font-semibold" : ""}` }, displayName(msg.from)));
+      subContent.appendChild(h("div", { className: "text-xs text-slate-500 truncate" }, msg.snippet || ""));
+      subItem.appendChild(subContent);
+      subItem.appendChild(h("div", { className: "text-xs text-slate-400 whitespace-nowrap" }, formatTime(msg.date)));
+      subList.appendChild(subItem);
+    }
+    wrap.appendChild(subList);
+  }
+
+  return wrap;
 }
 
 function renderMessageItem(msg) {
@@ -795,7 +1340,7 @@ function renderMessageItem(msg) {
   fromRow.appendChild(h("span", { className: `truncate text-sm ${unread ? "font-semibold" : ""}` }, displayName(msg.from)));
   if (msg.flagged) fromRow.appendChild(h("span", { innerHTML: I.starFill }));
   content.appendChild(fromRow);
-  content.appendChild(h("div", { className: `text-sm truncate ${unread ? "font-medium text-ink" : "text-slate-700"}` }, msg.subject || "(No subject)"));
+  content.appendChild(h("div", { className: `text-sm truncate ${unread ? "font-medium text-ink" : "text-slate-700"}` }, msg.subject || t("noSubject")));
   content.appendChild(h("div", { className: "text-xs text-slate-500 line-clamp-2 mt-0.5" }, msg.snippet || ""));
   item.appendChild(content);
 
@@ -803,6 +1348,181 @@ function renderMessageItem(msg) {
   item.appendChild(h("div", { className: "text-xs text-slate-400 whitespace-nowrap pt-1" }, formatTime(msg.date)));
 
   return item;
+}
+
+// ─── Thread View ────────────────────────────────────────────────────────────
+
+function renderThreadMsgBubble(m, isLast) {
+  const isCollapsed = S.collapsedMsgs.has(m.uid);
+  const wrap = h("div", { className: "thread-bubble bg-white rounded-lg border border-line shadow-sm mb-3 overflow-hidden" });
+
+  // Header row — always visible, click to toggle
+  const hdr = h("div", {
+    className: `flex items-center gap-3 px-4 py-3 cursor-pointer select-none hover:bg-slate-50 ${isCollapsed ? "" : "border-b border-line"}`,
+    onclick() {
+      if (isCollapsed) {
+        const next = new Set(S.collapsedMsgs);
+        next.delete(m.uid);
+        set({ collapsedMsgs: next });
+      } else {
+        const next = new Set(S.collapsedMsgs);
+        next.add(m.uid);
+        set({ collapsedMsgs: next });
+      }
+    },
+  });
+  hdr.appendChild(avatarBadge(36, displayEmail(m.from)));
+  const hdrInfo = h("div", { className: "flex-1 min-w-0" });
+  hdrInfo.appendChild(h("div", { className: "flex items-center gap-2 min-w-0" },
+    h("span", { className: "font-medium text-sm truncate" }, displayName(m.from)),
+    h("span", { className: "text-xs text-slate-400 whitespace-nowrap ml-auto pl-2" }, fullDate(m.date)),
+  ));
+  if (isCollapsed) {
+    hdrInfo.appendChild(h("div", { className: "text-xs text-slate-400 truncate mt-0.5" }, m.snippet || ""));
+  } else {
+    hdrInfo.appendChild(h("div", { className: "text-xs text-slate-400 truncate mt-0.5" },
+      `To: ${(m.to || []).map(a => a.name || a.address).join(", ")}`,
+    ));
+  }
+  hdr.appendChild(hdrInfo);
+  // Action icons in header (only when expanded)
+  if (!isCollapsed) {
+    const hdrActions = h("div", { className: "flex items-center gap-0.5 shrink-0" });
+    hdrActions.appendChild(h("button", {
+      className: "p-1.5 rounded hover:bg-slate-100 text-slate-500",
+      title: "Reply",
+      innerHTML: I.reply,
+      onclick(e) { e.stopPropagation(); openCompose({ replyTo: m }); },
+    }));
+    hdrActions.appendChild(h("button", {
+      className: "p-1.5 rounded hover:bg-slate-100 text-slate-500",
+      title: "Forward",
+      innerHTML: I.forward,
+      onclick(e) { e.stopPropagation(); openCompose({ forward: m }); },
+    }));
+    hdr.appendChild(hdrActions);
+  }
+  wrap.appendChild(hdr);
+
+  if (!isCollapsed) {
+    // Body
+    const body = h("div", { className: "px-6 py-4" });
+    if (m.html) {
+      body.appendChild(h("div", { className: "email-html", innerHTML: m.html }));
+    } else if (m.text) {
+      body.appendChild(h("pre", { className: "whitespace-pre-wrap text-sm font-sans" }, m.text));
+    } else {
+      body.appendChild(h("p", { className: "text-sm text-slate-400 italic" }, "(No content)"));
+    }
+    wrap.appendChild(body);
+
+    // Attachments
+    const visibleAtts = (m.attachments || []).filter(a =>
+      !(a.disposition === "inline" && a.cid && (a.contentType || "").startsWith("image/"))
+    );
+    if (visibleAtts.length > 0) {
+      const attSec = h("div", { className: "border-t border-line px-4 py-3" });
+      attSec.appendChild(h("p", { className: "text-xs font-medium text-slate-500 mb-2" }, t("attachment", visibleAtts.length)));
+      const attGrid = h("div", { className: "flex flex-wrap gap-2" });
+      for (const att of visibleAtts) {
+        const openUrl = `/api/messages/${m.uid}/attachments/${att.index}?folder=${encodeURIComponent(m.folder || S.folder)}`;
+        attGrid.appendChild(h("a", {
+          className: "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-line text-xs text-slate-600 hover:bg-slate-50",
+          href: openUrl,
+          target: "_blank",
+          rel: "noopener",
+        }, icon("paperclip"), att.filename || "file", h("span", { className: "text-slate-400" }, fileSize(att.size))));
+      }
+      attSec.appendChild(attGrid);
+      wrap.appendChild(attSec);
+    }
+  }
+
+  return wrap;
+}
+
+function renderThreadView(section, threadMsgs) {
+  const lastMsg = threadMsgs[threadMsgs.length - 1];
+
+  // Shared header: subject + common actions
+  const header = h("header", { className: "bg-white border-b border-line px-4 py-3 shrink-0" });
+  const row1 = h("div", { className: "flex items-start gap-3" });
+  row1.appendChild(h("button", {
+    className: "p-1 rounded hover:bg-slate-100 md:hidden mt-0.5",
+    onclick() { set({ selectedUid: null, selectedMsg: null, threadMsgs: [] }); },
+    innerHTML: I.chevL,
+  }));
+  row1.appendChild(h("h1", { className: "flex-1 text-lg md:text-2xl font-semibold min-w-0 truncate" },
+    lastMsg.subject || t("noSubject"),
+  ));
+  const threadCount = h("span", { className: "shrink-0 text-xs text-slate-400 whitespace-nowrap mt-2" },
+    t("threadCount", threadMsgs.length),
+  );
+  row1.appendChild(threadCount);
+  // Desktop actions (act on last msg)
+  const actions = h("div", { className: "hidden md:flex items-center gap-1 shrink-0" });
+  actions.appendChild(actionBtn("reply", t("reply"), () => openCompose({ replyTo: lastMsg })));
+  actions.appendChild(actionBtn("forward", t("forward"), () => openCompose({ forward: lastMsg })));
+  actions.appendChild(actionBtn("trash", t("delete"), () => deleteMsg()));
+  actions.appendChild(h("button", {
+    className: "p-1.5 rounded hover:bg-slate-100",
+    title: lastMsg.flagged ? t("unstar") : t("star"),
+    innerHTML: lastMsg.flagged ? I.starFill : I.star,
+    onclick() { toggleFlag("\\Flagged", !lastMsg.flagged); },
+  }));
+  row1.appendChild(actions);
+  header.appendChild(row1);
+  // Mobile actions
+  const mobileActions = h("div", { className: "flex items-center gap-1 mt-2 md:hidden" });
+  mobileActions.appendChild(actionBtn("reply", t("reply"), () => openCompose({ replyTo: lastMsg })));
+  mobileActions.appendChild(actionBtn("forward", t("forward"), () => openCompose({ forward: lastMsg })));
+  mobileActions.appendChild(actionBtn("trash", t("delete"), () => deleteMsg()));
+  header.appendChild(mobileActions);
+  section.appendChild(header);
+
+  // Scrollable thread
+  const scroll = h("div", { className: "flex-1 overflow-y-auto px-4 py-4" });
+
+  // Loading indicator for thread fetch
+  if (S.loadingThread) {
+    scroll.appendChild(h("div", { className: "flex items-center justify-center py-6" },
+      h("div", { className: "spinner" }),
+    ));
+  }
+
+  // Render each bubble
+  for (let i = 0; i < threadMsgs.length; i++) {
+    scroll.appendChild(renderThreadMsgBubble(threadMsgs[i], i === threadMsgs.length - 1));
+  }
+
+  // Quick reply at bottom
+  const qrWrap = h("div", { className: "flex items-center gap-2 mt-2 mb-2" });
+  qrWrap.appendChild(avatarBadge(36, S.account?.email || ""));
+  const qrInput = h("input", {
+    className: "qr-input flex-1 px-3 py-2 text-sm border border-line rounded-full outline-none focus:ring-2 focus:ring-blue-300",
+    placeholder: t("replyThreadPh"),
+    value: S.quickReply,
+    disabled: S.quickSending ? "disabled" : undefined,
+  });
+  const qrSendBtn = h("button", {
+    className: "qr-send-btn p-2 rounded-full bg-brand text-white hover:bg-brand-hover disabled:opacity-50",
+    disabled: S.quickSending || !S.quickReply.trim() ? "disabled" : undefined,
+    onclick: sendQuickReply,
+    innerHTML: I.send,
+  });
+  qrInput.addEventListener("input", e => {
+    S.quickReply = e.target.value;
+    qrSendBtn.disabled = S.quickSending || !S.quickReply.trim();
+  });
+  qrInput.addEventListener("keydown", e => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendQuickReply(); }
+  });
+  qrWrap.appendChild(qrInput);
+  qrWrap.appendChild(qrSendBtn);
+  scroll.appendChild(qrWrap);
+
+  section.appendChild(scroll);
+  return section;
 }
 
 // ─── Message View ────────────────────────────────────────────────────────────
@@ -813,8 +1533,8 @@ function renderMessageView() {
   if (!S.selectedUid) {
     section.appendChild(h("div", { className: "flex-1 flex flex-col items-center justify-center text-slate-400" },
       icon("mail"),
-      h("p", { className: "mt-2 text-sm" }, "No conversation selected"),
-      h("p", { className: "text-xs text-slate-300" }, "Choose a message from the list"),
+      h("p", { className: "mt-2 text-sm" }, t("noConvSelected")),
+      h("p", { className: "text-xs text-slate-300" }, t("chooseMessage")),
     ));
     return section;
   }
@@ -829,6 +1549,11 @@ function renderMessageView() {
   const msg = S.selectedMsg;
   if (!msg) return section;
 
+  // If we have multiple thread messages, render thread view
+  if (S.threadMsgs.length > 1) {
+    return renderThreadView(section, S.threadMsgs);
+  }
+
   // Header
   const header = h("header", { className: "bg-white border-b border-line px-4 py-3 shrink-0" });
 
@@ -842,22 +1567,23 @@ function renderMessageView() {
     innerHTML: I.chevL,
   }));
 
-  row1.appendChild(h("h1", { className: "flex-1 text-lg md:text-2xl font-semibold min-w-0 truncate" }, msg.subject || "(No subject)"));
+  row1.appendChild(h("h1", { className: "flex-1 text-lg md:text-2xl font-semibold min-w-0 truncate" }, msg.subject || t("noSubject")));
 
   // Date
   row1.appendChild(h("span", { className: "text-xs text-slate-400 whitespace-nowrap hidden md:block mt-2" }, fullDate(msg.date)));
 
   // Desktop actions
   const actions = h("div", { className: "hidden md:flex items-center gap-1 shrink-0" });
-  actions.appendChild(actionBtn("reply", "Reply", () => openCompose({ replyTo: msg })));
-  actions.appendChild(actionBtn("forward", "Forward", () => openCompose({ forward: msg })));
-  actions.appendChild(actionBtn("archive", "Archive", () => moveMsg("Archive")));
-  actions.appendChild(actionBtn("trash", "Delete", () => deleteMsg()));
+  actions.appendChild(actionBtn("reply", t("reply"), () => openCompose({ replyTo: msg })));
+  actions.appendChild(actionBtn("forward", t("forward"), () => openCompose({ forward: msg })));
+  actions.appendChild(actionBtn("archive", t("archive"), () => moveMsg(folderTarget("archive"))));
+  actions.appendChild(actionBtn("spam", t("reportSpam"), () => moveMsg(folderTarget("spam"))));
+  actions.appendChild(actionBtn("trash", t("delete"), () => deleteMsg()));
 
   // Star
   actions.appendChild(h("button", {
     className: "p-1.5 rounded hover:bg-slate-100",
-    title: msg.flagged ? "Unstar" : "Star",
+    title: msg.flagged ? t("unstar") : t("star"),
     innerHTML: msg.flagged ? I.starFill : I.star,
     onclick() { toggleFlag("\\Flagged", !msg.flagged); },
   }));
@@ -877,12 +1603,12 @@ function renderMessageView() {
       className: "absolute right-0 top-8 bg-white border border-line rounded-lg shadow-lg py-1 z-50 w-48",
     });
     const menuItems = [
-      { label: "Reply All", fn() { openCompose({ replyAll: msg }); } },
-      { label: "Forward", fn() { openCompose({ forward: msg }); } },
-      { label: msg.seen ? "Mark Unread" : "Mark Read", fn() { toggleFlag("\\Seen", !msg.seen); } },
-      { label: "Archive", fn() { moveMsg("Archive"); } },
-      { label: "Spam", fn() { moveMsg("Spam"); } },
-      { label: "Delete", fn() { deleteMsg(); } },
+      { label: t("replyAll"), fn() { openCompose({ replyAll: msg }); } },
+      { label: t("forward"), fn() { openCompose({ forward: msg }); } },
+      { label: msg.seen ? t("markUnread") : t("markRead"), fn() { toggleFlag("\\Seen", !msg.seen); } },
+      { label: t("archive"), fn() { moveMsg(folderTarget("archive")); } },
+      { label: t("reportSpam"), fn() { moveMsg(folderTarget("spam")); } },
+      { label: t("delete"), fn() { deleteMsg(); } },
     ];
     for (const mi of menuItems) {
       dropdown.appendChild(h("button", {
@@ -898,10 +1624,11 @@ function renderMessageView() {
 
   // Mobile actions row
   const mobileActions = h("div", { className: "flex items-center gap-1 mt-2 md:hidden flex-wrap" });
-  mobileActions.appendChild(actionBtn("reply", "Reply", () => openCompose({ replyTo: msg })));
-  mobileActions.appendChild(actionBtn("forward", "Forward", () => openCompose({ forward: msg })));
-  mobileActions.appendChild(actionBtn("archive", "Archive", () => moveMsg("Archive")));
-  mobileActions.appendChild(actionBtn("trash", "Delete", () => deleteMsg()));
+  mobileActions.appendChild(actionBtn("reply", t("reply"), () => openCompose({ replyTo: msg })));
+  mobileActions.appendChild(actionBtn("forward", t("forward"), () => openCompose({ forward: msg })));
+  mobileActions.appendChild(actionBtn("archive", t("archive"), () => moveMsg(folderTarget("archive"))));
+  mobileActions.appendChild(actionBtn("spam", t("reportSpam"), () => moveMsg(folderTarget("spam"))));
+  mobileActions.appendChild(actionBtn("trash", t("delete"), () => deleteMsg()));
   mobileActions.appendChild(h("button", {
     className: "p-1.5 rounded hover:bg-slate-100",
     innerHTML: msg.flagged ? I.starFill : I.star,
@@ -933,15 +1660,31 @@ function renderMessageView() {
   content.appendChild(article);
 
   // Attachments
-  if (msg.attachments && msg.attachments.length > 0) {
+  const visibleAttachments = (msg.attachments || []).filter(att =>
+    !(att.disposition === "inline" && att.cid && (att.contentType || "").startsWith("image/"))
+  );
+  if (visibleAttachments.length > 0) {
     const attSection = h("div", { className: "bg-white rounded-lg border border-line shadow-sm p-4 mt-3" });
-    attSection.appendChild(h("h3", { className: "text-sm font-medium mb-2" }, `Attachments (${msg.attachments.length})`));
+    attSection.appendChild(h("h3", { className: "text-sm font-medium mb-2" }, t("attachments", visibleAttachments.length)));
     const attGrid = h("div", { className: "grid grid-cols-1 sm:grid-cols-2 gap-2" });
-    for (const att of msg.attachments) {
-      attGrid.appendChild(h("div", { className: "attachment-item" },
+    for (const att of visibleAttachments) {
+      const openUrl = `/api/messages/${msg.uid}/attachments/${att.index}?folder=${encodeURIComponent(S.folder)}`;
+      const downloadUrl = `${openUrl}&download=1`;
+      attGrid.appendChild(h("div", {
+        className: "attachment-item cursor-pointer hover:bg-slate-50",
+        onclick() { window.open(openUrl, "_blank", "noopener"); },
+      },
         icon("paperclip"),
         h("span", { className: "flex-1 truncate" }, att.filename || "Untitled"),
         h("span", { className: "text-slate-400 text-xs" }, fileSize(att.size)),
+        h("a", {
+          className: "p-1 rounded hover:bg-slate-100 text-slate-500",
+          href: downloadUrl,
+          download: att.filename || "attachment",
+          title: "Download",
+          onclick(e) { e.stopPropagation(); },
+          innerHTML: I.download,
+        }),
       ));
     }
     attSection.appendChild(attGrid);
@@ -950,28 +1693,33 @@ function renderMessageView() {
 
   // Reply actions
   const replyActions = h("div", { className: "flex items-center gap-2 mt-4" });
-  replyActions.appendChild(pillBtn("reply", "Reply", () => openCompose({ replyTo: msg })));
-  replyActions.appendChild(pillBtn("replyAll", "Reply All", () => openCompose({ replyAll: msg })));
-  replyActions.appendChild(pillBtn("forward", "Forward", () => openCompose({ forward: msg })));
+  replyActions.appendChild(pillBtn("reply", t("reply"), () => openCompose({ replyTo: msg })));
+  replyActions.appendChild(pillBtn("replyAll", t("replyAll"), () => openCompose({ replyAll: msg })));
+  replyActions.appendChild(pillBtn("forward", t("forward"), () => openCompose({ forward: msg })));
   content.appendChild(replyActions);
 
   // Quick reply
   const qrWrap = h("div", { className: "flex items-center gap-2 mt-4" });
   qrWrap.appendChild(avatarBadge(36, S.account?.email || ""));
   const qrInput = h("input", {
-    className: "flex-1 px-3 py-2 text-sm border border-line rounded-full outline-none focus:ring-2 focus:ring-blue-300",
-    placeholder: "Write a quick reply...",
+    className: "qr-input flex-1 px-3 py-2 text-sm border border-line rounded-full outline-none focus:ring-2 focus:ring-blue-300",
+    placeholder: t("quickReplyPh"),
     value: S.quickReply,
+    disabled: S.quickSending ? "disabled" : undefined,
   });
-  qrInput.addEventListener("input", e => set({ quickReply: e.target.value }));
-  qrInput.addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendQuickReply(); } });
-  qrWrap.appendChild(qrInput);
-  qrWrap.appendChild(h("button", {
-    className: "p-2 rounded-full bg-brand text-white hover:bg-brand-hover disabled:opacity-50",
+  const qrSendBtn = h("button", {
+    className: "qr-send-btn p-2 rounded-full bg-brand text-white hover:bg-brand-hover disabled:opacity-50",
     disabled: S.quickSending || !S.quickReply.trim() ? "disabled" : undefined,
     onclick: sendQuickReply,
     innerHTML: I.send,
-  }));
+  });
+  qrInput.addEventListener("input", e => {
+    S.quickReply = e.target.value;
+    qrSendBtn.disabled = S.quickSending || !S.quickReply.trim();
+  });
+  qrInput.addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendQuickReply(); } });
+  qrWrap.appendChild(qrInput);
+  qrWrap.appendChild(qrSendBtn);
   content.appendChild(qrWrap);
 
   section.appendChild(content);
@@ -1039,11 +1787,26 @@ async function deleteMsg() {
 }
 
 async function batchArchive() {
+  const destination = folderTarget("archive");
   for (const uid of S.selectedUids) {
     try {
       await api(`/api/messages/${uid}/move`, {
         method: "POST",
-        body: JSON.stringify({ folder: S.folder, destination: "Archive" }),
+        body: JSON.stringify({ folder: S.folder, destination }),
+      });
+    } catch {}
+  }
+  set({ selectedUids: [] });
+  await loadMessages();
+}
+
+async function batchSpam() {
+  const destination = folderTarget("spam");
+  for (const uid of S.selectedUids) {
+    try {
+      await api(`/api/messages/${uid}/move`, {
+        method: "POST",
+        body: JSON.stringify({ folder: S.folder, destination }),
       });
     } catch {}
   }
@@ -1063,7 +1826,13 @@ async function batchDelete() {
 
 async function sendQuickReply() {
   if (!S.quickReply.trim() || !S.selectedMsg) return;
-  set({ quickSending: true });
+  if (S.quickSending) return;
+  // Update DOM directly to avoid full re-render (which destroys the input and steals focus)
+  S.quickSending = true;
+  const qrInput = document.querySelector(".qr-input");
+  const qrSendBtn = document.querySelector(".qr-send-btn");
+  if (qrInput) qrInput.disabled = true;
+  if (qrSendBtn) qrSendBtn.disabled = true;
   try {
     const msg = S.selectedMsg;
     await api("/api/messages/send", {
@@ -1073,17 +1842,27 @@ async function sendQuickReply() {
         subject: msg.subject?.startsWith("Re:") ? msg.subject : `Re: ${msg.subject || ""}`,
         text: S.quickReply,
         html: textToHtml(S.quickReply),
+        inReplyTo: msg.messageId || "",
+        references: [msg.references, msg.inReplyTo, msg.messageId].filter(Boolean).join(" ").trim(),
       }),
     });
-    set({ quickReply: "", quickSending: false });
+    S.quickSending = false;
+    S.quickReply = "";
+    if (qrInput) { qrInput.value = ""; qrInput.disabled = false; }
+    if (qrSendBtn) qrSendBtn.disabled = true;
+    showToast(t("sentOk"));
   } catch (err) {
-    set({ error: err.message, quickSending: false });
+    S.quickSending = false;
+    if (qrInput) qrInput.disabled = false;
+    if (qrSendBtn) qrSendBtn.disabled = !S.quickReply.trim();
+    set({ error: err.message });
   }
 }
 
 // ─── Compose ─────────────────────────────────────────────────────────────────
 
 function openCompose(opts = {}) {
+  const orig = opts.replyTo || opts.replyAll || opts.forward || null;
   const draft = {
     to: opts.replyTo ? displayEmail(opts.replyTo.from) : opts.replyAll ? [displayEmail(opts.replyAll.from), ...(opts.replyAll.to || []).map(a => a.address)].filter(Boolean).join(", ") : "",
     cc: opts.replyAll ? (opts.replyAll.cc || []).map(a => a.address).filter(Boolean).join(", ") : "",
@@ -1093,6 +1872,8 @@ function openCompose(opts = {}) {
     html: "",
     attachments: [],
     fromName: S.signature?.displayName || "",
+    inReplyTo: (opts.replyTo || opts.replyAll) ? (orig?.messageId || "") : "",
+    references: (opts.replyTo || opts.replyAll) ? ([orig?.references, orig?.inReplyTo, orig?.messageId].filter(Boolean).join(" ").trim()) : "",
   };
 
   if (opts.replyTo || opts.replyAll) {
@@ -1124,11 +1905,11 @@ function renderCompose() {
 
   // Header
   const hdr = h("div", { className: "flex items-center justify-between h-16 px-4 border-b border-line shrink-0" });
-  hdr.appendChild(h("h2", { className: "text-lg font-semibold" }, "New Message"));
+  hdr.appendChild(h("h2", { className: "text-lg font-semibold" }, t("newMessage")));
   const hdrActions = h("div", { className: "flex items-center gap-1" });
   hdrActions.appendChild(h("button", {
     className: "p-1.5 rounded hover:bg-slate-100 text-slate-500 hidden md:block",
-    title: S.composeFullPage ? "Restore" : "Maximize",
+    title: S.composeFullPage ? t("restore") : t("maximize"),
     innerHTML: S.composeFullPage ? I.min : I.max,
     onclick() { set({ composeFullPage: !S.composeFullPage }); },
   }));
@@ -1150,20 +1931,14 @@ function renderCompose() {
 
   // From
   fields.appendChild(h("div", { className: "flex items-center gap-2" },
-    h("span", { className: "text-sm text-slate-500 w-12" }, "From:"),
+    h("span", { className: "text-sm text-slate-500 w-12" }, t("from") + ":"),
     h("span", { className: "text-sm" }, S.account?.email || ""),
   ));
 
   // To
   const toRow = h("div", { className: "flex items-center gap-2" });
-  toRow.appendChild(h("span", { className: "text-sm text-slate-500 w-12" }, "To:"));
-  const toInput = h("input", {
-    className: "flex-1 px-2 py-1.5 text-sm border border-line rounded outline-none focus:ring-2 focus:ring-blue-300",
-    placeholder: "Recipients",
-    value: S.compose.to,
-  });
-  toInput.addEventListener("input", e => { S.compose.to = e.target.value; });
-  toRow.appendChild(toInput);
+  toRow.appendChild(h("span", { className: "text-sm text-slate-500 w-12" }, t("to") + ":"));
+  toRow.appendChild(renderRecipientInput("to", t("recipients")));
   if (!S.showCc && !S.showBcc) {
     toRow.appendChild(h("button", {
       className: "text-xs text-blue-600 hover:underline",
@@ -1181,22 +1956,22 @@ function renderCompose() {
   // Cc
   if (S.showCc) {
     fields.appendChild(h("div", { className: "flex items-center gap-2" },
-      h("span", { className: "text-sm text-slate-500 w-12" }, "Cc:"),
-      (() => { const i = h("input", { className: "flex-1 px-2 py-1.5 text-sm border border-line rounded outline-none focus:ring-2 focus:ring-blue-300", value: S.compose.cc }); i.addEventListener("input", e => { S.compose.cc = e.target.value; }); return i; })(),
+      h("span", { className: "text-sm text-slate-500 w-12" }, t("cc") + ":"),
+      renderRecipientInput("cc", t("ccRecipients")),
     ));
   }
 
   // Bcc
   if (S.showBcc) {
     fields.appendChild(h("div", { className: "flex items-center gap-2" },
-      h("span", { className: "text-sm text-slate-500 w-12" }, "Bcc:"),
-      (() => { const i = h("input", { className: "flex-1 px-2 py-1.5 text-sm border border-line rounded outline-none focus:ring-2 focus:ring-blue-300", value: S.compose.bcc }); i.addEventListener("input", e => { S.compose.bcc = e.target.value; }); return i; })(),
+      h("span", { className: "text-sm text-slate-500 w-12" }, t("bcc") + ":"),
+      renderRecipientInput("bcc", t("bccRecipients")),
     ));
   }
 
   // Subject
   fields.appendChild(h("div", { className: "flex items-center gap-2" },
-    h("span", { className: "text-sm text-slate-500 w-12" }, "Subj:"),
+    h("span", { className: "text-sm text-slate-500 w-12" }, t("subj") + ":"),
     (() => { const i = h("input", { className: "flex-1 px-2 py-1.5 text-sm border border-line rounded outline-none focus:ring-2 focus:ring-blue-300", value: S.compose.subject }); i.addEventListener("input", e => { S.compose.subject = e.target.value; }); return i; })(),
   ));
 
@@ -1212,7 +1987,7 @@ function renderCompose() {
   toolbar.appendChild(toolbarBtn("listOrd", () => document.execCommand("insertOrderedList")));
   toolbar.appendChild(h("div", { className: "w-px h-5 bg-slate-300 mx-1" }));
   toolbar.appendChild(toolbarBtn("link", () => {
-    const url = prompt("Enter URL:");
+    const url = prompt(t("enterUrl"));
     if (url) document.execCommand("createLink", false, url);
   }));
   form.appendChild(toolbar);
@@ -1264,7 +2039,7 @@ function renderCompose() {
   footer.appendChild(h("button", {
     className: "p-2 rounded hover:bg-slate-100 text-slate-500",
     type: "button",
-    title: "Attach files",
+    title: t("attachFiles"),
     innerHTML: I.paperclip,
     onclick() { fileInput.click(); },
   }));
@@ -1274,7 +2049,7 @@ function renderCompose() {
     className: "px-6 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand-hover disabled:opacity-50",
     type: "submit",
     disabled: S.sending ? "disabled" : undefined,
-  }, S.sending ? "Sending..." : "Send"));
+  }, S.sending ? t("sending") : t("send")));
   form.appendChild(footer);
 
   form.addEventListener("submit", sendCompose);
@@ -1283,12 +2058,84 @@ function renderCompose() {
   return overlay;
 }
 
+function renderRecipientInput(field, placeholder) {
+  const tokens = recipientTokens(S.compose[field]);
+  const wrap = h("div", {
+    className: "recipient-input flex-1 min-h-[38px] px-2 py-1 border border-line rounded flex flex-wrap items-center gap-1 cursor-text focus-within:ring-2 focus-within:ring-blue-300",
+    onclick() {
+      const input = $(`.recipient-entry[data-recipient-field="${field}"]`, wrap);
+      if (input) input.focus();
+    },
+  });
+
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i];
+    const valid = VALID_EMAIL.test(token);
+    wrap.appendChild(h("span", { className: `recipient-chip ${valid ? "valid" : "invalid"}` },
+      h("span", { className: "max-w-[220px] truncate" }, token),
+      h("button", {
+        type: "button",
+        className: "leading-none opacity-70 hover:opacity-100",
+        title: t("removeRecipient"),
+        onclick(e) {
+          e.stopPropagation();
+          const next = tokens.filter((_, idx) => idx !== i);
+          setRecipientTokens(field, next);
+        },
+      }, "x"),
+    ));
+  }
+
+  const input = h("input", {
+    className: "recipient-entry flex-1 min-w-[140px] border-0 bg-transparent py-1 text-sm outline-none",
+    dataset: { recipientField: field },
+    placeholder: tokens.length ? "" : placeholder,
+    autocomplete: "off",
+  });
+
+  input.addEventListener("keydown", e => {
+    if (["Enter", "Tab", ",", ";", " "].includes(e.key)) {
+      if (input.value.trim()) {
+        e.preventDefault();
+        addRecipientText(field, input.value);
+      }
+    } else if (e.key === "Backspace" && !input.value && tokens.length) {
+      e.preventDefault();
+      setRecipientTokens(field, tokens.slice(0, -1));
+    }
+  });
+  input.addEventListener("paste", e => {
+    const text = e.clipboardData?.getData("text") || "";
+    if (text) {
+      e.preventDefault();
+      addRecipientText(field, text);
+    }
+  });
+  input.addEventListener("blur", () => {
+    if (input.value.trim()) addRecipientText(field, input.value);
+  });
+
+  wrap.appendChild(input);
+  return wrap;
+}
+
 async function sendCompose(e) {
   if (e) e.preventDefault();
   if (S.sending) return;
 
   const c = S.compose;
   if (!c) return;
+  collectRecipientInputs();
+
+  const invalidRecipients = [
+    ...recipientTokens(c.to),
+    ...recipientTokens(c.cc),
+    ...recipientTokens(c.bcc),
+  ].filter(token => !VALID_EMAIL.test(token));
+  if (invalidRecipients.length) {
+    set({ error: t("invalidRecipient", invalidRecipients[0]) });
+    return;
+  }
 
   // Get HTML from editor
   const editor = $(".compose-editor");
@@ -1306,9 +2153,12 @@ async function sendCompose(e) {
         text: c.text || editor?.textContent || "",
         html: html,
         fromName: c.fromName || S.signature?.displayName || "",
+        inReplyTo: c.inReplyTo || "",
+        references: c.references || "",
       }),
     });
     set({ sending: false, compose: null });
+    showToast(t("sentOk"));
     await loadMessages();
   } catch (err) {
     set({ sending: false, error: err.message });
@@ -1360,7 +2210,7 @@ function renderCalendarView() {
     },
   }));
   navBtns.appendChild(h("span", { className: "text-sm font-medium min-w-[140px] text-center" },
-    S.calMonth.toLocaleDateString("en-US", { month: "long", year: "numeric" }),
+    S.calMonth.toLocaleDateString(t("dateLocale"), { month: "long", year: "numeric" }),
   ));
   navBtns.appendChild(h("button", {
     className: "p-1.5 rounded hover:bg-slate-100",
@@ -1375,7 +2225,7 @@ function renderCalendarView() {
   navBtns.appendChild(h("button", {
     className: "ml-2 px-3 py-1.5 rounded-lg bg-brand text-white text-sm hover:bg-brand-hover",
     onclick() { set({ calEditing: { summary: "", dtstart: "", dtend: "", allDay: false, description: "", location: "" } }); },
-  }, "New Event"));
+  }, t("newEvent")));
   hdr.appendChild(navBtns);
   view.appendChild(hdr);
 
@@ -1390,16 +2240,16 @@ function renderCalendarView() {
   // Detail panel (selected day events)
   if (S.calSelected) {
     const panel = h("div", { className: "w-72 border-l border-line overflow-y-auto p-4 hidden md:block" });
-    panel.appendChild(h("h3", { className: "font-medium mb-3" }, new Date(S.calSelected).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })));
+    panel.appendChild(h("h3", { className: "font-medium mb-3" }, new Date(S.calSelected).toLocaleDateString(t("dateLocale"), { weekday: "long", month: "long", day: "numeric" })));
 
     const dayEvents = S.calendarEvents.filter(e => e.dtstart?.startsWith(S.calSelected));
     if (dayEvents.length === 0) {
-      panel.appendChild(h("p", { className: "text-sm text-slate-400" }, "No events"));
+      panel.appendChild(h("p", { className: "text-sm text-slate-400" }, t("noEvents")));
     }
     for (const evt of dayEvents) {
       const card = h("div", { className: "p-3 rounded-lg border border-line mb-2 hover:bg-slate-50 cursor-pointer" },
-        h("div", { className: "font-medium text-sm" }, evt.summary || "(No title)"),
-        evt.dtstart ? h("div", { className: "text-xs text-slate-500 mt-1 flex items-center gap-1" }, icon("clock"), evt.allDay ? "All day" : new Date(evt.dtstart).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })) : null,
+        h("div", { className: "font-medium text-sm" }, evt.summary || t("noTitle")),
+        evt.dtstart ? h("div", { className: "text-xs text-slate-500 mt-1 flex items-center gap-1" }, icon("clock"), evt.allDay ? t("allDay") : new Date(evt.dtstart).toLocaleTimeString(t("dateLocale"), { hour: "numeric", minute: "2-digit" })) : null,
         evt.location ? h("div", { className: "text-xs text-slate-500 mt-1 flex items-center gap-1" }, icon("marker"), evt.location) : null,
       );
       card.addEventListener("click", () => set({ calEditing: { ...evt, _editing: true } }));
@@ -1480,15 +2330,15 @@ function renderCalendarEditModal() {
   });
 
   modal.appendChild(h("div", { className: "flex items-center justify-between px-4 py-3 border-b border-line" },
-    h("h2", { className: "text-lg font-semibold" }, isNew ? "New Event" : "Edit Event"),
+    h("h2", { className: "text-lg font-semibold" }, isNew ? t("newEvent") : t("editEvent")),
     h("button", { className: "p-1 rounded hover:bg-slate-100", innerHTML: I.x, onclick() { set({ calEditing: null }); } }),
   ));
 
   const form = h("form", { className: "p-4 space-y-3" });
 
-  form.appendChild(formField("Summary", "text", evt.summary || "", v => { S.calEditing.summary = v; }));
-  form.appendChild(formField("Description", "text", evt.description || "", v => { S.calEditing.description = v; }));
-  form.appendChild(formField("Location", "text", evt.location || "", v => { S.calEditing.location = v; }));
+  form.appendChild(formField(t("summary"), "text", evt.summary || "", v => { S.calEditing.summary = v; }));
+  form.appendChild(formField(t("description"), "text", evt.description || "", v => { S.calEditing.description = v; }));
+  form.appendChild(formField(t("location"), "text", evt.location || "", v => { S.calEditing.location = v; }));
 
   // All day toggle
   const allDayRow = h("label", { className: "flex items-center gap-2 text-sm" });
@@ -1496,11 +2346,11 @@ function renderCalendarEditModal() {
   allDayCb.checked = !!evt.allDay;
   allDayCb.addEventListener("change", () => { S.calEditing.allDay = allDayCb.checked; });
   allDayRow.appendChild(allDayCb);
-  allDayRow.appendChild(document.createTextNode("All day"));
+  allDayRow.appendChild(document.createTextNode(t("allDay")));
   form.appendChild(allDayRow);
 
-  form.appendChild(formField("Start", "datetime-local", evt.dtstart ? evt.dtstart.slice(0, 16) : "", v => { S.calEditing.dtstart = v; }));
-  form.appendChild(formField("End", "datetime-local", evt.dtend ? evt.dtend.slice(0, 16) : "", v => { S.calEditing.dtend = v; }));
+  form.appendChild(formField(t("startDate"), "datetime-local", evt.dtstart ? evt.dtstart.slice(0, 16) : "", v => { S.calEditing.dtstart = v; }));
+  form.appendChild(formField(t("endDate"), "datetime-local", evt.dtend ? evt.dtend.slice(0, 16) : "", v => { S.calEditing.dtend = v; }));
 
   const actions = h("div", { className: "flex items-center gap-2 pt-2" });
   if (!isNew) {
@@ -1514,14 +2364,14 @@ function renderCalendarEditModal() {
           await loadCalendarEvents();
         } catch (err) { set({ error: err.message }); }
       },
-    }, "Delete"));
+    }, t("deleteContact")));
   }
   actions.appendChild(h("div", { className: "flex-1" }));
   actions.appendChild(h("button", {
     className: "px-4 py-2 rounded-lg border border-line text-sm hover:bg-slate-50",
     type: "button",
     onclick() { set({ calEditing: null }); },
-  }, "Cancel"));
+  }, t("cancel")));
   actions.appendChild(h("button", {
     className: "px-4 py-2 rounded-lg bg-brand text-white text-sm hover:bg-brand-hover",
     type: "button",
@@ -1536,7 +2386,7 @@ function renderCalendarEditModal() {
         await loadCalendarEvents();
       } catch (err) { set({ error: err.message }); }
     },
-  }, isNew ? "Create" : "Save"));
+  }, isNew ? "Create" : t("save")));
   form.appendChild(actions);
 
   modal.appendChild(form);
@@ -1569,7 +2419,7 @@ function renderContactsView() {
   hdr.appendChild(h("button", {
     className: "px-3 py-1.5 rounded-lg bg-brand text-white text-sm hover:bg-brand-hover",
     onclick() { set({ contactEditing: { fn: "", email: "", phone: "", organization: "", title: "", note: "" } }); },
-  }, "New Contact"));
+  }, t("newContact")));
   view.appendChild(hdr);
 
   // Body
@@ -1580,7 +2430,7 @@ function renderContactsView() {
   if (S.contacts.length === 0) {
     listWrap.appendChild(h("div", { className: "flex flex-col items-center justify-center py-12 text-slate-400" },
       icon("contact"),
-      h("p", { className: "mt-2 text-sm" }, "No contacts"),
+      h("p", { className: "mt-2 text-sm" }, t("noContacts")),
     ));
   }
   for (const c of S.contacts) {
@@ -1614,14 +2464,14 @@ function renderContactEditPanel() {
 
   const panel = h("div", { className: "flex-1 overflow-y-auto p-6 max-w-lg" });
 
-  panel.appendChild(h("h2", { className: "text-lg font-semibold mb-4" }, isNew ? "New Contact" : "Edit Contact"));
+  panel.appendChild(h("h2", { className: "text-lg font-semibold mb-4" }, isNew ? t("newContact") : t("editContact")));
 
   const form = h("form", { className: "space-y-4" });
-  form.appendChild(formField("Name", "text", c.fn || "", v => { S.contactEditing.fn = v; }));
-  form.appendChild(formField("Email", "email", c.email || "", v => { S.contactEditing.email = v; }));
-  form.appendChild(formField("Phone", "tel", c.phone || "", v => { S.contactEditing.phone = v; }));
-  form.appendChild(formField("Organization", "text", c.organization || "", v => { S.contactEditing.organization = v; }));
-  form.appendChild(formField("Title", "text", c.title || "", v => { S.contactEditing.title = v; }));
+  form.appendChild(formField(t("name"), "text", c.fn || "", v => { S.contactEditing.fn = v; }));
+  form.appendChild(formField(t("emailAddress"), "email", c.email || "", v => { S.contactEditing.email = v; }));
+  form.appendChild(formField(t("phone"), "tel", c.phone || "", v => { S.contactEditing.phone = v; }));
+  form.appendChild(formField(t("organization"), "text", c.organization || "", v => { S.contactEditing.organization = v; }));
+  form.appendChild(formField(t("title"), "text", c.title || "", v => { S.contactEditing.title = v; }));
 
   const noteLabel = h("label", { className: "block text-sm font-medium text-slate-700" }, "Note");
   const noteInput = h("textarea", {
@@ -1645,14 +2495,14 @@ function renderContactEditPanel() {
           await loadContacts();
         } catch (err) { set({ error: err.message }); }
       },
-    }, "Delete"));
+    }, t("deleteContact")));
   }
   actions.appendChild(h("div", { className: "flex-1" }));
   actions.appendChild(h("button", {
     className: "px-4 py-2 rounded-lg border border-line text-sm hover:bg-slate-50",
     type: "button",
     onclick() { set({ contactEditing: null }); },
-  }, "Cancel"));
+  }, t("cancel")));
   actions.appendChild(h("button", {
     className: "px-4 py-2 rounded-lg bg-brand text-white text-sm hover:bg-brand-hover",
     type: "button",
@@ -1667,7 +2517,7 @@ function renderContactEditPanel() {
         await loadContacts();
       } catch (err) { set({ error: err.message }); }
     },
-  }, isNew ? "Create" : "Save"));
+  }, isNew ? "Create" : t("save")));
   form.appendChild(actions);
 
   panel.appendChild(form);
@@ -1705,7 +2555,7 @@ function renderSignatureModal() {
   });
 
   modal.appendChild(h("div", { className: "flex items-center justify-between h-14 px-4 border-b border-line shrink-0" },
-    h("h2", { className: "text-lg font-semibold" }, "Signature Settings"),
+    h("h2", { className: "text-lg font-semibold" }, t("signatureTitle")),
     h("button", { className: "p-1 rounded hover:bg-slate-100", innerHTML: I.x, onclick() { set({ sigOpen: false }); } }),
   ));
 
@@ -1715,14 +2565,14 @@ function renderSignatureModal() {
   // Fields grid
   const grid = h("div", { className: "grid grid-cols-1 md:grid-cols-[220px_1fr] gap-3" });
   const sigFields = [
-    { key: "displayName", label: "Display name", type: "text" },
-    { key: "email", label: "Email address", type: "email", readonly: true },
-    { key: "organization", label: "Organization", type: "text" },
-    { key: "replyTo", label: "Reply-To", type: "email" },
-    { key: "bcc", label: "Blind copy", type: "text" },
+    { key: "displayName", labelKey: "displayName", type: "text" },
+    { key: "email", labelKey: "emailAddress", type: "email", readonly: true },
+    { key: "organization", labelKey: "orgLabel", type: "text" },
+    { key: "replyTo", labelKey: "replyTo", type: "email" },
+    { key: "bcc", labelKey: "blindCopy", type: "text" },
   ];
   for (const f of sigFields) {
-    grid.appendChild(h("label", { className: "flex items-center text-sm text-slate-600" }, f.label));
+    grid.appendChild(h("label", { className: "flex items-center text-sm text-slate-600" }, t(f.labelKey)));
     const input = h("input", {
       className: "w-full px-3 py-2 border border-line rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-300",
       type: f.type,
@@ -1734,19 +2584,19 @@ function renderSignatureModal() {
   }
 
   // Default toggle
-  grid.appendChild(h("label", { className: "flex items-center text-sm text-slate-600" }, "Use by default"));
+  grid.appendChild(h("label", { className: "flex items-center text-sm text-slate-600" }, t("useByDefault")));
   const toggleWrap = h("label", { className: "flex items-center gap-2" });
   const toggle = h("input", { type: "checkbox" });
   toggle.checked = sig.defaultEnabled !== false;
   toggle.addEventListener("change", () => { if (!S.signature) S.signature = {}; S.signature.defaultEnabled = toggle.checked; });
   toggleWrap.appendChild(toggle);
-  toggleWrap.appendChild(document.createTextNode("Enabled"));
+  toggleWrap.appendChild(document.createTextNode(t("enabled")));
   grid.appendChild(toggleWrap);
 
   form.appendChild(grid);
 
   // Signature editor
-  form.appendChild(h("h3", { className: "text-sm font-medium text-slate-700 mt-4" }, "Signature"));
+  form.appendChild(h("h3", { className: "text-sm font-medium text-slate-700 mt-4" }, t("signature")));
   const editorWrap = h("div", { className: "border border-line rounded-lg overflow-hidden" });
 
   const toolbar = h("div", { className: "flex items-center gap-0.5 px-2 h-10 bg-slate-100 border-b border-line" });
@@ -1758,7 +2608,7 @@ function renderSignatureModal() {
   toolbar.appendChild(h("button", { className: "toolbar-btn", innerHTML: "≡", onmousedown(e) { e.preventDefault(); document.execCommand("justifyCenter"); } }));
   toolbar.appendChild(h("div", { className: "w-px h-5 bg-slate-300 mx-1" }));
   toolbar.appendChild(toolbarBtn("link", () => {
-    const url = prompt("Enter URL:");
+    const url = prompt(t("enterUrl"));
     if (url) document.execCommand("createLink", false, url);
   }));
   editorWrap.appendChild(toolbar);
@@ -1766,7 +2616,7 @@ function renderSignatureModal() {
   const sigEditor = h("div", {
     className: "signature-editor",
     contenteditable: "true",
-    "data-placeholder": "Create your signature...",
+    "data-placeholder": t("signaturePlaceholder"),
     innerHTML: sig.html || "",
   });
   editorWrap.appendChild(sigEditor);
@@ -1778,7 +2628,7 @@ function renderSignatureModal() {
   // Footer
   const footer = h("div", { className: "flex items-center gap-3 px-4 h-16 border-t border-line shrink-0" });
   if (S.sigSaved) {
-    footer.appendChild(h("span", { className: "text-sm text-green-600 flex items-center gap-1" }, icon("check"), "Saved"));
+    footer.appendChild(h("span", { className: "text-sm text-green-600 flex items-center gap-1" }, icon("check"), t("signatureSaved")));
   }
   footer.appendChild(h("div", { className: "flex-1" }));
   footer.appendChild(h("button", {
@@ -1806,7 +2656,7 @@ function renderSignatureModal() {
         set({ sigSaving: false, error: err.message });
       }
     },
-  }, S.sigSaving ? "Saving..." : "Save"));
+  }, S.sigSaving ? t("saving") : t("save")));
   modal.appendChild(footer);
 
   overlay.appendChild(modal);
@@ -1833,7 +2683,7 @@ function render() {
       app.appendChild(h("div", { className: "flex items-center justify-center min-h-screen bg-slate-50" },
         h("div", { className: "text-center" },
           h("div", { className: "spinner mx-auto mb-4" }),
-          h("p", { className: "text-sm text-slate-500" }, "Loading your mailbox..."),
+          h("p", { className: "text-sm text-slate-500" }, t("loadingMailbox")),
         ),
       ));
     } else {

@@ -223,3 +223,11 @@ body {
 @media (min-width: 769px) {
   .mobile-only { display: none !important; }
 }
+
+/* Thread view bubbles */
+.thread-bubble {
+  transition: box-shadow 0.15s ease;
+}
+.thread-bubble:hover {
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}

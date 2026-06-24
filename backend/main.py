@@ -15,11 +15,15 @@ import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
-from email.parser import Parser as EmailParser
+from email.header import Header, decode_header, make_header
+from email.message import EmailMessage
+from email.parser import BytesParser as EmailParser
 from email.policy import default as email_default
+from email.utils import formataddr, getaddresses
 from functools import partial
 from pathlib import Path
 from typing import Any, AsyncIterator
+from urllib.parse import quote
 
 import aioimaplib
 import httpx
@@ -396,30 +400,56 @@ async def _async_parse_email(raw_source: bytes) -> dict:
         text_parts = []
         html_parts = []
         attachments = []
+        cid_urls = {}
 
-        def _walk_payload(msg):
-            content_type = msg.get_content_type()
-            disp = msg.get_content_disposition()
-            if disp and disp.lower() in ("attachment", "inline"):
-                filename = msg.get_filename()
-                if not filename:
-                    name = msg.get_param("name", header="content-type")
-                    if name:
-                        filename = name
+        def _walk_payload(part):
+            if part.is_multipart():
+                return
+
+            content_type = part.get_content_type()
+            disp = (part.get_content_disposition() or "").lower()
+            cid = part.get("content-id", "").strip("<>") or None
+            filename = part.get_filename()
+            if not filename:
+                name = part.get_param("name", header="content-type")
+                if name:
+                    filename = name
+
+            payload = part.get_payload(decode=True) or b""
+            is_attachment = disp in ("attachment", "inline") or bool(filename) or (
+                bool(cid) and content_type.startswith("image/")
+            )
+
+            if is_attachment:
+                index = len(attachments)
+                if cid and payload and content_type.startswith("image/"):
+                    cid_urls[cid] = f"data:{content_type};base64,{base64.b64encode(payload).decode()}"
+                if not filename and content_type.startswith("image/"):
+                    ext = content_type.split("/", 1)[1].split(";", 1)[0] or "image"
+                    filename = f"inline-{index + 1}.{ext}"
                 attachments.append({
+                    "index": index,
                     "filename": filename,
-                    "contentType": msg.get_content_type(),
-                    "size": len(msg.get_payload(decode=True) or b""),
-                    "cid": msg.get("content-id", "").strip("<>") or None,
+                    "contentType": content_type,
+                    "size": len(payload),
+                    "cid": cid,
+                    "disposition": disp or ("inline" if cid else "attachment"),
                 })
-            elif content_type == "text/plain":
-                payload = msg.get_payload(decode=True)
+                return
+
+            if content_type == "text/plain":
                 if payload:
-                    text_parts.append(payload.decode(msg.get_content_charset() or "utf-8", errors="replace"))
+                    text_parts.append(payload.decode(part.get_content_charset() or "utf-8", errors="replace"))
             elif content_type == "text/html":
-                payload = msg.get_payload(decode=True)
                 if payload:
-                    html_parts.append(payload.decode(msg.get_content_charset() or "utf-8", errors="replace"))
+                    html_parts.append(payload.decode(part.get_content_charset() or "utf-8", errors="replace"))
+
+        def _replace_cid_urls(html: str) -> str:
+            for cid, data_url in cid_urls.items():
+                escaped = re.escape(cid)
+                html = re.sub(rf"cid:{escaped}", data_url, html, flags=re.IGNORECASE)
+                html = re.sub(rf"cid:{re.escape(quote(cid))}", data_url, html, flags=re.IGNORECASE)
+            return html
 
         if msg.is_multipart():
             for part in msg.walk():
@@ -427,14 +457,77 @@ async def _async_parse_email(raw_source: bytes) -> dict:
         else:
             _walk_payload(msg)
 
+        html = html_parts[0] if html_parts else None
+        if html:
+            html = _replace_cid_urls(html)
+
         return {
             "text": "\n".join(text_parts) or None,
-            "html": html_parts[0] if html_parts else None,
+            "html": html,
             "attachments": attachments,
         }
 
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(_executor, _parse)
+
+
+async def _async_get_attachment(raw_source: bytes, index: int) -> dict | None:
+    """Return a decoded attachment part by the UI attachment index."""
+    def _parse():
+        msg = EmailParser(policy=email_default).parsebytes(raw_source)
+        attachments = []
+
+        for part in msg.walk() if msg.is_multipart() else [msg]:
+            if part.is_multipart():
+                continue
+
+            content_type = part.get_content_type()
+            disp = (part.get_content_disposition() or "").lower()
+            cid = part.get("content-id", "").strip("<>") or None
+            filename = part.get_filename()
+            if not filename:
+                name = part.get_param("name", header="content-type")
+                if name:
+                    filename = name
+            payload = part.get_payload(decode=True) or b""
+            is_attachment = disp in ("attachment", "inline") or bool(filename) or (
+                bool(cid) and content_type.startswith("image/")
+            )
+            if not is_attachment:
+                continue
+
+            current_index = len(attachments)
+            if not filename and content_type.startswith("image/"):
+                ext = content_type.split("/", 1)[1].split(";", 1)[0] or "image"
+                filename = f"inline-{current_index + 1}.{ext}"
+            attachments.append({
+                "index": current_index,
+                "filename": filename or f"attachment-{current_index + 1}",
+                "contentType": content_type,
+                "payload": payload,
+            })
+
+        for item in attachments:
+            if item["index"] == index:
+                return item
+        return None
+
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(_executor, _parse)
+
+
+async def _fetch_message_source(session: dict, folder: str, uid: int) -> tuple[str | None, bytes | None]:
+    async def _do(client):
+        select_resp = await client.select(folder)
+        _require_imap_ok(select_resp, f"SELECT {folder}")
+        fetch_resp = await client.uid("FETCH", str(uid), "(UID FLAGS INTERNALDATE BODY.PEEK[])")
+        _require_imap_ok(fetch_resp, "UID FETCH")
+        for meta, source in _iter_fetch_literals(fetch_resp):
+            if _fetch_uid(meta, uid) == uid:
+                return meta, source
+        return None, None
+
+    return await with_imap_retry(session, _do)
 
 
 def _envelope_summary(msg: Any, snippet: str = "") -> dict:
@@ -462,6 +555,135 @@ def _iso_date(date_val) -> str | None:
         return parsedate_to_datetime(date_val).isoformat()
     except Exception:
         return str(date_val)
+
+
+def _imap_lines(response) -> list[Any]:
+    """Return response lines from aioimaplib.Response or older tuple-style data."""
+    if hasattr(response, "lines"):
+        return list(response.lines or [])
+    if isinstance(response, tuple) and len(response) >= 2:
+        payload = response[1]
+        if isinstance(payload, (list, tuple)):
+            return list(payload)
+        return [payload] if payload else []
+    if isinstance(response, (list, tuple)):
+        return list(response)
+    return []
+
+
+def _imap_result(response) -> str | None:
+    if hasattr(response, "result"):
+        return str(response.result)
+    if isinstance(response, tuple) and response:
+        first = response[0]
+        if isinstance(first, bytes):
+            return first.decode("utf-8", errors="replace")
+        return str(first)
+    return None
+
+
+def _imap_text(value) -> str:
+    if isinstance(value, bytearray):
+        value = bytes(value)
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return str(value)
+
+
+def _imap_bytes(value) -> bytes:
+    if isinstance(value, bytearray):
+        return bytes(value)
+    if isinstance(value, bytes):
+        return value
+    if isinstance(value, str):
+        return value.encode()
+    return b""
+
+
+def _require_imap_ok(response, action: str):
+    result = _imap_result(response)
+    if result and result.upper() != "OK":
+        detail = "; ".join(_imap_text(line) for line in _imap_lines(response)[:2])
+        raise HTTPException(502, f"IMAP {action} failed: {detail or result}")
+
+
+def _decode_header_value(value) -> str:
+    if not value:
+        return ""
+    try:
+        return str(make_header(decode_header(str(value))))
+    except Exception:
+        return str(value)
+
+
+def _header_addresses(value) -> list[dict]:
+    result = []
+    for name, addr in getaddresses([str(value or "")]):
+        display_name = _decode_header_value(name).strip() or None
+        email_addr = (addr or "").strip() or None
+        if display_name or email_addr:
+            result.append({"name": display_name, "address": email_addr})
+    return result
+
+
+def _unquote_imap_token(value: str) -> str:
+    value = value.strip()
+    if value.upper() == "NIL":
+        return ""
+    if len(value) >= 2 and value[0] == '"' and value[-1] == '"':
+        return value[1:-1].replace(r"\\", "\\").replace(r"\"", '"')
+    return value
+
+
+def _fetch_uid(meta: str, fallback: int = 0) -> int:
+    match = re.search(r"\bUID\s+(\d+)\b", meta)
+    return int(match.group(1)) if match else fallback
+
+
+def _fetch_flags(meta: str) -> list[str]:
+    match = re.search(r"\bFLAGS\s+\(([^)]*)\)", meta)
+    if not match:
+        return []
+    return [flag for flag in match.group(1).split() if flag]
+
+
+def _iter_fetch_literals(response):
+    """Yield (FETCH metadata line, literal bytes) pairs from aioimaplib FETCH response."""
+    meta = None
+    for item in _imap_lines(response):
+        text = _imap_text(item)
+        if re.match(r"^\d+\s+FETCH\b", text, flags=re.IGNORECASE):
+            meta = text
+            continue
+
+        if meta is None:
+            continue
+
+        literal = _imap_bytes(item)
+        if not literal or literal.strip() == b")":
+            continue
+
+        yield meta, literal
+        meta = None
+
+
+def _summary_from_header_source(uid: int, meta: str, raw_source: bytes, snippet: str = "") -> dict:
+    parsed = EmailParser(policy=email_default).parsebytes(raw_source)
+    flags = _fetch_flags(meta)
+    return {
+        "uid": uid,
+        "messageId": parsed.get("Message-ID"),
+        "inReplyTo": parsed.get("In-Reply-To"),
+        "references": parsed.get("References"),
+        "subject": _decode_header_value(parsed.get("Subject")) or "(No subject)",
+        "from": _header_addresses(parsed.get("From")),
+        "to": _header_addresses(parsed.get("To")),
+        "date": _iso_date(parsed.get("Date")),
+        "flags": flags,
+        "seen": "\\Seen" in flags,
+        "flagged": "\\Flagged" in flags,
+        "snippet": snippet,
+    }
 
 
 # ─── Routes ───────────────────────────────────────────────────────────────────
@@ -495,7 +717,7 @@ async def login(request: Request, body: dict):
     smtp_host_raw = smtp_host_override or os.environ.get("SMTP_HOST", "").strip() or await _discover_mail_host(domain, "smtp")
     if ":" in smtp_host_raw and not smtp_host_raw.startswith("["):
         smtp_host, smtp_discovered_port = smtp_host_raw.rsplit(":", 1)
-        smtp_port = int(smtp_port_override or os.environ.get("SMTP_PORT", smtp_discovered_port))
+        smtp_port = int(smtp_port_override or smtp_discovered_port)
     else:
         smtp_host = smtp_host_raw
         smtp_port = int(smtp_port_override or os.environ.get("SMTP_PORT", "465"))
@@ -560,40 +782,24 @@ async def list_mailboxes(request: Request):
     session = await require_session(request)
 
     async def _do(client):
-        # List with status — aioimaplib.list() requires (reference, pattern)
-        _, folders = await client.list("", "*")
+        # Dovecot expects an explicit empty reference name.
+        list_resp = await client.list('""', "*")
+        _require_imap_ok(list_resp, "LIST")
         mailboxes = []
-        for line in folders:
+        for line in _imap_lines(list_resp):
             if not line:
                 continue
             # aioimaplib stores: b'(\\HasNoChildren) "/" "INBOX"' (no LIST prefix)
-            parts = line.split()
-            flags = []
-            delim = "/"
-            name = ""
-            in_flags = False
-            for part in parts:
-                if part.startswith(b"("):
-                    in_flags = True
-                    flags_str = part.decode()
-                    if flags_str.endswith(")"):
-                        flags_str = flags_str[1:-1]
-                        in_flags = False
-                    else:
-                        flags_str = flags_str[1:]
-                    flags.extend(flags_str.split())
-                elif in_flags:
-                    if part.endswith(b")"):
-                        flags.extend(part.decode()[:-1].split())
-                        in_flags = False
-                    else:
-                        flags.extend(part.decode().split())
-                elif part == b"\"\"":
-                    delim = "/"
-                elif part.startswith(b"\"") and not name:
-                    name = part.decode().strip('"')
-                elif not name and not part.startswith(b"\\"):
-                    name = part.decode()
+            line_text = _imap_text(line)
+            match = re.match(r"^\((?P<flags>.*?)\)\s+(?P<delim>NIL|\".*?\"|\S+)\s+(?P<name>.+)$", line_text)
+            if not match:
+                continue
+
+            flags = match.group("flags").split()
+            delim = _unquote_imap_token(match.group("delim")) or "/"
+            name = _unquote_imap_token(match.group("name"))
+            if not name:
+                continue
 
             path = name
             special_use = None
@@ -608,8 +814,12 @@ async def list_mailboxes(request: Request):
 
             # Get status
             try:
-                _, status_data = await client.status(name, "(MESSAGES UNSEEN)")
-                status_str = status_data[0].decode() if status_data else ""
+                status_resp = await client.status(name, "(MESSAGES UNSEEN)")
+                _require_imap_ok(status_resp, f"STATUS {name}")
+                status_str = next(
+                    (_imap_text(item) for item in _imap_lines(status_resp) if "MESSAGES" in _imap_text(item)),
+                    "",
+                )
                 msgs = int(re.search(r"MESSAGES\s+(\d+)", status_str).group(1)) if re.search(r"MESSAGES\s+(\d+)", status_str) else 0
                 unseen = int(re.search(r"UNSEEN\s+(\d+)", status_str).group(1)) if re.search(r"UNSEEN\s+(\d+)", status_str) else 0
             except Exception:
@@ -653,58 +863,39 @@ async def list_messages(request: Request):
     limit = int(request.query_params.get("limit", "40"))
 
     async def _do(client):
-        await client.select(folder)
+        select_resp = await client.select(folder)
+        _require_imap_ok(select_resp, f"SELECT {folder}")
 
-        # Get total message count
-        _, status_data = await client.status(folder, "(MESSAGES)")
-        total = 0
-        if status_data:
-            m = re.search(r"MESSAGES\s+(\d+)", status_data[0].decode())
-            total = int(m.group(1)) if m else 0
+        search_resp = await client.uid_search("ALL")
+        _require_imap_ok(search_resp, "UID SEARCH")
+        uids: list[str] = []
+        for item in _imap_lines(search_resp):
+            text = _imap_text(item).strip()
+            if re.fullmatch(r"[\d\s]+", text):
+                uids.extend(text.split())
 
-        if total == 0:
+        if not uids:
             return []
 
-        # Fetch last N messages with envelope + snippet
-        start_uid = max(1, total - min(limit, 100) + 1)
-        _, messages_data = await client.fetch(
-            f"{start_uid}:*",
-            "(UID ENVELOPE FLAGS INTERNALDATE BODY.PEEK[HEADER.FIELDS (SUBJECT FROM TO DATE)])",
+        uid_set = ",".join(uids[-min(limit, 100):])
+        fetch_resp = await client.uid(
+            "FETCH",
+            uid_set,
+            "(UID FLAGS INTERNALDATE BODY.PEEK[HEADER.FIELDS (SUBJECT FROM TO DATE)])",
         )
-        return messages_data
+        _require_imap_ok(fetch_resp, "UID FETCH")
+        return fetch_resp
 
     messages_data = await with_imap_retry(session, _do)
     if not messages_data:
         return JSONResponse({"messages": []})
 
     messages = []
-    for uid_str, msg_data in _chunk_messages(messages_data):
+    for meta, msg_data in _iter_fetch_literals(messages_data):
         try:
-            raw = msg_data if isinstance(msg_data, bytes) else b""
-            parsed = EmailParser(policy=email_default).parsebytes(raw)
-            subject = parsed.get("Subject", "(No subject)")
-            from_header = parsed.get("From", "")
-            to_header = parsed.get("To", "")
-            date_str = parsed.get("Date", "")
-            snippet = _clean_snippet(parsed.get_body("plain") or parsed.get_body("html") or "")
-            raw_flags = parsed.get("Flags", "").split()
-            seen = "Seen" in raw_flags or "\\Seen" in raw_flags
-            flagged = "Flagged" in raw_flags or "\\Flagged" in raw_flags
-
-            uid_match = re.search(r"UID\s+(\d+)", uid_str)
-            uid = int(uid_match.group(1)) if uid_match else 0
-
-            messages.append({
-                "uid": uid,
-                "subject": subject,
-                "from": [{"address": from_header}],
-                "to": [{"address": to_header}],
-                "date": _iso_date(date_str) if date_str else None,
-                "flags": raw_flags,
-                "seen": seen,
-                "flagged": flagged,
-                "snippet": snippet,
-            })
+            uid = _fetch_uid(meta)
+            if uid:
+                messages.append(_summary_from_header_source(uid, meta, msg_data))
         except Exception:
             pass
 
@@ -736,90 +927,195 @@ def _chunk_messages(data) -> list:
     return items
 
 
+
+@app.get("/api/thread")
+async def get_thread(request: Request):
+    """
+    Find all messages belonging to a thread across multiple folders.
+    Searches by subject (normalized) in INBOX + Sent folder, then merges.
+    Returns summaries sorted oldest→newest.
+    """
+    session = await require_session(request)
+    subject_raw = request.query_params.get("subject", "")
+    current_folder = request.query_params.get("folder", "INBOX")
+    if not subject_raw:
+        raise HTTPException(400, "subject is required")
+
+    # Normalize subject: strip Re:/Fwd: prefixes
+    norm_subject = re.sub(r"^(Re|Fwd?|Tr|Fw):\s*", "", subject_raw, flags=re.IGNORECASE).strip()
+
+    # Discover Sent folder name
+    async def _find_sent_folder(client):
+        list_resp = await client.list("", "*")
+        for item in _imap_lines(list_resp):
+            txt = _imap_text(item)
+            if "\\Sent" in txt:
+                # parse last token as folder name
+                parts = re.split(r'\s+"?\.?"?\s+', txt.strip())
+                if parts:
+                    return parts[-1].strip('"')
+        return None
+
+    sent_folder = None
+    try:
+        sent_folder = await with_imap_retry(session, _find_sent_folder)
+    except Exception:
+        pass
+
+    # Folders to search: current + Sent (deduplicated)
+    folders_to_search = [current_folder]
+    if sent_folder and sent_folder.upper() != current_folder.upper():
+        folders_to_search.append(sent_folder)
+
+    all_summaries: list[dict] = []
+
+    for folder in folders_to_search:
+        async def _search_folder(client, _folder=folder, _subj=norm_subject):
+            try:
+                sel = await client.select(_folder, readonly=True)
+                _require_imap_ok(sel, f"SELECT {_folder}")
+                # IMAP SEARCH by subject text
+                search_resp = await client.uid("SEARCH", "SUBJECT", f'"{_subj}"')
+                _require_imap_ok(search_resp, "UID SEARCH SUBJECT")
+                uids: list[str] = []
+                for item in _imap_lines(search_resp):
+                    txt = _imap_text(item).strip()
+                    if re.fullmatch(r"[\d\s]+", txt):
+                        uids.extend(txt.split())
+                if not uids:
+                    return []
+                uid_set = ",".join(uids[-50:])
+                fetch_resp = await client.uid(
+                    "FETCH", uid_set,
+                    "(UID FLAGS INTERNALDATE BODY.PEEK[HEADER.FIELDS (SUBJECT FROM TO DATE MESSAGE-ID IN-REPLY-TO REFERENCES)])"
+                )
+                _require_imap_ok(fetch_resp, "UID FETCH thread")
+                results = []
+                for meta, msg_data in _iter_fetch_literals(fetch_resp):
+                    try:
+                        uid = _fetch_uid(meta)
+                        if uid:
+                            s = _summary_from_header_source(uid, meta, msg_data)
+                            s["folder"] = _folder
+                            results.append(s)
+                    except Exception:
+                        pass
+                return results
+            except Exception:
+                return []
+
+        try:
+            msgs = await with_imap_retry(session, _search_folder)
+            all_summaries.extend(msgs)
+        except Exception:
+            pass
+
+    # Deduplicate by messageId, then by uid+folder
+    seen_ids: set[str] = set()
+    seen_uid_folder: set[tuple] = set()
+    deduped = []
+    for m in all_summaries:
+        mid = (m.get("messageId") or "").strip()
+        uf = (m["uid"], m.get("folder", ""))
+        if mid and mid in seen_ids:
+            continue
+        if uf in seen_uid_folder:
+            continue
+        if mid:
+            seen_ids.add(mid)
+        seen_uid_folder.add(uf)
+        deduped.append(m)
+
+    # Sort oldest → newest by uid (proxy for date within same server)
+    deduped.sort(key=lambda m: m["uid"])
+
+    return JSONResponse({"messages": deduped})
+
+
 @app.get("/api/messages/{uid}")
 async def get_message(request: Request, uid: int):
     session = await require_session(request)
     folder = request.query_params.get("folder", "INBOX")
 
     async def _do(client):
-        await client.select(folder)
-
-        FETCH_TIMEOUT = 60.0
-
-        # Step 1: Fetch envelope + flags (fast, no source)
-        summary = None
-        deadline = time.time() + FETCH_TIMEOUT
-
-        _, fetch_data = await asyncio.wait_for(
-            client.fetch(str(uid), "(UID ENVELOPE FLAGS INTERNALDATE)"),
-            timeout=deadline - time.time(),
-        )
-
-        for uid_str, msg_data in (list(fetch_data.items()) if isinstance(fetch_data, dict) else []):
-            flags = _flags_array(getattr(msg_data, "flags", []) or [])
-            envelope = getattr(msg_data, "envelope", None) or {}
-            summary = {
-                "uid": int(getattr(msg_data, "uid", uid)),
-                "messageId": envelope.get("message_id", None),
-                "subject": envelope.get("subject", "(No subject)") or "(No subject)",
-                "from": _addresses(envelope.get("from", [])),
-                "to": _addresses(envelope.get("to", [])),
-                "cc": _addresses(envelope.get("cc", [])),
-                "bcc": _addresses(envelope.get("bcc", [])),
-                "date": _iso_date(envelope.get("date")),
-                "flags": flags,
-                "seen": "\\Seen" in flags,
-                "flagged": "\\Flagged" in flags,
-                "snippet": "",
-                "html": None,
-                "text": None,
-                "attachments": [],
-            }
-
-            # Mark as seen
-            if "\\Seen" not in flags:
-                asyncio.create_task(client.store(str(uid), "+FLAGS", "\\Seen"))
-
-        if not summary:
-            raise HTTPException(404, "Message not found.")
-
-        # Step 2: Fetch full source with timeout
-        try:
-            deadline2 = time.time() + FETCH_TIMEOUT
-
-            async def _fetch_source():
-                _, src_data = await client.fetch(str(uid), "BODY[]")
-                if isinstance(src_data, dict):
-                    for _, v in src_data.items():
-                        if isinstance(v, bytes):
-                            return v
-                elif isinstance(src_data, (list, tuple)):
-                    for item in src_data:
-                        if isinstance(item, bytes):
-                            return item
-                return None
-
-            source = await asyncio.wait_for(_fetch_source(), timeout=deadline2 - time.time())
-
-            if source:
-                parsed = await _async_parse_email(source)
-                summary["snippet"] = _clean_snippet(parsed.get("text", ""))
-                html = parsed.get("html")
-                summary["html"] = _sanitize_html(html) if html else None
-                summary["text"] = parsed.get("text")
-                summary["attachments"] = parsed.get("attachments", [])
-
-        except asyncio.TimeoutError:
-            pass
-
-        return summary
+        select_resp = await client.select(folder)
+        _require_imap_ok(select_resp, f"SELECT {folder}")
+        fetch_resp = await client.uid("FETCH", str(uid), "(UID FLAGS INTERNALDATE BODY.PEEK[])")
+        _require_imap_ok(fetch_resp, "UID FETCH")
+        for meta, source in _iter_fetch_literals(fetch_resp):
+            if _fetch_uid(meta, uid) == uid:
+                return meta, source
+        return None, None
 
     try:
-        summary = await with_imap_retry(session, _do)
+        meta, source = await asyncio.wait_for(with_imap_retry(session, _do), timeout=60)
     except asyncio.TimeoutError:
         raise HTTPException(504, "Message fetch timed out.")
+    if not source:
+        raise HTTPException(404, "Message not found.")
+
+    async def _mark_seen(client):
+        select_resp = await client.select(folder)
+        _require_imap_ok(select_resp, f"SELECT {folder}")
+        store_resp = await client.uid("STORE", str(uid), "+FLAGS", "\\Seen")
+        _require_imap_ok(store_resp, "UID STORE")
+
+    try:
+        message = EmailParser(policy=email_default).parsebytes(source)
+        summary = _summary_from_header_source(uid, meta or "", source)
+        summary["cc"] = _header_addresses(message.get("Cc"))
+        summary["bcc"] = _header_addresses(message.get("Bcc"))
+        summary["html"] = None
+        summary["text"] = None
+        summary["attachments"] = []
+
+        parsed = await _async_parse_email(source)
+        summary["snippet"] = _clean_snippet(parsed.get("text", ""))
+        html = parsed.get("html")
+        summary["html"] = _sanitize_html(html) if html else None
+        summary["text"] = parsed.get("text")
+        summary["attachments"] = parsed.get("attachments", [])
+
+        if "\\Seen" not in summary["flags"]:
+            try:
+                await with_imap_retry(session, _mark_seen)
+            except Exception:
+                pass
+
+    except asyncio.TimeoutError:
+        raise
+    except Exception as e:
+        raise HTTPException(502, f"Message parse failed: {e}")
 
     return JSONResponse({"message": summary})
+
+
+@app.get("/api/messages/{uid}/attachments/{index}")
+async def get_attachment(request: Request, uid: int, index: int):
+    session = await require_session(request)
+    folder = request.query_params.get("folder", "INBOX")
+    download = request.query_params.get("download") == "1"
+
+    _, source = await _fetch_message_source(session, folder, uid)
+    if not source:
+        raise HTTPException(404, "Message not found.")
+
+    attachment = await _async_get_attachment(source, index)
+    if not attachment:
+        raise HTTPException(404, "Attachment not found.")
+
+    filename = attachment["filename"] or f"attachment-{index + 1}"
+    disposition = "attachment" if download else "inline"
+    safe_name = quote(filename)
+    headers = {
+        "Content-Disposition": f"{disposition}; filename*=UTF-8''{safe_name}",
+        "Cache-Control": "private, max-age=300",
+    }
+    return Response(
+        content=attachment["payload"],
+        media_type=attachment["contentType"] or "application/octet-stream",
+        headers=headers,
+    )
 
 
 @app.patch("/api/messages/{uid}/flags")
@@ -830,9 +1126,11 @@ async def update_flags(request: Request, uid: int, body: dict):
     enabled = bool(body.get("enabled", True))
 
     async def _do(client):
-        await client.select(folder)
+        select_resp = await client.select(folder)
+        _require_imap_ok(select_resp, f"SELECT {folder}")
         cmd = "+FLAGS" if enabled else "-FLAGS"
-        await client.store(str(uid), cmd, flag)
+        store_resp = await client.uid("STORE", str(uid), cmd, flag)
+        _require_imap_ok(store_resp, "UID STORE")
 
     await with_imap_retry(session, _do)
     return JSONResponse({"ok": True})
@@ -845,10 +1143,14 @@ async def move_message(request: Request, uid: int, body: dict):
     destination = body.get("destination", "Trash")
 
     async def _do(client):
-        await client.select(folder)
-        await client.copy(str(uid), destination)
-        await client.store(str(uid), "+FLAGS", "\\Deleted")
-        await client.expunge()
+        select_resp = await client.select(folder)
+        _require_imap_ok(select_resp, f"SELECT {folder}")
+        copy_resp = await client.uid("COPY", str(uid), destination)
+        _require_imap_ok(copy_resp, "UID COPY")
+        store_resp = await client.uid("STORE", str(uid), "+FLAGS", "\\Deleted")
+        _require_imap_ok(store_resp, "UID STORE")
+        expunge_resp = await client.expunge()
+        _require_imap_ok(expunge_resp, "EXPUNGE")
 
     await with_imap_retry(session, _do)
     return JSONResponse({"ok": True})
@@ -860,9 +1162,12 @@ async def delete_message(request: Request, uid: int):
     folder = request.query_params.get("folder", "INBOX")
 
     async def _do(client):
-        await client.select(folder)
-        await client.store(str(uid), "+FLAGS", "\\Deleted")
-        await client.expunge()
+        select_resp = await client.select(folder)
+        _require_imap_ok(select_resp, f"SELECT {folder}")
+        store_resp = await client.uid("STORE", str(uid), "+FLAGS", "\\Deleted")
+        _require_imap_ok(store_resp, "UID STORE")
+        expunge_resp = await client.expunge()
+        _require_imap_ok(expunge_resp, "EXPUNGE")
 
     await with_imap_retry(session, _do)
     return JSONResponse({"ok": True})
@@ -895,36 +1200,31 @@ async def send_message(request: Request, body: dict):
     from_name = body.get("fromName", "")
     reply_to = body.get("replyTo", "")
 
-    # Build raw email
-    lines = []
-    from_header = from_name and f'"{from_name}" <{email}>' or email
-    lines.append(f"From: {from_header}")
-    lines.append(f"To: {', '.join(to_recipients)}")
-    if cc_recipients:
-        lines.append(f"Cc: {', '.join(cc_recipients)}")
-    lines.append(f"Subject: {subject}")
-    if reply_to:
-        lines.append(f"Reply-To: {reply_to}")
-    lines.append("MIME-Version: 1.0")
-    if html:
-        boundary = "----=_Part_=_" + str(int(time.time() * 1000))
-        lines.append(f"Content-Type: multipart/alternative; boundary={boundary}")
-        lines.append("")
-        lines.append(f"--{boundary}")
-        lines.append("Content-Type: text/plain; charset=utf-8")
-        lines.append("")
-        lines.append(text or "")
-        lines.append(f"--{boundary}")
-        lines.append("Content-Type: text/html; charset=utf-8")
-        lines.append("")
-        lines.append(html)
-        lines.append(f"--{boundary}--")
+    # Build MIME email with proper RFC 2047/UTF-8 header encoding.
+    mime_message = EmailMessage()
+    if from_name:
+        mime_message["From"] = formataddr((str(Header(from_name, "utf-8")), email))
     else:
-        lines.append("Content-Type: text/plain; charset=utf-8")
-        lines.append("")
-        lines.append(text or "")
+        mime_message["From"] = email
+    mime_message["To"] = ", ".join(to_recipients)
+    if cc_recipients:
+        mime_message["Cc"] = ", ".join(cc_recipients)
+    mime_message["Subject"] = str(Header(subject, "utf-8"))
+    if reply_to:
+        mime_message["Reply-To"] = reply_to
 
-    raw_email = "\r\n".join(lines).encode("utf-8")
+    # Threading headers
+    in_reply_to = body.get("inReplyTo", "")
+    references = body.get("references", "")
+    if in_reply_to:
+        mime_message["In-Reply-To"] = in_reply_to
+        mime_message["References"] = (references + " " + in_reply_to).strip() if references else in_reply_to
+
+    if html:
+        mime_message.set_content(text or "", subtype="plain", charset="utf-8")
+        mime_message.add_alternative(html, subtype="html", charset="utf-8")
+    else:
+        mime_message.set_content(text or "", subtype="plain", charset="utf-8")
 
     # Send via SMTP
     domain = email.split("@")[1].lower()
@@ -932,7 +1232,7 @@ async def send_message(request: Request, body: dict):
     # Handle host:port format from discovery (e.g., "mail.domain.com:587")
     if ":" in smtp_host_raw and not smtp_host_raw.startswith("["):
         smtp_host, discovered_port = smtp_host_raw.rsplit(":", 1)
-        smtp_port = int(session.get("smtp_port") or os.environ.get("SMTP_PORT", discovered_port))
+        smtp_port = int(session.get("smtp_port") or discovered_port)
     else:
         smtp_host = smtp_host_raw
         smtp_port = int(session.get("smtp_port") or os.environ.get("SMTP_PORT", "465"))
@@ -943,20 +1243,61 @@ async def send_message(request: Request, body: dict):
     smtp = aiosmtplib.SMTP(
         hostname=smtp_host,
         port=smtp_port,
-        use_tls=smtp_secure,
+        use_tls=smtp_secure and smtp_port == 465,
+        start_tls=smtp_secure and smtp_port != 465,
         timeout=SMTP_TIMEOUT,
     )
     try:
         await smtp.connect()
         await smtp.login(email, password)
         await smtp.send_message(
-            email.message_from_bytes(raw_email),
-            from_addr=email,
-            to_addrs=to_recipients + cc_recipients + bcc_recipients,
+            mime_message,
+            sender=email,
+            recipients=to_recipients + cc_recipients + bcc_recipients,
         )
         await smtp.quit()
     except Exception as e:
         raise HTTPException(502, f"SMTP error: {e}")
+
+    # Save copy to Sent folder
+    sent_folder = body.get("sentFolder", "")
+    if not sent_folder:
+        # Auto-detect Sent folder from mailboxes
+        try:
+            async def _find_sent(client):
+                list_resp = await client.list("", "*")
+                for item in _imap_lines(list_resp):
+                    txt = _imap_text(item)
+                    if "\\Sent" in txt or re.search(r'"?Sent"?', txt, re.IGNORECASE):
+                        parts = txt.strip().split('"."')
+                        if len(parts) >= 2:
+                            return parts[-1].strip().strip('"')
+                        parts2 = txt.strip().split()
+                        if parts2:
+                            return parts2[-1].strip('"')
+                return None
+            sent_folder = await with_imap_retry(session, _find_sent) or "Sent"
+        except Exception:
+            sent_folder = "Sent"
+
+    try:
+        raw_bytes = mime_message.as_bytes()
+
+        async def _append_sent(client):
+            try:
+                await client.append(sent_folder, raw_bytes, flags=["\\Seen"])
+            except Exception:
+                # Try common alternatives
+                for alt in ["Sent Messages", "Sent Items", "INBOX.Sent"]:
+                    try:
+                        await client.append(alt, raw_bytes, flags=["\\Seen"])
+                        return
+                    except Exception:
+                        continue
+
+        await with_imap_retry(session, _append_sent)
+    except Exception:
+        pass  # Don't fail the send just because saving to Sent failed
 
     return JSONResponse({"ok": True})
 
@@ -971,7 +1312,7 @@ async def get_avatar(request: Request):
         raise HTTPException(400, "Invalid email.")
 
     gravatar_hash = hashlib.md5(email.encode()).hexdigest()
-    gravatar_url = f"https://www.gravatar.com/avatar/{gravatar_hash}?s=128&d=404"
+    gravatar_url = f"https://www.gravatar.com/avatar/{gravatar_hash}?s=128&d=identicon"
 
     # Try BIMI
     domain = email.split("@")[1].lower()
@@ -982,7 +1323,7 @@ async def get_avatar(request: Request):
         resolver.timeout = 5
         answers = resolver.resolve(f"default._bimi.{domain}", "TXT")
         for rdata in answers:
-            txt = "".join(str(v) for v in rdata.strings)
+            txt = "".join(v.decode("utf-8", errors="replace") if isinstance(v, bytes) else str(v) for v in rdata.strings)
             m = re.search(r"[;:]l\s*=\s*([^;]+)", txt, re.IGNORECASE)
             if m:
                 url = m.group(1).strip().strip('"')
