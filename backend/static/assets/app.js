@@ -209,7 +209,7 @@ const LOCALES = {
 };
 
 function getLang() {
-  return localStorage.getItem("webmail_lang") || "en";
+  return localStorage.getItem("webmail_lang") || "vi";
 }
 function setLang(lang) {
   localStorage.setItem("webmail_lang", lang);
@@ -605,8 +605,25 @@ function renderLogin() {
       style: { background: "#284f7d", color: "white" },
       onsubmit: onLogin,
     },
-      h("div", { className: "mb-8" },
+      h("div", { className: "mb-6" },
         h("div", { className: "text-4xl font-bold tracking-wider uppercase" }, "webmail"),
+      ),
+      // Language + Theme toggle row
+      h("div", { className: "flex items-center gap-2 mb-4" },
+        h("button", {
+          type: "button",
+          className: "text-xs opacity-70 hover:opacity-100 underline",
+          onclick() { setLang(getLang() === "en" ? "vi" : "en"); },
+        }, getLang() === "en" ? "🇻🇳 Tiếng Việt" : "🇬🇧 English"),
+        h("span", { className: "opacity-30" }, "|"),
+        h("button", {
+          type: "button",
+          className: "text-xs opacity-70 hover:opacity-100 underline",
+          onclick() {
+            const isDark = document.documentElement.classList.toggle("dark");
+            localStorage.setItem("theme", isDark ? "dark" : "light");
+          },
+        }, document.documentElement.classList.contains("dark") ? "☀️ " + t("lightMode") : "🌙 " + t("darkMode")),
       ),
       h("div", { className: "space-y-4" },
         h("input", { name: "email", type: "email", placeholder: t("emailPlaceholder"), required: "required", className: "w-full px-4 py-3 rounded-[3px] text-ink text-sm outline-none focus:ring-2 focus:ring-[#68b7ff]" }),

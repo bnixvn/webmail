@@ -47,8 +47,33 @@
 .dark .hover\:bg-slate-50:hover { background: #1e293b !important; }
 
 /* ── Email HTML content ── */
-.dark .email-html { color: #e2e8f0; }
-.dark .email-html a { color: #60a5fa; }
+.dark .email-html { color: #e2e8f0 !important; }
+.dark .email-html a { color: #60a5fa !important; }
+.dark .email-html * { color: inherit; }
+.dark .email-html p, .dark .email-html div, .dark .email-html span,
+.dark .email-html td, .dark .email-html th, .dark .email-html li,
+.dark .email-html h1, .dark .email-html h2, .dark .email-html h3,
+.dark .email-html h4, .dark .email-html h5, .dark .email-html h6 {
+  color: #e2e8f0 !important;
+  background-color: transparent !important;
+  border-color: #334155 !important;
+}
+.dark .email-html pre, .dark .email-html code, .dark .email-html blockquote {
+  color: #e2e8f0 !important;
+  background-color: #1e293b !important;
+  border-color: #334155 !important;
+}
+.dark .email-html img { opacity: 0.9; }
+.dark .email-html .gmail_quote,
+.dark .email-html [style*="color: black"],
+.dark .email-html [style*="color:#000"],
+.dark .email-html [style*="color: #000"] {
+  color: #e2e8f0 !important;
+}
+/* Plain text pre */
+.dark pre.whitespace-pre-wrap { color: #e2e8f0; }
+/* Dropdown menus */
+.dark .absolute.bg-white { background: #1e293b !important; border-color: #334155 !important; }
 
 /* ── Compose editor ── */
 .dark .compose-editor {
