@@ -547,6 +547,7 @@ const S = {
   mobileSidebar: false,
   selectedUids: [],
   quickReply: "",
+  quickAttachments: [],
   quickSending: false,
   expandedThreads: new Set(),
   threadMsgs: [],        // all msgs in current thread (full detail)
@@ -705,7 +706,7 @@ async function loadMessages() {
 }
 
 async function loadMessage(uid) {
-  set({ loadingMsg: true, selectedUid: uid, selectedMsg: null, quickReply: "", threadMsgs: [], loadingThread: false });
+  set({ loadingMsg: true, selectedUid: uid, selectedMsg: null, quickReply: "", quickAttachments: [], threadMsgs: [], loadingThread: false });
   try {
     const data = await api(`/api/messages/${uid}?folder=${encodeURIComponent(S.folder)}`);
     const msg = data.message;
@@ -1352,6 +1353,117 @@ function renderMessageItem(msg) {
 
 // ─── Thread View ────────────────────────────────────────────────────────────
 
+// Reusable rich quick-reply builder (toolbar + contentEditable + attachments)
+function renderQuickReply(placeholder) {
+  const wrap = h("div", { className: "qr-rich-wrap" });
+
+  // Toolbar row
+  const toolbar = h("div", { className: "flex items-center gap-0.5 px-2 py-1 border border-b-0 border-line rounded-t-lg bg-slate-50" });
+  toolbar.appendChild(toolbarBtn("bold", () => document.execCommand("bold")));
+  toolbar.appendChild(toolbarBtn("italic", () => document.execCommand("italic")));
+  toolbar.appendChild(toolbarBtn("underline", () => document.execCommand("underline")));
+  toolbar.appendChild(h("div", { className: "w-px h-4 bg-slate-300 mx-0.5" }));
+  toolbar.appendChild(toolbarBtn("list", () => document.execCommand("insertUnorderedList")));
+  toolbar.appendChild(toolbarBtn("link", () => {
+    const url = prompt(t("enterUrl"));
+    if (url) document.execCommand("createLink", false, url);
+  }));
+  // Attachment button
+  const fileInput = h("input", { type: "file", multiple: "multiple", className: "hidden" });
+  toolbar.appendChild(h("div", { className: "flex-1" }));
+  toolbar.appendChild(h("button", {
+    className: "toolbar-btn",
+    type: "button",
+    title: t("attachFiles"),
+    innerHTML: I.paperclip,
+    onclick() { fileInput.click(); },
+  }));
+  toolbar.appendChild(fileInput);
+  wrap.appendChild(toolbar);
+
+  // Editor
+  const editor = h("div", {
+    className: "qr-editor border border-line rounded-b-lg px-3 py-2 text-sm min-h-[40px] max-h-[160px] overflow-y-auto outline-none focus:ring-2 focus:ring-blue-300",
+    contenteditable: "true",
+    "data-placeholder": placeholder,
+  });
+  if (S.quickReply) editor.innerHTML = textToHtml(S.quickReply);
+  wrap.appendChild(editor);
+
+  // Attachment previews
+  const attContainer = h("div", { className: "flex flex-wrap gap-1 mt-1" });
+  function renderAttPreviews() {
+    clear(attContainer);
+    for (let i = 0; i < S.quickAttachments.length; i++) {
+      const att = S.quickAttachments[i];
+      attContainer.appendChild(h("div", { className: "inline-flex items-center gap-1 px-2 py-0.5 bg-slate-100 rounded text-xs text-slate-600" },
+        icon("paperclip"),
+        h("span", { className: "truncate max-w-[140px]" }, att.name),
+        h("button", {
+          className: "text-slate-400 hover:text-red-500 leading-none",
+          type: "button",
+          innerHTML: "&times;",
+          onclick() { S.quickAttachments.splice(i, 1); renderAttPreviews(); updateSendBtn(); },
+        }),
+      ));
+    }
+  }
+  renderAttPreviews();
+  wrap.appendChild(attContainer);
+
+  // Bottom row: send button
+  const bottomRow = h("div", { className: "flex items-center justify-end mt-2" });
+  const sendBtn = h("button", {
+    className: "qr-send-btn p-2 rounded-full bg-brand text-white hover:bg-brand-hover disabled:opacity-50",
+    disabled: "disabled",
+    onclick: sendQuickReply,
+    innerHTML: I.send,
+  });
+  bottomRow.appendChild(sendBtn);
+  wrap.appendChild(bottomRow);
+
+  // Logic
+  function updateSendBtn() {
+    const hasContent = editor.textContent.trim().length > 0;
+    sendBtn.disabled = S.quickSending || (!hasContent && S.quickAttachments.length === 0);
+  }
+
+  editor.addEventListener("input", () => {
+    S.quickReply = editor.innerHTML;
+    updateSendBtn();
+  });
+  editor.addEventListener("keydown", e => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendQuickReply(); }
+  });
+  editor.addEventListener("paste", e => {
+    // Paste as plain text to avoid messy formatting
+    if (e.clipboardData.types.includes("text/html")) {
+      // keep HTML for rich paste
+    }
+  });
+
+  fileInput.addEventListener("change", e => {
+    for (const file of e.target.files) {
+      if (file.size > 10 * 1024 * 1024) continue;
+      const reader = new FileReader();
+      reader.onload = () => {
+        S.quickAttachments.push({ name: file.name, type: file.type, size: file.size, data: reader.result });
+        renderAttPreviews();
+        updateSendBtn();
+      };
+      reader.readAsDataURL(file);
+    }
+    fileInput.value = "";
+  });
+
+  // Initial state
+  updateSendBtn();
+  // Expose editor ref for sendQuickReply
+  wrap._qrEditor = editor;
+  wrap._qrSendBtn = sendBtn;
+  return wrap;
+}
+
 function renderThreadMsgBubble(m, isLast) {
   const isCollapsed = S.collapsedMsgs.has(m.uid);
   const wrap = h("div", { className: "thread-bubble bg-white rounded-lg border border-line shadow-sm mb-3 overflow-hidden" });
@@ -1496,30 +1608,12 @@ function renderThreadView(section, threadMsgs) {
   }
 
   // Quick reply at bottom
-  const qrWrap = h("div", { className: "flex items-center gap-2 mt-2 mb-2" });
-  qrWrap.appendChild(avatarBadge(36, S.account?.email || ""));
-  const qrInput = h("input", {
-    className: "qr-input flex-1 px-3 py-2 text-sm border border-line rounded-full outline-none focus:ring-2 focus:ring-blue-300",
-    placeholder: t("replyThreadPh"),
-    value: S.quickReply,
-    disabled: S.quickSending ? "disabled" : undefined,
-  });
-  const qrSendBtn = h("button", {
-    className: "qr-send-btn p-2 rounded-full bg-brand text-white hover:bg-brand-hover disabled:opacity-50",
-    disabled: S.quickSending || !S.quickReply.trim() ? "disabled" : undefined,
-    onclick: sendQuickReply,
-    innerHTML: I.send,
-  });
-  qrInput.addEventListener("input", e => {
-    S.quickReply = e.target.value;
-    qrSendBtn.disabled = S.quickSending || !S.quickReply.trim();
-  });
-  qrInput.addEventListener("keydown", e => {
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendQuickReply(); }
-  });
-  qrWrap.appendChild(qrInput);
-  qrWrap.appendChild(qrSendBtn);
-  scroll.appendChild(qrWrap);
+  const qrOuter = h("div", { className: "mt-2 mb-2 flex items-start gap-2" });
+  qrOuter.appendChild(avatarBadge(36, S.account?.email || ""));
+  const qrInner = h("div", { className: "flex-1" });
+  qrInner.appendChild(renderQuickReply(t("replyThreadPh")));
+  qrOuter.appendChild(qrInner);
+  scroll.appendChild(qrOuter);
 
   section.appendChild(scroll);
   return section;
@@ -1699,28 +1793,12 @@ function renderMessageView() {
   content.appendChild(replyActions);
 
   // Quick reply
-  const qrWrap = h("div", { className: "flex items-center gap-2 mt-4" });
-  qrWrap.appendChild(avatarBadge(36, S.account?.email || ""));
-  const qrInput = h("input", {
-    className: "qr-input flex-1 px-3 py-2 text-sm border border-line rounded-full outline-none focus:ring-2 focus:ring-blue-300",
-    placeholder: t("quickReplyPh"),
-    value: S.quickReply,
-    disabled: S.quickSending ? "disabled" : undefined,
-  });
-  const qrSendBtn = h("button", {
-    className: "qr-send-btn p-2 rounded-full bg-brand text-white hover:bg-brand-hover disabled:opacity-50",
-    disabled: S.quickSending || !S.quickReply.trim() ? "disabled" : undefined,
-    onclick: sendQuickReply,
-    innerHTML: I.send,
-  });
-  qrInput.addEventListener("input", e => {
-    S.quickReply = e.target.value;
-    qrSendBtn.disabled = S.quickSending || !S.quickReply.trim();
-  });
-  qrInput.addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendQuickReply(); } });
-  qrWrap.appendChild(qrInput);
-  qrWrap.appendChild(qrSendBtn);
-  content.appendChild(qrWrap);
+  const qrOuter = h("div", { className: "flex items-start gap-2 mt-4" });
+  qrOuter.appendChild(avatarBadge(36, S.account?.email || ""));
+  const qrInner = h("div", { className: "flex-1" });
+  qrInner.appendChild(renderQuickReply(t("quickReplyPh")));
+  qrOuter.appendChild(qrInner);
+  content.appendChild(qrOuter);
 
   section.appendChild(content);
   return section;
@@ -1825,36 +1903,47 @@ async function batchDelete() {
 }
 
 async function sendQuickReply() {
-  if (!S.quickReply.trim() || !S.selectedMsg) return;
+  // Get content from the rich editor
+  const editor = document.querySelector(".qr-editor");
+  const sendBtn = document.querySelector(".qr-send-btn");
+  const html = editor ? editor.innerHTML : S.quickReply;
+  const text = editor ? editor.textContent : S.quickReply;
+  if (!text.trim() && S.quickAttachments.length === 0) return;
+  if (!S.selectedMsg) return;
   if (S.quickSending) return;
-  // Update DOM directly to avoid full re-render (which destroys the input and steals focus)
+
   S.quickSending = true;
-  const qrInput = document.querySelector(".qr-input");
-  const qrSendBtn = document.querySelector(".qr-send-btn");
-  if (qrInput) qrInput.disabled = true;
-  if (qrSendBtn) qrSendBtn.disabled = true;
+  if (editor) editor.setAttribute("contenteditable", "false");
+  if (sendBtn) sendBtn.disabled = true;
+
   try {
     const msg = S.selectedMsg;
-    await api("/api/messages/send", {
-      method: "POST",
-      body: JSON.stringify({
-        to: displayEmail(msg.from),
-        subject: msg.subject?.startsWith("Re:") ? msg.subject : `Re: ${msg.subject || ""}`,
-        text: S.quickReply,
-        html: textToHtml(S.quickReply),
-        inReplyTo: msg.messageId || "",
-        references: [msg.references, msg.inReplyTo, msg.messageId].filter(Boolean).join(" ").trim(),
-      }),
-    });
+    const body = {
+      to: displayEmail(msg.from),
+      subject: msg.subject?.startsWith("Re:") ? msg.subject : `Re: ${msg.subject || ""}`,
+      text: text,
+      html: html,
+      inReplyTo: msg.messageId || "",
+      references: [msg.references, msg.inReplyTo, msg.messageId].filter(Boolean).join(" ").trim(),
+    };
+    if (S.quickAttachments.length > 0) {
+      body.attachments = S.quickAttachments.map(a => ({
+        name: a.name, type: a.type,
+        data: a.data.includes(",") ? a.data.split(",")[1] : a.data,
+      }));
+    }
+    await api("/api/messages/send", { method: "POST", body: JSON.stringify(body) });
+
     S.quickSending = false;
     S.quickReply = "";
-    if (qrInput) { qrInput.value = ""; qrInput.disabled = false; }
-    if (qrSendBtn) qrSendBtn.disabled = true;
+    S.quickAttachments = [];
+    if (editor) { editor.innerHTML = ""; editor.setAttribute("contenteditable", "true"); }
+    if (sendBtn) sendBtn.disabled = true;
     showToast(t("sentOk"));
   } catch (err) {
     S.quickSending = false;
-    if (qrInput) qrInput.disabled = false;
-    if (qrSendBtn) qrSendBtn.disabled = !S.quickReply.trim();
+    if (editor) editor.setAttribute("contenteditable", "true");
+    if (sendBtn) sendBtn.disabled = false;
     set({ error: err.message });
   }
 }
@@ -2143,19 +2232,26 @@ async function sendCompose(e) {
 
   set({ sending: true });
   try {
+    const payload = {
+      to: c.to,
+      cc: c.cc,
+      bcc: c.bcc,
+      subject: c.subject,
+      text: c.text || editor?.textContent || "",
+      html: html,
+      fromName: c.fromName || S.signature?.displayName || "",
+      inReplyTo: c.inReplyTo || "",
+      references: c.references || "",
+    };
+    if (c.attachments && c.attachments.length > 0) {
+      payload.attachments = c.attachments.map(a => ({
+        name: a.name, type: a.type,
+        data: a.data.includes(",") ? a.data.split(",")[1] : a.data,
+      }));
+    }
     await api("/api/messages/send", {
       method: "POST",
-      body: JSON.stringify({
-        to: c.to,
-        cc: c.cc,
-        bcc: c.bcc,
-        subject: c.subject,
-        text: c.text || editor?.textContent || "",
-        html: html,
-        fromName: c.fromName || S.signature?.displayName || "",
-        inReplyTo: c.inReplyTo || "",
-        references: c.references || "",
-      }),
+      body: JSON.stringify(payload),
     });
     set({ sending: false, compose: null });
     showToast(t("sentOk"));

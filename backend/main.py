@@ -1226,6 +1226,28 @@ async def send_message(request: Request, body: dict):
     else:
         mime_message.set_content(text or "", subtype="plain", charset="utf-8")
 
+    # Attachments
+    attachments = body.get("attachments", [])
+    for att in attachments:
+        att_name = att.get("name", "attachment")
+        mime_type = att.get("type", "application/octet-stream")
+        data_b64 = att.get("data", "")
+        # Strip data URL prefix if present (e.g. "data:application/pdf;base64,ABC...")
+        if data_b64 and "," in data_b64[:100]:
+            data_b64 = data_b64.split(",", 1)[1]
+        if data_b64:
+            try:
+                data_bytes = base64.b64decode(data_b64)
+                main, sub = (mime_type.split("/") + ["octet-stream"])[:2]
+                mime_message.add_attachment(
+                    data_bytes,
+                    maintype=main,
+                    subtype=sub,
+                    filename=att_name,
+                )
+            except Exception:
+                pass  # Skip invalid attachments
+
     # Send via SMTP
     domain = email.split("@")[1].lower()
     smtp_host_raw = session.get("smtp_host") or os.environ.get("SMTP_HOST", "").strip() or await _discover_mail_host(domain, "smtp")
