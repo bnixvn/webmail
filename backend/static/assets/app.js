@@ -636,12 +636,12 @@ function renderLogin() {
             type: "button",
             className: `login-lang-btn ${lang === "vi" ? "active" : ""}`,
             onclick() { setLang("vi"); },
-          }, h("span", { className: "login-flag" }, "🇻🇳"), h("span", {}, "VI")),
+          }, h("span", { className: "login-flag" }, "🇻🇳")),
           h("button", {
             type: "button",
             className: `login-lang-btn ${lang === "en" ? "active" : ""}`,
             onclick() { setLang("en"); },
-          }, h("span", { className: "login-flag" }, "🇬🇧"), h("span", {}, "EN")),
+          }, h("span", { className: "login-flag" }, "🇬🇧")),
         ),
         h("button", {
           type: "button",
@@ -799,6 +799,12 @@ async function doLogout() {
     selectedUid: null, selectedMsg: null, compose: null,
     signature: null, sigOpen: false, loginError: "",
   });
+  // Reset URL hash so next render shows login at #/mail/INBOX (parseHash default)
+  if (window.history.pushState) {
+    window.history.pushState(null, "", "#");
+  } else {
+    window.location.hash = "";
+  }
 }
 
 // ─── Sidebar ─────────────────────────────────────────────────────────────────
