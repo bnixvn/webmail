@@ -2097,7 +2097,7 @@ function openCompose(opts = {}) {
     draft.text = `\n\n--- Forwarded Message ---\nFrom: ${displayName(opts.forward.from)} <${displayEmail(opts.forward.from)}>\nDate: ${fullDate(opts.forward.date)}\nSubject: ${opts.forward.subject}\n\n${opts.forward.text || ""}`;
   }
 
-  set({ compose: draft, showCc: !!draft.cc, showBcc: false });
+  set({ compose: draft, view: "compose", showCc: !!draft.cc, showBcc: false });
   goCompose();
 }
 
