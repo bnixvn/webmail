@@ -157,7 +157,100 @@
   border-top-color: #60a5fa;
 }
 
-/* ── Login form (keep dark blue, no change needed) ── */
+/* ── Login form ── */
+.dark .login-page {
+  background: linear-gradient(135deg, #0c1929 0%, #0f172a 50%, #0d1b2e 100%);
+}
+.dark .login-card {
+  background: #1e293b;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+.dark .login-topbar {
+  background: #172033;
+  border-bottom-color: #334155;
+}
+.dark .login-lang-group {
+  background: #0f172a;
+}
+.dark .login-lang-btn {
+  color: #64748b;
+}
+.dark .login-lang-btn:hover {
+  background: #1e293b;
+  color: #94a3b8;
+}
+.dark .login-lang-btn.active {
+  background: #1e3a5f;
+  color: #60a5fa;
+  box-shadow: none;
+}
+.dark .login-theme-btn {
+  background: #0f172a;
+  color: #94a3b8;
+}
+.dark .login-theme-btn:hover {
+  background: #1e293b;
+  color: #e2e8f0;
+}
+.dark .login-title {
+  color: #f1f5f9;
+}
+.dark .login-subtitle {
+  color: #64748b;
+}
+.dark .login-field label {
+  color: #94a3b8;
+}
+.dark .login-field input {
+  background: #0f172a;
+  border-color: #334155;
+  color: #e2e8f0;
+}
+.dark .login-field input:focus {
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.15);
+}
+.dark .login-field input::placeholder {
+  color: #475569;
+}
+.dark .login-remember {
+  color: #94a3b8;
+}
+.dark .login-error {
+  background: #7f1d1d;
+  color: #fca5a5;
+  border-color: #991b1b;
+}
+.dark .login-advanced {
+  border-top-color: #334155;
+}
+.dark .login-advanced-toggle {
+  color: #475569;
+}
+.dark .login-advanced-toggle:hover {
+  color: #94a3b8;
+}
+.dark .login-advanced-hint {
+  color: #475569;
+}
+.dark .login-advanced-grid input {
+  background: #0f172a;
+  border-color: #334155;
+  color: #e2e8f0;
+}
+.dark .login-advanced-grid input:focus {
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.15);
+}
+.dark .login-advanced-grid input::placeholder {
+  color: #475569;
+}
+.dark .login-bg::before {
+  background: #1e3a5f;
+}
+.dark .login-bg::after {
+  background: #1e293b;
+}
 
 /* ── Mobile panel ── */
 .dark .mobile-panel {

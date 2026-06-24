@@ -615,59 +615,93 @@ function showToast(msg, type = "success", duration = 3000) {
 // ─── Login ───────────────────────────────────────────────────────────────────
 
 function renderLogin() {
-  return h("main", { className: "flex items-center justify-center min-h-screen bg-white dark:bg-slate-900" },
-    h("form", {
-      className: "w-full max-w-[528px] mx-4 p-8 rounded-lg",
-      style: { background: "#284f7d", color: "white" },
-      onsubmit: onLogin,
-    },
-      h("div", { className: "mb-6" },
-        h("div", { className: "text-4xl font-bold tracking-wider uppercase" }, "webmail"),
-      ),
-      // Language + Theme toggle row
-      h("div", { className: "flex items-center gap-2 mb-4" },
-        h("button", {
-          type: "button",
-          className: "text-xs opacity-70 hover:opacity-100 underline",
-          onclick() { setLang(getLang() === "en" ? "vi" : "en"); },
-        }, getLang() === "en" ? "🇻🇳 Tiếng Việt" : "🇬🇧 English"),
-        h("span", { className: "opacity-30" }, "|"),
-        h("button", {
-          type: "button",
-          className: "text-xs opacity-70 hover:opacity-100 underline",
-          onclick() {
-            const isDark = document.documentElement.classList.toggle("dark");
-            localStorage.setItem("theme", isDark ? "dark" : "light");
-            render();
-          },
-        }, document.documentElement.classList.contains("dark") ? "☀️ " + t("lightMode") : "🌙 " + t("darkMode")),
-      ),
-      h("div", { className: "space-y-4" },
-        h("input", { name: "email", type: "email", placeholder: t("emailPlaceholder"), required: "required", className: "w-full px-4 py-3 rounded-[3px] text-ink text-sm outline-none focus:ring-2 focus:ring-[#68b7ff]" }),
-        h("input", { name: "password", type: "password", placeholder: t("passwordPlaceholder"), required: "required", className: "w-full px-4 py-3 rounded-[3px] text-ink text-sm outline-none focus:ring-2 focus:ring-[#68b7ff]" }),
-        h("label", { className: "flex items-center gap-2 text-sm opacity-80" },
-          h("input", { name: "remember", type: "checkbox", checked: "checked", className: "rounded" }),
-          t("staySignedIn"),
-        ),
-        S.loginError ? h("p", { className: "text-sm bg-red-500/20 border border-red-400/40 rounded px-3 py-2" }, S.loginError) : null,
-        h("button", { type: "submit", className: "w-[170px] py-3 rounded-[3px] text-sm font-medium transition-colors", style: { background: "#3d83bd" }, onmouseover(e) { e.target.style.background = "#4f9ade" }, onmouseout(e) { e.target.style.background = "#3d83bd" } }, t("signIn")),
-        // Advanced toggle (below login button)
-        h("div", { className: "pt-2" },
+  const isDark = document.documentElement.classList.contains("dark");
+  const lang = getLang();
+
+  return h("main", { className: "login-page flex items-center justify-center min-h-screen" },
+    // Background decoration
+    h("div", { className: "login-bg" }),
+    // Card
+    h("div", { className: "login-card" },
+      // Top bar: language + theme
+      h("div", { className: "login-topbar" },
+        // Language selector
+        h("div", { className: "login-lang-group" },
           h("button", {
             type: "button",
-            className: "text-xs opacity-70 hover:opacity-100 underline",
+            className: `login-lang-btn ${lang === "vi" ? "active" : ""}`,
+            onclick() { setLang("vi"); },
+          }, h("span", { className: "login-flag" }, "🇻🇳"), h("span", {}, "VI")),
+          h("button", {
+            type: "button",
+            className: `login-lang-btn ${lang === "en" ? "active" : ""}`,
+            onclick() { setLang("en"); },
+          }, h("span", { className: "login-flag" }, "🇬🇧"), h("span", {}, "EN")),
+        ),
+        // Theme toggle
+        h("button", {
+          type: "button",
+          className: "login-theme-btn",
+          onclick() {
+            const dark = document.documentElement.classList.toggle("dark");
+            localStorage.setItem("theme", dark ? "dark" : "light");
+            render();
+          },
+          title: isDark ? t("lightMode") : t("darkMode"),
+          innerHTML: isDark
+            ? `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>`
+            : `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`,
+        }),
+      ),
+      // Brand
+      h("div", { className: "login-brand" },
+        h("div", { className: "login-logo" },
+          h("svg", { width: "40", height: "40", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "stroke-width": "1.5", "stroke-linecap": "round", "stroke-linejoin": "round" },
+            h("rect", { x: "2", y: "4", width: "20", height: "16", rx: "2" }),
+            h("polyline", { points: "22,4 12,13 2,4" }),
+          ),
+        ),
+        h("h1", { className: "login-title" }, "BNIX"),
+        h("p", { className: "login-subtitle" }, "Webmail"),
+      ),
+      // Form
+      h("form", { className: "login-form", onsubmit: onLogin },
+        h("div", { className: "login-field" },
+          h("label", {}, t("emailPlaceholder")),
+          h("input", { name: "email", type: "email", placeholder: "name@domain.com", required: "required", autocomplete: "email" }),
+        ),
+        h("div", { className: "login-field" },
+          h("label", {}, t("passwordPlaceholder")),
+          h("input", { name: "password", type: "password", placeholder: "••••••••", required: "required", autocomplete: "current-password" }),
+        ),
+        h("label", { className: "login-remember" },
+          h("input", { name: "remember", type: "checkbox", checked: "checked" }),
+          h("span", {}, t("staySignedIn")),
+        ),
+        S.loginError ? h("div", { className: "login-error" }, S.loginError) : null,
+        h("button", { type: "submit", className: "login-submit" }, t("signIn")),
+        // Advanced settings
+        h("div", { className: "login-advanced" },
+          h("button", {
+            type: "button",
+            className: "login-advanced-toggle",
             onclick() {
-              const adv = document.getElementById("login-advanced");
-              adv.style.display = adv.style.display === "none" ? "block" : "none";
+              const adv = document.getElementById("login-advanced-fields");
+              adv.classList.toggle("open");
             },
-          }, t("serverSettings")),
-          h("div", { id: "login-advanced", style: { display: "none" }, className: "space-y-3 p-3 rounded bg-white/10 mt-2" },
-            h("p", { className: "text-xs opacity-70" }, t("serverSettingsHint")),
-            h("div", { className: "grid grid-cols-2 gap-3" },
-              h("input", { name: "imapHost", placeholder: t("imapHostPh"), className: "px-3 py-2 rounded-[3px] text-ink text-sm outline-none focus:ring-2 focus:ring-[#68b7ff]" }),
-              h("input", { name: "imapPort", placeholder: t("imapPortPh"), className: "px-3 py-2 rounded-[3px] text-ink text-sm outline-none focus:ring-2 focus:ring-[#68b7ff]" }),
-              h("input", { name: "smtpHost", placeholder: t("smtpHostPh"), className: "px-3 py-2 rounded-[3px] text-ink text-sm outline-none focus:ring-2 focus:ring-[#68b7ff]" }),
-              h("input", { name: "smtpPort", placeholder: t("smtpPortPh"), className: "px-3 py-2 rounded-[3px] text-ink text-sm outline-none focus:ring-2 focus:ring-[#68b7ff]" }),
+          },
+            h("span", {}, t("serverSettings")),
+            h("svg", { width: "14", height: "14", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "stroke-width": "2", "stroke-linecap": "round", "stroke-linejoin": "round" },
+              h("polyline", { points: "6 9 12 15 18 9" }),
+            ),
+          ),
+          h("div", { id: "login-advanced-fields", className: "login-advanced-fields" },
+            h("p", { className: "login-advanced-hint" }, t("serverSettingsHint")),
+            h("div", { className: "login-advanced-grid" },
+              h("input", { name: "imapHost", placeholder: t("imapHostPh") }),
+              h("input", { name: "imapPort", placeholder: t("imapPortPh") }),
+              h("input", { name: "smtpHost", placeholder: t("smtpHostPh") }),
+              h("input", { name: "smtpPort", placeholder: t("smtpPortPh") }),
             ),
           ),
         ),

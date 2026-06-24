@@ -322,3 +322,310 @@ input, textarea, [contenteditable] {
 .thread-bubble:hover {
   box-shadow: 0 2px 8px rgba(0,0,0,0.08);
 }
+
+/* ─── Login Page ────────────────────────────────────────────────────────────── */
+
+.login-page {
+  position: relative;
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #e0ecf7 0%, #f0f4f8 50%, #dde6f0 100%);
+  overflow: auto;
+  padding: 24px;
+}
+
+/* Decorative background circles */
+.login-bg {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 0;
+}
+.login-bg::before,
+.login-bg::after {
+  content: "";
+  position: absolute;
+  border-radius: 50%;
+  opacity: 0.12;
+}
+.login-bg::before {
+  width: 500px;
+  height: 500px;
+  background: #284f7d;
+  top: -120px;
+  right: -100px;
+}
+.login-bg::after {
+  width: 350px;
+  height: 350px;
+  background: #3d83bd;
+  bottom: -80px;
+  left: -60px;
+}
+
+/* Card */
+.login-card {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 400px;
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 8px 32px rgba(40, 79, 125, 0.12), 0 2px 8px rgba(0, 0, 0, 0.06);
+  padding: 0;
+  overflow: hidden;
+}
+
+/* Top bar */
+.login-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  background: #f7f9fc;
+  border-bottom: 1px solid #e8ecf1;
+}
+
+/* Language group */
+.login-lang-group {
+  display: flex;
+  gap: 4px;
+  background: #edf1f5;
+  border-radius: 8px;
+  padding: 3px;
+}
+
+.login-lang-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  line-height: 1;
+}
+.login-lang-btn:hover {
+  background: #dde3ea;
+  color: #334155;
+}
+.login-lang-btn.active {
+  background: #fff;
+  color: #284f7d;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.login-flag {
+  font-size: 16px;
+  line-height: 1;
+}
+
+/* Theme toggle */
+.login-theme-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: none;
+  border-radius: 8px;
+  background: #edf1f5;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.login-theme-btn:hover {
+  background: #dde3ea;
+  color: #334155;
+}
+
+/* Brand section */
+.login-brand {
+  text-align: center;
+  padding: 28px 20px 8px;
+}
+.login-logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #284f7d, #3d83bd);
+  color: #fff;
+  margin-bottom: 12px;
+  box-shadow: 0 4px 12px rgba(40, 79, 125, 0.3);
+}
+.login-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0;
+  letter-spacing: 2px;
+}
+.login-subtitle {
+  font-size: 13px;
+  color: #94a3b8;
+  margin: 2px 0 0;
+  font-weight: 400;
+}
+
+/* Form */
+.login-form {
+  padding: 20px 24px 28px;
+}
+
+/* Field */
+.login-field {
+  margin-bottom: 14px;
+}
+.login-field label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
+  margin-bottom: 5px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.login-field input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1.5px solid #dde3ea;
+  border-radius: 8px;
+  font-size: 14px;
+  color: #1e293b;
+  background: #fff;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  outline: none;
+}
+.login-field input:focus {
+  border-color: #284f7d;
+  box-shadow: 0 0 0 3px rgba(40, 79, 125, 0.1);
+}
+.login-field input::placeholder {
+  color: #b0bac6;
+}
+
+/* Remember checkbox */
+.login-remember {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #64748b;
+  cursor: pointer;
+  margin-bottom: 16px;
+  user-select: none;
+}
+.login-remember input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: #284f7d;
+  cursor: pointer;
+}
+
+/* Error message */
+.login-error {
+  padding: 10px 12px;
+  margin-bottom: 14px;
+  border-radius: 8px;
+  background: #fef2f2;
+  color: #dc2626;
+  font-size: 13px;
+  border: 1px solid #fecaca;
+}
+
+/* Submit button */
+.login-submit {
+  width: 100%;
+  padding: 11px;
+  border: none;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #284f7d, #3d83bd);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s ease, transform 0.1s ease;
+  box-shadow: 0 2px 8px rgba(40, 79, 125, 0.3);
+}
+.login-submit:hover {
+  opacity: 0.92;
+}
+.login-submit:active {
+  transform: scale(0.985);
+}
+
+/* Advanced settings */
+.login-advanced {
+  margin-top: 18px;
+  border-top: 1px solid #e8ecf1;
+  padding-top: 14px;
+}
+.login-advanced-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  color: #94a3b8;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0;
+  transition: color 0.15s ease;
+}
+.login-advanced-toggle:hover {
+  color: #64748b;
+}
+.login-advanced-toggle svg {
+  transition: transform 0.2s ease;
+}
+
+.login-advanced-fields {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.25s ease, opacity 0.2s ease;
+  opacity: 0;
+}
+.login-advanced-fields.open {
+  max-height: 200px;
+  opacity: 1;
+  margin-top: 10px;
+}
+.login-advanced-hint {
+  font-size: 11px;
+  color: #94a3b8;
+  margin: 0 0 10px;
+}
+.login-advanced-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.login-advanced-grid input {
+  padding: 8px 10px;
+  border: 1.5px solid #dde3ea;
+  border-radius: 7px;
+  font-size: 13px;
+  color: #1e293b;
+  background: #fff;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.login-advanced-grid input:focus {
+  border-color: #284f7d;
+  box-shadow: 0 0 0 3px rgba(40, 79, 125, 0.1);
+}
+.login-advanced-grid input::placeholder {
+  color: #b0bac6;
+  font-size: 12px;
+}
