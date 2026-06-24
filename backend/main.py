@@ -1378,13 +1378,17 @@ async def send_message(request: Request, body: dict):
     try:
         await smtp.connect()
         await smtp.login(email, password)
+        all_recipients = to_recipients + cc_recipients + bcc_recipients
+        print(f"[SMTP] Sending from {email} to {all_recipients} via {smtp_host}:{smtp_port}")
         await smtp.send_message(
             mime_message,
             sender=email,
-            recipients=to_recipients + cc_recipients + bcc_recipients,
+            recipients=all_recipients,
         )
         await smtp.quit()
+        print(f"[SMTP] Send ok — from {email} to {all_recipients}")
     except Exception as e:
+        print(f"[SMTP] Failed: {e}")
         raise HTTPException(502, f"SMTP error: {e}")
 
     # Save copy to Sent folder
@@ -1413,18 +1417,24 @@ async def send_message(request: Request, body: dict):
 
         async def _append_sent(client):
             try:
-                await client.append(_quote_imap_folder(sent_folder), raw_bytes, flags=["\\Seen"])
-            except Exception:
+                quoted = _quote_imap_folder(sent_folder)
+                await client.append(quoted, raw_bytes, flags=["\\Seen"])
+                print(f"[SENT] Saved to '{quoted}' ok — from {email}")
+            except Exception as ex:
+                print(f"[SENT] Failed to save to '{sent_folder}': {ex}")
                 # Try common alternatives
                 for alt in ["Sent Messages", "Sent Items", "INBOX.Sent"]:
                     try:
                         await client.append(alt, raw_bytes, flags=["\\Seen"])
+                        print(f"[SENT] Saved to alternate '{alt}' ok")
                         return
-                    except Exception:
+                    except Exception as alt_ex:
+                        print(f"[SENT] Alternate '{alt}' also failed: {alt_ex}")
                         continue
 
         await with_imap_retry(session, _append_sent)
-    except Exception:
+    except Exception as outer_ex:
+        print(f"[SENT] Outer exception: {outer_ex}")
         pass  # Don't fail the send just because saving to Sent failed
 
     return JSONResponse({"ok": True})
