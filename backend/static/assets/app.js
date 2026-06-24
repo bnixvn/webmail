@@ -1355,6 +1355,10 @@ function renderMessageItem(msg) {
 
 // Reusable rich quick-reply builder (toolbar + contentEditable + attachments)
 function renderQuickReply(placeholder) {
+  // Outer container (no border)
+  const outer = h("div", { className: "qr-outer" });
+
+  // Bordered wrapper: toolbar + editor
   const wrap = h("div", { className: "qr-rich-wrap" });
 
   // Toolbar row
@@ -1389,8 +1393,9 @@ function renderQuickReply(placeholder) {
   });
   if (S.quickReply) editor.innerHTML = textToHtml(S.quickReply);
   wrap.appendChild(editor);
+  outer.appendChild(wrap);
 
-  // Attachment previews
+  // Attachment previews (outside border)
   const attContainer = h("div", { className: "flex flex-wrap gap-1 mt-1" });
   function renderAttPreviews() {
     clear(attContainer);
@@ -1409,9 +1414,9 @@ function renderQuickReply(placeholder) {
     }
   }
   renderAttPreviews();
-  wrap.appendChild(attContainer);
+  outer.appendChild(attContainer);
 
-  // Bottom row: send button
+  // Send button (outside border)
   const bottomRow = h("div", { className: "flex items-center justify-end mt-2" });
   const sendBtn = h("button", {
     className: "qr-send-btn p-2 rounded-full bg-brand text-white hover:bg-brand-hover disabled:opacity-50",
@@ -1420,7 +1425,7 @@ function renderQuickReply(placeholder) {
     innerHTML: I.send,
   });
   bottomRow.appendChild(sendBtn);
-  wrap.appendChild(bottomRow);
+  outer.appendChild(bottomRow);
 
   // Logic
   function updateSendBtn() {
@@ -1459,9 +1464,9 @@ function renderQuickReply(placeholder) {
   // Initial state
   updateSendBtn();
   // Expose editor ref for sendQuickReply
-  wrap._qrEditor = editor;
-  wrap._qrSendBtn = sendBtn;
-  return wrap;
+  outer._qrEditor = editor;
+  outer._qrSendBtn = sendBtn;
+  return outer;
 }
 
 function renderThreadMsgBubble(m, isLast) {
