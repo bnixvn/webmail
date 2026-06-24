@@ -624,6 +624,8 @@ function renderLogin() {
     ),
     // Right panel: login form
     h("div", { className: "login-panel-right" },
+      // Wrapper: centers topbar + form vertically
+      h("div", { className: "login-right-wrapper" },
       // Top bar: language + theme
       h("div", { className: "login-topbar" },
         h("div", { className: "login-lang-group" },
@@ -694,6 +696,7 @@ function renderLogin() {
             ),
           ),
         ),
+      ),
       ),
     ),
   );
