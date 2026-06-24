@@ -140,14 +140,9 @@ body {
 
 /* Quick reply rich editor */
 .qr-rich-wrap {
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  overflow: hidden;
-  background: white;
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 .qr-rich-wrap:focus-within {
-  border-color: #93c5fd;
   box-shadow: 0 0 0 2px rgba(59,130,246,0.15);
 }
 .qr-rich-wrap .qr-toolbar {
@@ -159,12 +154,6 @@ body {
 }
 .qr-editor {
   outline: none;
-  min-height: 60px;
-  max-height: 200px;
-  overflow-y: auto;
-  padding: 8px 10px;
-  font-size: 14px;
-  line-height: 1.5;
 }
 .qr-editor:empty::before {
   content: attr(data-placeholder);
