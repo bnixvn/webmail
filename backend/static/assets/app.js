@@ -3117,9 +3117,11 @@ function render() {
           } else {
             mailView.appendChild(renderMessageView());
           }
-        // ── Mobile (<768px): list OR detail, not both ──────────────────────
+        // ── Mobile (<768px): list OR detail OR compose ──────────────────────
+        } else if (S.compose) {
+          mailView.appendChild(renderComposePage());
         } else if (S.selectedUid) {
-          mailView.appendChild(S.compose ? renderComposePage() : renderMessageView());
+          mailView.appendChild(renderMessageView());
         } else {
           mailView.appendChild(renderMessageList());
         }
