@@ -619,10 +619,10 @@ function renderLogin() {
   const lang = getLang();
 
   return h("main", { className: "login-page" },
-    // Left panel: brand screenshot
+    // Left panel: background + mail screenshot
     h("div", { className: "login-panel-left" },
       h("img", {
-        src: "/brand/left-bg.png",
+        src: "/brand/mail-bg.png",
         alt: "BNIX Webmail",
         className: "login-screenshot",
       }),

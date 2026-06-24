@@ -331,19 +331,25 @@ input, textarea, [contenteditable] {
   overflow: hidden;
 }
 
-/* Left panel: screenshot */
+/* Left panel: background */
 .login-panel-left {
   flex: 1;
   position: relative;
   overflow: hidden;
+  background-image: url("/brand/left-bg.png");
+  background-size: cover;
+  background-position: center center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 .login-screenshot {
   width: 100%;
   height: 100%;
   object-fit: contain;
-  object-position: center center;
   display: block;
-  padding: 5%;
+  padding: 10px;
+  border-radius: 10px;
 }
 
 /* Right panel: form */
