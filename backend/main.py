@@ -361,7 +361,8 @@ def _sanitize_html(html: str) -> str:
         css = re.sub(r"-moz-binding\s*:", "", css, flags=re.IGNORECASE)
         css = re.sub(r"url\s*\(\s*['\"]?\s*javascript:", "url(about:blank)", css, flags=re.IGNORECASE)
 
-        def _scope_selector(sels: str) -> str:
+        def _scope_selector(m) -> str:
+            sels = m.group(1) if hasattr(m, "group") else str(m)
             scoped = []
             for s in sels.split(","):
                 s = s.strip()
