@@ -209,7 +209,9 @@ async function api(path, opts = {}) {
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    throw new Error(data.detail || data.error || `HTTP ${res.status}`);
+    const err = new Error(data.detail || data.error || `HTTP ${res.status}`);
+    err.status = res.status;
+    throw err;
   }
   return res.json();
 }
@@ -349,8 +351,15 @@ async function bootstrap() {
     });
     await loadMessages();
   } catch (err) {
-    await doLogout();
-    set({ loginError: "Session expired. Please sign in again." });
+    // Only logout on actual auth errors (401/403)
+    if (err.status === 401 || err.status === 403) {
+      await doLogout();
+      set({ loginError: "Session expired. Please sign in again." });
+    } else {
+      // IMAP/other error — stay logged in, show error
+      set({ ready: true, error: "Could not load mailbox: " + (err.message || "Unknown error") });
+      await loadMessages();
+    }
   }
 }
 
