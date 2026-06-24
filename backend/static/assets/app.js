@@ -582,6 +582,10 @@ const S = {
   calSelected: null,
   calEditing: null,
   contactEditing: null,
+  msgOffset: 0,     // current pagination offset
+  msgTotal: 0,     // total messages in folder
+  msgLimit: 60,    // page size
+  loadingMore: false,
 };
 
 let _rendering = false;
@@ -757,13 +761,26 @@ async function bootstrap() {
   }
 }
 
-async function loadMessages() {
-  set({ loadingMsgs: true, error: "", selectedUids: [] });
+async function loadMessages(append = false) {
+  if (append) {
+    if (S.loadingMore) return;
+    set({ loadingMore: true, error: "" });
+  } else {
+    set({ loadingMsgs: true, error: "", selectedUids: [], messages: [], msgOffset: 0 });
+  }
   try {
-    const data = await api(`/api/messages?folder=${encodeURIComponent(S.folder)}&limit=60`);
-    set({ messages: data.messages || [], loadingMsgs: false });
+    const offset = append ? S.msgOffset + S.msgLimit : 0;
+    const data = await api(`/api/messages?folder=${encodeURIComponent(S.folder)}&limit=${S.msgLimit}&offset=${offset}`);
+    const newMessages = data.messages || [];
+    set({
+      messages: append ? [...S.messages, ...newMessages] : newMessages,
+      msgOffset: offset,
+      msgTotal: data.total || 0,
+      loadingMsgs: false,
+      loadingMore: false,
+    });
   } catch (err) {
-    set({ error: err.message, loadingMsgs: false });
+    set({ error: err.message, loadingMsgs: false, loadingMore: false });
   }
 }
 
@@ -1144,7 +1161,7 @@ function renderMessageList() {
     }));
     header.appendChild(h("div", { className: "flex-1" },
       h("span", { className: "text-sm font-medium" }, S.folder),
-      h("span", { className: "text-xs text-slate-400 ml-1" }, `${S.messages.length}`),
+      h("span", { className: "text-xs text-slate-400 ml-1" }, `${S.messages.length}${S.msgTotal > 0 ? "/" + S.msgTotal : ""}`),
     ));
     header.appendChild(h("button", {
       className: "p-1.5 rounded hover:bg-slate-100 text-slate-500 mobile-only",
@@ -1189,6 +1206,19 @@ function renderMessageList() {
   } else {
     for (const msg of filtered) {
       list.appendChild(renderMessageItem(msg));
+    }
+    // Load More button
+    const hasMore = S.messages.length < S.msgTotal;
+    if (hasMore || S.loadingMore) {
+      const loadMoreBtn = h("button", {
+        className: `w-full flex items-center justify-center gap-2 py-3 text-sm border-t border-line ${S.loadingMore ? "text-slate-400 cursor-default" : "text-brand hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer"}`,
+        disabled: S.loadingMore || undefined,
+        onclick() { if (!S.loadingMore) loadMessages(true); },
+      }, S.loadingMore
+        ? [h("span", { className: "spinner" }), "Loading more..."]
+        : `Load more (${S.msgTotal - S.messages.length} remaining)`,
+      );
+      list.appendChild(loadMoreBtn);
     }
   }
 

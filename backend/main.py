@@ -952,7 +952,8 @@ async def create_mailbox(request: Request, body: dict):
 async def list_messages(request: Request):
     session = await require_session(request)
     folder = request.query_params.get("folder", "INBOX")
-    limit = int(request.query_params.get("limit", "40"))
+    limit = min(int(request.query_params.get("limit", "40")), 100)
+    offset = max(int(request.query_params.get("offset", "0")), 0)
 
     async def _do(client):
         select_resp = await client.select(_quote_imap_folder(folder))
@@ -966,21 +967,29 @@ async def list_messages(request: Request):
             if re.fullmatch(r"[\d\s]+", text):
                 uids.extend(text.split())
 
-        if not uids:
+        total = len(uids)
+
+        if not uids or offset >= total:
             return []
 
-        uid_set = ",".join(uids[-min(limit, 100):])
+        page_uids = uids[-(offset + limit) : -offset if offset else None]
+        if not page_uids:
+            page_uids = uids[-limit:]
+
+        uid_set = ",".join(page_uids)
         fetch_resp = await client.uid(
             "FETCH",
             uid_set,
             "(UID FLAGS INTERNALDATE BODY.PEEK[HEADER.FIELDS (SUBJECT FROM TO DATE)])",
         )
         _require_imap_ok(fetch_resp, "UID FETCH")
-        return fetch_resp
+        return fetch_resp, total
 
-    messages_data = await with_imap_retry(session, _do)
-    if not messages_data:
-        return JSONResponse({"messages": []})
+    result = await with_imap_retry(session, _do)
+    if not result:
+        return JSONResponse({"messages": [], "total": 0, "offset": offset, "limit": limit})
+
+    messages_data, total = result
 
     messages = []
     for meta, msg_data in _iter_fetch_literals(messages_data):
@@ -992,7 +1001,12 @@ async def list_messages(request: Request):
             pass
 
     messages.sort(key=lambda m: m["uid"], reverse=True)
-    return JSONResponse({"messages": messages[:limit]})
+    return JSONResponse({
+        "messages": messages,
+        "total": total,
+        "offset": offset,
+        "limit": limit,
+    })
 
 
 def _chunk_messages(data) -> list:
