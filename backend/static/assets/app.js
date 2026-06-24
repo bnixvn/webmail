@@ -786,7 +786,11 @@ async function loadMessages(append = false) {
 
 async function loadMessage(uid) {
   navigate({ uid }); // update URL before loading (no full re-render)
-  set({ loadingMsg: true, selectedUid: uid, selectedMsg: null, quickReply: "", quickAttachments: [], threadMsgs: [], loadingThread: false });
+  set({
+    compose: null, showCc: false, showBcc: false,
+    loadingMsg: true, selectedUid: uid, selectedMsg: null,
+    quickReply: "", quickAttachments: [], threadMsgs: [], loadingThread: false,
+  });
   try {
     const data = await api(`/api/messages/${uid}?folder=${encodeURIComponent(S.folder)}`);
     const msg = data.message;
@@ -2256,6 +2260,7 @@ function renderComposePage() {
   }));
   footer.appendChild(fileInput);
 
+  form.appendChild(footer);
   page.appendChild(form);
   return page;
 }
@@ -2323,7 +2328,7 @@ function renderRecipientInput(field, placeholder) {
 }
 
 async function sendCompose(e) {
-  if (e) e.preventDefault();
+  if (e && e.preventDefault) e.preventDefault();
   if (S.sending) return;
 
   const c = S.compose;
