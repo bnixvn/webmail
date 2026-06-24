@@ -749,40 +749,9 @@ async function loadMessage(uid) {
     const msg = data.message;
     // Mark as read locally
     const msgs = S.messages.map(m => m.uid === uid ? { ...m, seen: true } : m);
-    set({ selectedMsg: msg, loadingMsg: false, messages: msgs, threadMsgs: [], loadingThread: false }
-    }
-
-    // Fetch full content for each summary (in parallel, max 6 at once)
-    const results = [];
-    const chunkSize = 6;
-    for (let i = 0; i < summaries.length; i += chunkSize) {
-      const chunk = summaries.slice(i, i + chunkSize);
-      const fetched = await Promise.all(chunk.map(async s => {
-        // Reuse already-fetched anchorMsg if uid+folder match
-        if (s.uid === anchorMsg.uid && (s.folder || S.folder) === S.folder) return anchorMsg;
-        try {
-          const folder = s.folder || S.folder;
-          const d = await api(`/api/messages/${s.uid}?folder=${encodeURIComponent(folder)}`);
-          return { ...d.message, folder };
-        } catch {
-          return s; // fallback to summary only
-        }
-      }));
-      results.push(...fetched);
-    }
-
-    // Auto-collapse all except the anchor (the one user clicked)
-    // Use uid+folder composite key to avoid collisions across folders
-    const anchorKey = `${anchorMsg.uid}|${S.folder}`;
-    const collapsed = new Set();
-    for (const m of results) {
-      const key = `${m.uid}|${m.folder || S.folder}`;
-      if (key !== anchorKey) collapsed.add(key);
-    }
-    set({ threadMsgs: results, loadingThread: false, collapsedMsgs: collapsed });
+    set({ selectedMsg: msg, loadingMsg: false, messages: msgs, threadMsgs: [], loadingThread: false });
   } catch (err) {
-    // Fallback: show single message
-    set({ threadMsgs: [anchorMsg], loadingThread: false });
+    set({ loadingMsg: false, error: err.message });
   }
 }
 
