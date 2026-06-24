@@ -490,25 +490,40 @@ async def list_mailboxes(request: Request):
     session = await require_session(request)
     client = await _get_imap_for_session(session)
 
-    # List with status
-    _, folders = await client.list()
+    # List with status — aioimaplib.list() requires (reference, pattern)
+    _, folders = await client.list("", "*")
     mailboxes = []
     for line in folders:
         if not line:
             continue
+        # aioimaplib stores: b'(\\HasNoChildren) "/" "INBOX"' (no LIST prefix)
         parts = line.split()
         flags = []
         delim = "/"
         name = ""
-        for i, part in enumerate(parts):
+        in_flags = False
+        for part in parts:
             if part.startswith(b"("):
-                flags_str = part.decode()[1:-1]
-                flags = flags_str.split()
+                in_flags = True
+                flags_str = part.decode()
+                # Handle single-token flags like (\HasNoChildren)
+                if flags_str.endswith(")"):
+                    flags_str = flags_str[1:-1]
+                    in_flags = False
+                else:
+                    flags_str = flags_str[1:]
+                flags.extend(flags_str.split())
+            elif in_flags:
+                if part.endswith(b")"):
+                    flags.extend(part.decode()[:-1].split())
+                    in_flags = False
+                else:
+                    flags.extend(part.decode().split())
             elif part == b"\"\"":
                 delim = "/"
-            elif part.startswith(b"\"") and i > 0:
-                name = part.decode()[1:-1]
-            elif not part.startswith(b"\\") and i > 0 and not name:
+            elif part.startswith(b"\"") and not name:
+                name = part.decode().strip('"')
+            elif not name and not part.startswith(b"\\"):
                 name = part.decode()
 
         path = name
