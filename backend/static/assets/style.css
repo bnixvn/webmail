@@ -333,7 +333,7 @@ input, textarea, [contenteditable] {
 
 /* Left panel: screenshot */
 .login-panel-left {
-  flex: 0 0 60%;
+  flex: 1;
   position: relative;
   overflow: hidden;
 }
@@ -348,12 +348,29 @@ input, textarea, [contenteditable] {
 
 /* Right panel: form */
 .login-panel-right {
-  flex: 0 0 40%;
+  flex: 0 0 350px;
   display: flex;
   flex-direction: column;
   overflow-y: auto;
   background: #fff;
   border-left: 1px solid #e8e8e8;
+}
+
+/* Center wrapper: topbar + form, vertically centered */
+.login-center {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+/* Language flag images */
+.login-flag-img {
+  width: 24px;
+  height: 16px;
+  border-radius: 3px;
+  object-fit: cover;
+  display: block;
 }
 
 /* Top bar */
@@ -587,5 +604,9 @@ input, textarea, [contenteditable] {
 @media (max-width: 768px) {
   .login-page { flex-direction: column; }
   .login-panel-left { display: none; }
-  .login-panel-right { flex: 1; width: 100%; }
+  .login-panel-right {
+    flex: 1;
+    width: 100%;
+    max-width: 100%;
+  }
 }

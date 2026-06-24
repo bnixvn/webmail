@@ -622,7 +622,7 @@ function renderLogin() {
     // Left panel: brand screenshot
     h("div", { className: "login-panel-left" },
       h("img", {
-        src: "/brand/screenshot.png",
+        src: "/brand/mail-bg.png",
         alt: "BNIX Webmail",
         className: "login-screenshot",
       }),
@@ -636,12 +636,12 @@ function renderLogin() {
             type: "button",
             className: `login-lang-btn ${lang === "vi" ? "active" : ""}`,
             onclick() { setLang("vi"); },
-          }, h("span", { className: "login-flag" }, "🇻🇳")),
+          }, h("img", { src: "/brand/vietnam.png", alt: "Tiếng Việt", className: "login-flag-img" })),
           h("button", {
             type: "button",
             className: `login-lang-btn ${lang === "en" ? "active" : ""}`,
             onclick() { setLang("en"); },
-          }, h("span", { className: "login-flag" }, "🇬🇧")),
+          }, h("img", { src: "/brand/united-states.png", alt: "English", className: "login-flag-img" })),
         ),
         h("button", {
           type: "button",
@@ -658,42 +658,44 @@ function renderLogin() {
         }),
       ),
       // Form
-      h("form", { className: "login-form", onsubmit: onLogin },
-        h("div", { className: "login-field" },
-          h("label", {}, t("emailPlaceholder")),
-          h("input", { name: "email", type: "email", placeholder: "name@domain.com", required: "required", autocomplete: "email" }),
-        ),
-        h("div", { className: "login-field" },
-          h("label", {}, t("passwordPlaceholder")),
-          h("input", { name: "password", type: "password", placeholder: "••••••••", required: "required", autocomplete: "current-password" }),
-        ),
-        h("label", { className: "login-remember" },
-          h("input", { name: "remember", type: "checkbox", checked: "checked" }),
-          h("span", {}, t("staySignedIn")),
-        ),
-        S.loginError ? h("div", { className: "login-error" }, S.loginError) : null,
-        h("button", { type: "submit", className: "login-submit" }, t("signIn")),
-        h("div", { className: "login-advanced" },
-          h("button", {
-            type: "button",
-            className: "login-advanced-toggle",
-            onclick() {
-              const adv = document.getElementById("login-advanced-fields");
-              adv.classList.toggle("open");
-            },
-          },
-            h("span", {}, t("serverSettings")),
-            h("svg", { width: "14", height: "14", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "stroke-width": "2", "stroke-linecap": "round", "stroke-linejoin": "round" },
-              h("polyline", { points: "6 9 12 15 18 9" }),
-            ),
+      h("div", { className: "login-center" },
+        h("form", { className: "login-form", onsubmit: onLogin },
+          h("div", { className: "login-field" },
+            h("label", {}, t("emailPlaceholder")),
+            h("input", { name: "email", type: "email", placeholder: "name@domain.com", required: "required", autocomplete: "email" }),
           ),
-          h("div", { id: "login-advanced-fields", className: "login-advanced-fields" },
-            h("p", { className: "login-advanced-hint" }, t("serverSettingsHint")),
-            h("div", { className: "login-advanced-grid" },
-              h("input", { name: "imapHost", placeholder: t("imapHostPh") }),
-              h("input", { name: "imapPort", placeholder: t("imapPortPh") }),
-              h("input", { name: "smtpHost", placeholder: t("smtpHostPh") }),
-              h("input", { name: "smtpPort", placeholder: t("smtpPortPh") }),
+          h("div", { className: "login-field" },
+            h("label", {}, t("passwordPlaceholder")),
+            h("input", { name: "password", type: "password", placeholder: "••••••••", required: "required", autocomplete: "current-password" }),
+          ),
+          h("label", { className: "login-remember" },
+            h("input", { name: "remember", type: "checkbox", checked: "checked" }),
+            h("span", {}, t("staySignedIn")),
+          ),
+          S.loginError ? h("div", { className: "login-error" }, S.loginError) : null,
+          h("button", { type: "submit", className: "login-submit" }, t("signIn")),
+          h("div", { className: "login-advanced" },
+            h("button", {
+              type: "button",
+              className: "login-advanced-toggle",
+              onclick() {
+                const adv = document.getElementById("login-advanced-fields");
+                adv.classList.toggle("open");
+              },
+            },
+              h("span", {}, t("serverSettings")),
+              h("svg", { width: "14", height: "14", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "stroke-width": "2", "stroke-linecap": "round", "stroke-linejoin": "round" },
+                h("polyline", { points: "6 9 12 15 18 9" }),
+              ),
+            ),
+            h("div", { id: "login-advanced-fields", className: "login-advanced-fields" },
+              h("p", { className: "login-advanced-hint" }, t("serverSettingsHint")),
+              h("div", { className: "login-advanced-grid" },
+                h("input", { name: "imapHost", placeholder: t("imapHostPh") }),
+                h("input", { name: "imapPort", placeholder: t("imapPortPh") }),
+                h("input", { name: "smtpHost", placeholder: t("smtpHostPh") }),
+                h("input", { name: "smtpPort", placeholder: t("smtpPortPh") }),
+              ),
             ),
           ),
         ),
@@ -788,12 +790,7 @@ async function doLogout() {
     selectedUid: null, selectedMsg: null, compose: null,
     signature: null, sigOpen: false, loginError: "",
   });
-  // Reset URL hash so next render shows login at #/mail/INBOX (parseHash default)
-  if (window.history.pushState) {
-    window.history.pushState(null, "", "#");
-  } else {
-    window.location.hash = "";
-  }
+  window.location.href = "https://webmail.bnix.asia/";
 }
 
 // ─── Sidebar ─────────────────────────────────────────────────────────────────

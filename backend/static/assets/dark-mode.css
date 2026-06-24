@@ -162,6 +162,9 @@
   background: #1e293b;
   border-left-color: #334155;
 }
+.dark .login-flag-img {
+  opacity: 0.85;
+}
 .dark .login-topbar {
   background: transparent;
 }
