@@ -158,16 +158,11 @@
 }
 
 /* ── Login form ── */
-.dark .login-page {
-  background: linear-gradient(135deg, #0c1929 0%, #0f172a 50%, #0d1b2e 100%);
-}
-.dark .login-card {
+.dark .login-panel-right {
   background: #1e293b;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 .dark .login-topbar {
-  background: #172033;
-  border-bottom-color: #334155;
+  background: transparent;
 }
 .dark .login-lang-group {
   background: #0f172a;
@@ -244,12 +239,6 @@
 }
 .dark .login-advanced-grid input::placeholder {
   color: #475569;
-}
-.dark .login-bg::before {
-  background: #1e3a5f;
-}
-.dark .login-bg::after {
-  background: #1e293b;
 }
 
 /* ── Mobile panel ── */

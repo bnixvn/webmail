@@ -618,14 +618,19 @@ function renderLogin() {
   const isDark = document.documentElement.classList.contains("dark");
   const lang = getLang();
 
-  return h("main", { className: "login-page flex items-center justify-center min-h-screen" },
-    // Background decoration
-    h("div", { className: "login-bg" }),
-    // Card
-    h("div", { className: "login-card" },
+  return h("main", { className: "login-page" },
+    // Left panel: brand screenshot
+    h("div", { className: "login-panel-left" },
+      h("img", {
+        src: "/brand/screenshot.png",
+        alt: "BNIX Webmail",
+        className: "login-screenshot",
+      }),
+    ),
+    // Right panel: login form
+    h("div", { className: "login-panel-right" },
       // Top bar: language + theme
       h("div", { className: "login-topbar" },
-        // Language selector
         h("div", { className: "login-lang-group" },
           h("button", {
             type: "button",
@@ -638,7 +643,6 @@ function renderLogin() {
             onclick() { setLang("en"); },
           }, h("span", { className: "login-flag" }, "🇬🇧"), h("span", {}, "EN")),
         ),
-        // Theme toggle
         h("button", {
           type: "button",
           className: "login-theme-btn",
@@ -680,7 +684,6 @@ function renderLogin() {
         ),
         S.loginError ? h("div", { className: "login-error" }, S.loginError) : null,
         h("button", { type: "submit", className: "login-submit" }, t("signIn")),
-        // Advanced settings
         h("div", { className: "login-advanced" },
           h("button", {
             type: "button",
