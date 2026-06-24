@@ -1037,7 +1037,7 @@ function renderMobileSidebar() {
       set({ mobileSidebar: false });
     },
   }, h("span", { style: { fontSize: "14px" } }, document.documentElement.classList.contains("dark") ? "☀️" : "🌙"),
-     h("span", {}, document.documentElement.classList.contains("dark") ? t("lightMode") : t("darkMode")));
+     h("span", {}, document.documentElement.classList.contains("dark") ? t("lightMode") : t("darkMode"))));
   footer.appendChild(h("button", {
     className: "folder-item w-full text-slate-500",
     onclick() { set({ sigOpen: true, mobileSidebar: false }); },
