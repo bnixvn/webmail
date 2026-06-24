@@ -124,6 +124,10 @@ copy_source() {
     --exclude '.venv' \
     --exclude '__pycache__' \
     "${SOURCE_DIR}/" "${SRC_DIR}/"
+  # Fix .git ownership so bnix-webmail user can git pull
+  if [ -d "${SRC_DIR}/.git" ]; then
+    chown -R "${APP_USER}:${APP_USER}" "${SRC_DIR}/.git"
+  fi
 }
 
 prepare_env() {
