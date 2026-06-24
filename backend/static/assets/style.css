@@ -343,11 +343,12 @@ input, textarea, [contenteditable] {
 .login-screenshot {
   border-radius: 20px;
   display: block;
+  max-width: 42rem;
 }
 
 /* Right panel: form */
 .login-panel-right {
-  flex: 0 0 500px;
+  flex: 0 0 45%;
   display: flex;
   flex-direction: column;
   overflow-y: auto;
