@@ -631,8 +631,46 @@ def _unquote_imap_token(value: str) -> str:
     if value.upper() == "NIL":
         return ""
     if len(value) >= 2 and value[0] == '"' and value[-1] == '"':
-        return value[1:-1].replace(r"\\", "\\").replace(r"\"", '"')
-    return value
+        value = value[1:-1].replace(r"\\", "\\").replace(r"\"", '"')
+    return _decode_modified_utf7(value)
+
+
+def _decode_modified_utf7(s: str) -> str:
+    """Decode IMAP Modified UTF-7 (RFC 3501) to UTF-8."""
+    if "&" not in s:
+        return s
+    result = []
+    i = 0
+    while i < len(s):
+        amp = s.find("&", i)
+        if amp == -1:
+            result.append(s[i:])
+            break
+        result.append(s[i:amp])
+        # Find the closing '-' (shift back to ASCII)
+        dash = s.find("-", amp + 1)
+        if dash == -1:
+            # Unclosed shift — treat rest as literal
+            result.append(s[amp:])
+            break
+        encoded = s[amp + 1:dash]
+        if not encoded:
+            # "&&-" or just "&-" → literal '&'
+            result.append("&")
+        else:
+            # Modified UTF-7: &...- encodes UTF-16BE as base64 (with ',' instead of '+')
+            try:
+                # ',' is used as the shift-to-base64 character in Modified UTF-7
+                b64 = encoded.replace(",", "+")
+                # Pad to multiple of 4
+                b64 += "=" * (-len(b64) % 4)
+                decoded = base64.b64decode(b64)
+                result.append(decoded.decode("utf-16-be"))
+            except Exception:
+                # Invalid base64 — keep raw
+                result.append(s[amp:dash + 1])
+        i = dash + 1
+    return "".join(result)
 
 
 def _fetch_uid(meta: str, fallback: int = 0) -> int:

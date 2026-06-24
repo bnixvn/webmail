@@ -461,10 +461,19 @@ function splitMailboxes() {
     }
   }
 
-  return {
-    mainFolders: [...mainByLabel.values()],
-    customFolders,
-  };
+  // Sort mainFolders: Inbox first, then \Special-Use order (Drafts, Sent, Archive, Spam, Trash), then custom alphabetical
+  const specialOrder = { inbox: 0, drafts: 1, sent: 2, archive: 3, spam: 4, junk: 4, trash: 5 };
+  const mainFolders = [...mainByLabel.values()].sort((a, b) => {
+    const orderA = specialOrder[a._info.special] ?? 99;
+    const orderB = specialOrder[b._info.special] ?? 99;
+    if (orderA !== orderB) return orderA - orderB;
+    return (a.name || a.path || "").localeCompare(b.name || b.path || "");
+  });
+
+  // Sort custom folders: alphabetical (respect Unicode — tiếng Việt sorted correctly)
+  customFolders.sort((a, b) => (a.name || a.path || "").localeCompare(b.name || b.path || "", "vi"));
+
+  return { mainFolders, customFolders };
 }
 
 // ─── Avatar Cache ────────────────────────────────────────────────────────────
