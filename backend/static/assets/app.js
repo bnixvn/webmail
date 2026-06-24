@@ -742,21 +742,6 @@ async function loadMessages() {
 }
 
 async function loadMessage(uid) {
-  // If this message is already in the loaded thread, just switch selection (no API call)
-  const existingInThread = S.threadMsgs.length > 1 ? S.threadMsgs.find(m => m.uid === uid) : null;
-  if (existingInThread) {
-    navigate({ uid });
-    const clickedKey = `${uid}|${existingInThread.folder || S.folder}`;
-    const collapsed = new Set();
-    for (const m of S.threadMsgs) {
-      const key = `${m.uid}|${m.folder || S.folder}`;
-      if (key !== clickedKey) collapsed.add(key);
-    }
-    const msgs = S.messages.map(m => m.uid === uid ? { ...m, seen: true } : m);
-    set({ selectedUid: uid, selectedMsg: existingInThread, messages: msgs, collapsedMsgs: collapsed });
-    return;
-  }
-
   navigate({ uid }); // update URL before loading (no full re-render)
   set({ loadingMsg: true, selectedUid: uid, selectedMsg: null, quickReply: "", quickAttachments: [], threadMsgs: [], loadingThread: false });
   try {
@@ -764,28 +749,7 @@ async function loadMessage(uid) {
     const msg = data.message;
     // Mark as read locally
     const msgs = S.messages.map(m => m.uid === uid ? { ...m, seen: true } : m);
-    set({ selectedMsg: msg, loadingMsg: false, messages: msgs });
-
-    // Load thread (all messages with same subject across folders)
-    loadThread(msg);
-  } catch (err) {
-    set({ loadingMsg: false, error: err.message });
-  }
-}
-
-async function loadThread(anchorMsg) {
-  set({ loadingThread: true });
-  try {
-    // Search cross-folder (INBOX + Sent) via backend API
-    const data = await api(
-      `/api/thread?subject=${encodeURIComponent(anchorMsg.subject)}&folder=${encodeURIComponent(S.folder)}`
-    );
-    const summaries = data.messages || [];
-
-    if (summaries.length <= 1) {
-      // Single message — no thread view needed, keep what we have
-      set({ threadMsgs: [anchorMsg], loadingThread: false });
-      return;
+    set({ selectedMsg: msg, loadingMsg: false, messages: msgs, threadMsgs: [], loadingThread: false }
     }
 
     // Fetch full content for each summary (in parallel, max 6 at once)
@@ -1223,10 +1187,8 @@ function renderMessageList() {
       h("p", { className: "mt-2 text-sm" }, t("noConversations")),
     ));
   } else {
-    // Group into threads by normalized subject
-    const threads = groupThreads(filtered);
-    for (const thread of threads) {
-      list.appendChild(renderThreadItem(thread));
+    for (const msg of filtered) {
+      list.appendChild(renderMessageItem(msg));
     }
   }
 
@@ -1783,12 +1745,6 @@ function renderMessageView() {
   const msg = S.selectedMsg;
   if (!msg) return section;
 
-  // ── Thread view: Gmail-style collapsible bubbles ────────────────────────
-  // Show when thread has been loaded and contains multiple messages
-  if (S.threadMsgs.length > 1) {
-    return renderThreadView(section, S.threadMsgs);
-  }
-
   // ── Single message view ────────────────────────────────────────────────
 
   // Header
@@ -1807,13 +1763,7 @@ function renderMessageView() {
   row1.appendChild(h("h1", { className: "flex-1 text-lg md:text-2xl font-semibold min-w-0 truncate" }, msg.subject || t("noSubject")));
 
   // Date
-  row1.appendChild(h("span", { className: "text-xs text-slate-400 whitespace-nowrap hidden md:block mt-2" }, fullDate(msg.date)));
-
-  // Desktop actions
-  const actions = h("div", { className: "hidden md:flex items-center gap-1 shrink-0" });
-  actions.appendChild(actionBtn("reply", t("reply"), () => openCompose({ replyTo: msg })));
-  actions.appendChild(actionBtn("forward", t("forward"), () => openCompose({ forward: msg })));
-  actions.appendChild(actionBtn("archive", t("archive"), () => moveMsg(folderTarget("archive"))));
+  row1.as.appendChild(actionBtn("archive", t("archive"), () => moveMsg(folderTarget("archive"))));
   actions.appendChild(actionBtn("spam", t("reportSpam"), () => moveMsg(folderTarget("spam"))));
   actions.appendChild(actionBtn("trash", t("delete"), () => deleteMsg()));
 
