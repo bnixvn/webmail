@@ -331,6 +331,17 @@ function fileSize(bytes) {
   return `${(bytes / 1024).toFixed(1)} KB`;
 }
 
+// Prevent mobile browser from scrolling to top when input/contenteditable gets focus
+function preventMobileScroll(el) {
+  el.addEventListener("focus", () => {
+    const scroller = el.closest(".overflow-y-auto");
+    if (scroller) {
+      const savedTop = scroller.scrollTop;
+      requestAnimationFrame(() => { scroller.scrollTop = savedTop; });
+    }
+  });
+}
+
 function textToHtml(text) {
   if (!text) return "";
   return esc(text).replace(/\n/g, "<br>");
@@ -1430,10 +1441,6 @@ function renderQuickReply(placeholder) {
     "data-placeholder": placeholder,
   });
   if (S.quickReply) editor.innerHTML = textToHtml(S.quickReply);
-  // Prevent mobile scroll-to-top on focus
-  editor.addEventListener("focus", () => {
-    setTimeout(() => editor.scrollIntoView({ block: "nearest", behavior: "smooth" }), 100);
-  });
   wrap.appendChild(editor);
   outer.appendChild(wrap);
 
@@ -1479,10 +1486,7 @@ function renderQuickReply(placeholder) {
     S.quickReply = editor.innerHTML;
     updateSendBtn();
   });
-  editor.addEventListener("focus", () => {
-    // Prevent mobile scroll-to-top: scroll editor into view within its container
-    setTimeout(() => editor.scrollIntoView({ behavior: "smooth", block: "nearest" }), 100);
-  });
+  preventMobileScroll(editor);
   editor.addEventListener("keydown", e => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendQuickReply(); }
   });
@@ -2112,7 +2116,7 @@ function renderCompose() {
   // Subject
   fields.appendChild(h("div", { className: "flex items-center gap-2" },
     h("span", { className: "text-sm text-slate-500 w-12" }, t("subj") + ":"),
-    (() => { const i = h("input", { className: "flex-1 px-2 py-1.5 text-sm border border-line rounded outline-none focus:ring-2 focus:ring-blue-300", value: S.compose.subject }); i.addEventListener("input", e => { S.compose.subject = e.target.value; }); i.addEventListener("focus", () => { setTimeout(() => i.scrollIntoView({ block: "nearest", behavior: "smooth" }), 100); }); return i; })(),
+    (() => { const i = h("input", { className: "flex-1 px-2 py-1.5 text-sm border border-line rounded outline-none focus:ring-2 focus:ring-blue-300", value: S.compose.subject }); i.addEventListener("input", e => { S.compose.subject = e.target.value; }); preventMobileScroll(i); return i; })(),
   ));
 
   form.appendChild(fields);
@@ -2140,10 +2144,7 @@ function renderCompose() {
   });
   if (S.compose.text) editor.innerHTML = textToHtml(S.compose.text);
   editor.addEventListener("input", () => { S.compose.html = editor.innerHTML; });
-  // Prevent mobile scroll-to-top on focus
-  editor.addEventListener("focus", () => {
-    setTimeout(() => editor.scrollIntoView({ block: "nearest", behavior: "smooth" }), 100);
-  });
+  preventMobileScroll(editor);
   form.appendChild(editor);
 
   // Attachments
@@ -2258,10 +2259,7 @@ function renderRecipientInput(field, placeholder) {
   input.addEventListener("blur", () => {
     if (input.value.trim()) addRecipientText(field, input.value);
   });
-  // Prevent mobile scroll-to-top on focus
-  input.addEventListener("focus", () => {
-    setTimeout(() => input.scrollIntoView({ block: "nearest", behavior: "smooth" }), 100);
-  });
+  preventMobileScroll(input);
 
   wrap.appendChild(input);
   return wrap;
@@ -2635,10 +2633,7 @@ function renderContactEditPanel() {
   });
   noteInput.value = c.note || "";
   noteInput.addEventListener("input", () => { S.contactEditing.note = noteInput.value; });
-  // Prevent mobile scroll-to-top on focus
-  noteInput.addEventListener("focus", () => {
-    setTimeout(() => noteInput.scrollIntoView({ block: "nearest", behavior: "smooth" }), 100);
-  });
+  preventMobileScroll(noteInput);
   form.appendChild(noteLabel);
   form.appendChild(noteInput);
 
@@ -2692,10 +2687,7 @@ function formField(label, type, value, onChange) {
     value: value || "",
   });
   input.addEventListener("input", e => onChange(e.target.value));
-  // Prevent mobile scroll-to-top on focus
-  input.addEventListener("focus", () => {
-    setTimeout(() => input.scrollIntoView({ block: "nearest", behavior: "smooth" }), 100);
-  });
+  preventMobileScroll(input);
   wrap.appendChild(input);
   return wrap;
 }
@@ -2782,10 +2774,7 @@ function renderSignatureModal() {
     "data-placeholder": t("signaturePlaceholder"),
     innerHTML: sig.html || "",
   });
-  // Prevent mobile scroll-to-top on focus
-  sigEditor.addEventListener("focus", () => {
-    setTimeout(() => sigEditor.scrollIntoView({ block: "nearest", behavior: "smooth" }), 100);
-  });
+  preventMobileScroll(sigEditor);
   editorWrap.appendChild(sigEditor);
   form.appendChild(editorWrap);
 
