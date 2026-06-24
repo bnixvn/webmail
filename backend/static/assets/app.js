@@ -51,7 +51,7 @@ const LOCALES = {
     folderInbox: "Inbox", folderDrafts: "Drafts", folderSent: "Sent",
     folderArchive: "Archive", folderSpam: "Spam", folderTrash: "Trash",
     folderNamePh: "Folder name", addFolder: "Add",
-    signature: "Signature", signOut: "Sign out",
+    signature: "Signature", signOut: "Sign out", darkMode: "Dark mode", lightMode: "Light mode",
     // Message list
     noConversations: "No conversations",
     loadingMailbox: "Loading your mailbox...",
@@ -138,7 +138,7 @@ const LOCALES = {
     folderInbox: "Hộp thư đến", folderDrafts: "Thư nháp", folderSent: "Đã gửi",
     folderArchive: "Lưu trữ", folderSpam: "Thư rác", folderTrash: "Thùng rác",
     folderNamePh: "Tên thư mục", addFolder: "Thêm",
-    signature: "Chữ ký", signOut: "Đăng xuất",
+    signature: "Chữ ký", signOut: "Đăng xuất", darkMode: "Giao diện tối", lightMode: "Giao diện sáng",
     // Danh sách thư
     noConversations: "Không có hội thoại nào",
     loadingMailbox: "Đang tải hộp thư...",
@@ -599,14 +599,14 @@ function showToast(msg, type = "success", duration = 3000) {
 // ─── Login ───────────────────────────────────────────────────────────────────
 
 function renderLogin() {
-  return h("main", { className: "flex items-center justify-center min-h-screen bg-white" },
+  return h("main", { className: "flex items-center justify-center min-h-screen bg-white dark:bg-slate-900" },
     h("form", {
       className: "w-full max-w-[528px] mx-4 p-8 rounded-lg",
       style: { background: "#284f7d", color: "white" },
       onsubmit: onLogin,
     },
-      h("div", { className: "text-center mb-8" },
-        h("div", { className: "mx-auto text-4xl font-bold tracking-wide" }, "webmail"),
+      h("div", { className: "mb-8" },
+        h("div", { className: "text-4xl font-bold tracking-wider uppercase" }, "webmail"),
       ),
       h("div", { className: "space-y-4" },
         h("input", { name: "email", type: "email", placeholder: t("emailPlaceholder"), required: "required", className: "w-full px-4 py-3 rounded-[3px] text-ink text-sm outline-none focus:ring-2 focus:ring-[#68b7ff]" }),
@@ -927,6 +927,13 @@ function renderSidebar() {
   }
   footer.appendChild(h("button", {
     className: `folder-item w-full ${collapsed ? "justify-center" : ""} text-slate-500`,
+    onclick() {
+      const isDark = document.documentElement.classList.toggle("dark");
+      localStorage.setItem("theme", isDark ? "dark" : "light");
+    },
+  }, h("span", { style: { fontSize: "14px" } }, document.documentElement.classList.contains("dark") ? "☀️" : "🌙"), !collapsed ? h("span", {}, document.documentElement.classList.contains("dark") ? t("lightMode") : t("darkMode")) : null));
+  footer.appendChild(h("button", {
+    className: `folder-item w-full ${collapsed ? "justify-center" : ""} text-slate-500`,
     onclick() { set({ sigOpen: true }); },
   }, icon("settings"), !collapsed ? h("span", {}, t("signature")) : null));
   footer.appendChild(h("button", {
@@ -1022,6 +1029,15 @@ function renderMobileSidebar() {
     onclick() { setLang(getLang() === "en" ? "vi" : "en"); set({ mobileSidebar: false }); },
   }, h("span", { style: { fontSize: "14px" } }, getLang() === "en" ? "🇻🇳" : "🇬🇧"),
      h("span", {}, getLang() === "en" ? "Tiếng Việt" : "English")));
+  footer.appendChild(h("button", {
+    className: "folder-item w-full text-slate-500",
+    onclick() {
+      const isDark = document.documentElement.classList.toggle("dark");
+      localStorage.setItem("theme", isDark ? "dark" : "light");
+      set({ mobileSidebar: false });
+    },
+  }, h("span", { style: { fontSize: "14px" } }, document.documentElement.classList.contains("dark") ? "☀️" : "🌙"),
+     h("span", {}, document.documentElement.classList.contains("dark") ? t("lightMode") : t("darkMode")));
   footer.appendChild(h("button", {
     className: "folder-item w-full text-slate-500",
     onclick() { set({ sigOpen: true, mobileSidebar: false }); },

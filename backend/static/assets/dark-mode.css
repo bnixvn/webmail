@@ -1,0 +1,148 @@
+/* BNIX Webmail - Dark Mode */
+/* Activated when <html> has class "dark" */
+
+/* ── Base ── */
+.dark body {
+  background: #0f172a;
+  color: #e2e8f0;
+}
+
+/* ── Layout panels ── */
+.dark .bg-white { background: #1e293b !important; }
+.dark .bg-panel { background: #1e293b !important; }
+.dark .bg-slate-50 { background: #1e293b !important; }
+.dark .bg-slate-100 { background: #334155 !important; }
+
+/* ── Text ── */
+.dark .text-ink { color: #e2e8f0 !important; }
+.dark .text-muted { color: #94a3b8 !important; }
+.dark .text-slate-500 { color: #94a3b8 !important; }
+.dark .text-slate-600 { color: #cbd5e1 !important; }
+.dark .text-slate-400 { color: #64748b !important; }
+.dark .text-slate-700 { color: #e2e8f0 !important; }
+.dark .text-slate-800 { color: #f1f5f9 !important; }
+.dark .text-slate-900 { color: #f8fafc !important; }
+
+/* ── Borders ── */
+.dark .border-line { border-color: #334155 !important; }
+.dark .border-slate-200 { border-color: #334155 !important; }
+.dark .border-slate-100 { border-color: #1e293b !important; }
+.dark .divide-slate-200 > * + * { border-color: #334155 !important; }
+
+/* ── Inputs ── */
+.dark input:not([type="checkbox"]):not([type="radio"]),
+.dark textarea,
+.dark select {
+  background: #1e293b !important;
+  color: #e2e8f0 !important;
+  border-color: #475569 !important;
+}
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: #64748b !important;
+}
+
+/* ── Hover states ── */
+.dark .hover\:bg-slate-100:hover { background: #334155 !important; }
+.dark .hover\:bg-slate-50:hover { background: #1e293b !important; }
+
+/* ── Email HTML content ── */
+.dark .email-html { color: #e2e8f0; }
+.dark .email-html a { color: #60a5fa; }
+
+/* ── Compose editor ── */
+.dark .compose-editor {
+  background: #1e293b;
+  color: #e2e8f0;
+}
+
+/* ── Signature editor ── */
+.dark .signature-editor {
+  background: #1e293b;
+  color: #e2e8f0;
+}
+
+/* ── Scrollbar ── */
+.dark ::-webkit-scrollbar-thumb { background: #475569; }
+.dark ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+
+/* ── Recipient chip ── */
+.dark .recipient-chip.valid { background: #064e3b; color: #6ee7b7; }
+.dark .recipient-chip.invalid { background: #7f1d1d; color: #fca5a5; }
+
+/* ── Attachment item ── */
+.dark .attachment-item {
+  border-color: #334155;
+  color: #cbd5e1;
+}
+
+/* ── Toolbar button ── */
+.dark .toolbar-btn { color: #94a3b8; }
+.dark .toolbar-btn:hover { background: #334155; }
+.dark .toolbar-btn.active { background: #1e3a5f; color: #60a5fa; }
+
+/* ── Quick reply editor ── */
+.dark .qr-editor { color: #e2e8f0; }
+.dark .qr-attach-chip { background: #334155; color: #cbd5e1; }
+
+/* ── Folder item ── */
+.dark .folder-item { color: #94a3b8; }
+.dark .folder-item:hover { background: #334155; }
+.dark .folder-item.active { background: #1e3a5f; color: #60a5fa; }
+
+/* ── Message list item ── */
+.dark .msg-item:hover { background: #1e293b; }
+.dark .msg-item.active { background: #1e3a5f; }
+
+/* ── Thread bubble ── */
+.dark .thread-bubble {
+  background: #1e293b;
+  border-color: #334155;
+}
+.dark .thread-bubble:hover {
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+
+/* ── Compose modal ── */
+.dark .compose-modal {
+  background: #1e293b;
+  border-color: #334155;
+}
+
+/* ── Calendar grid ── */
+.dark .cal-grid { background: #334155; }
+.dark .cal-grid > div { background: #1e293b; }
+.dark .cal-grid .cal-day-header {
+  background: #0f172a;
+  color: #94a3b8;
+}
+
+/* ── Toast ── */
+.dark .toast {
+  background: #334155;
+  color: #e2e8f0;
+  border-color: #475569;
+}
+
+/* ── Spinner ── */
+.dark .spinner {
+  border-color: #334155;
+  border-top-color: #60a5fa;
+}
+
+/* ── Login form (keep dark blue, no change needed) ── */
+
+/* ── Mobile panel ── */
+.dark .mobile-panel {
+  background: #1e293b;
+}
+
+/* ── Misc overrides ── */
+.dark .bg-red-50 { background: #7f1d1d !important; }
+.dark .text-red-600 { color: #fca5a5 !important; }
+.dark .text-red-500 { color: #f87171 !important; }
+.dark .bg-green-50 { background: #064e3b !important; }
+.dark .text-green-600 { color: #6ee7b7 !important; }
+.dark .bg-blue-50 { background: #1e3a5f !important; }
+.dark .text-blue-600 { color: #60a5fa !important; }
+.dark .text-blue-500 { color: #60a5fa !important; }

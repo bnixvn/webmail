@@ -9,6 +9,7 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
+      darkMode: 'class',
       theme: {
         extend: {
           colors: {
@@ -28,6 +29,14 @@
     }
   </script>
   <link rel="stylesheet" href="/assets/style.css">
+  <link rel="stylesheet" href="/assets/dark-mode.css">
+  <script>
+    // Apply dark mode immediately to avoid flash
+    if (localStorage.getItem('theme') === 'dark' ||
+        (!localStorage.getItem('theme') && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+      document.documentElement.classList.add('dark');
+    }
+  </script>
 </head>
 <body class="bg-white text-ink">
   <div id="app"></div>
