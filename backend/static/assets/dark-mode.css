@@ -160,7 +160,6 @@
 /* ── Login form ── */
 .dark .login-panel-right {
   background: #1e293b;
-  border-left-color: #334155;
   padding: 20px;
 }
 .dark .login-panel-left {
@@ -174,17 +173,16 @@
   background: transparent;
 }
 .dark .login-lang-group {
-  background: #0f172a;
+  background: transparent;
 }
 .dark .login-lang-btn {
   color: #64748b;
+  background: transparent;
 }
 .dark .login-lang-btn:hover {
-  background: #1e293b;
   color: #94a3b8;
 }
 .dark .login-lang-btn.active {
-  background: #1e3a5f;
   color: #60a5fa;
 }
 .dark .login-theme-btn {

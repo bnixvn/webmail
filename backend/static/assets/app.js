@@ -922,23 +922,28 @@ function renderSidebar() {
   const footer = h("div", { className: "border-t border-line p-2 space-y-1" });
   // Language switcher
   if (!collapsed) {
-    const langBtn = h("button", {
-      className: "folder-item w-full text-slate-400 text-xs gap-1.5",
-      onclick() {
-        const next = getLang() === "en" ? "vi" : "en";
-        setLang(next);
-      },
-    },
-      h("span", { style: { fontSize: "14px" } }, getLang() === "en" ? "🇻🇳" : "🇬🇧"),
-      h("span", {}, getLang() === "en" ? "Tiếng Việt" : "English"),
-    );
-    footer.appendChild(langBtn);
+    const langGroup = h("div", { className: "flex items-center gap-1 px-2" });
+    langGroup.appendChild(h("button", {
+      className: `p-1 rounded ${getLang() === "vi" ? "ring-2 ring-blue-400" : ""}`,
+      onclick() { setLang("vi"); },
+    }, h("img", { src: "/brand/vietnam.png", alt: "Tiếng Việt", className: "w-6 h-4 rounded-sm object-cover" })));
+    langGroup.appendChild(h("button", {
+      className: `p-1 rounded ${getLang() === "en" ? "ring-2 ring-blue-400" : ""}`,
+      onclick() { setLang("en"); },
+    }, h("img", { src: "/brand/united-states.png", alt: "English", className: "w-6 h-4 rounded-sm object-cover" })));
+    footer.appendChild(langGroup);
   } else {
+    const curLang = getLang();
     footer.appendChild(h("button", {
-      className: "folder-item w-full justify-center text-slate-400 text-xs",
-      title: getLang() === "en" ? "Tiếng Việt" : "English",
-      onclick() { setLang(getLang() === "en" ? "vi" : "en"); },
-    }, h("span", { style: { fontSize: "16px" } }, getLang() === "en" ? "🇻🇳" : "🇬🇧")));
+      className: `folder-item w-full justify-center text-slate-400 ${curLang === "vi" ? "ring-2 ring-blue-400 rounded" : ""}`,
+      title: "Tiếng Việt",
+      onclick() { setLang("vi"); },
+    }, h("img", { src: "/brand/vietnam.png", alt: "Tiếng Việt", className: "w-6 h-4 rounded-sm object-cover" })));
+    footer.appendChild(h("button", {
+      className: `folder-item w-full justify-center text-slate-400 ${curLang === "en" ? "ring-2 ring-blue-400 rounded" : ""}`,
+      title: "English",
+      onclick() { setLang("en"); },
+    }, h("img", { src: "/brand/united-states.png", alt: "English", className: "w-6 h-4 rounded-sm object-cover" })));
   }
   footer.appendChild(h("button", {
     className: `folder-item w-full ${collapsed ? "justify-center" : ""} text-slate-500`,
@@ -1045,8 +1050,8 @@ function renderMobileSidebar() {
   footer.appendChild(h("button", {
     className: "folder-item w-full text-slate-400 text-xs gap-1.5",
     onclick() { setLang(getLang() === "en" ? "vi" : "en"); set({ mobileSidebar: false }); },
-  }, h("span", { style: { fontSize: "14px" } }, getLang() === "en" ? "🇻🇳" : "🇬🇧"),
-     h("span", {}, getLang() === "en" ? "Tiếng Việt" : "English")));
+  }, h("img", { src: "/brand/vietnam.png", alt: "Tiếng Việt", className: "w-6 h-4 rounded-sm object-cover" }),
+     h("img", { src: "/brand/united-states.png", alt: "English", className: "w-6 h-4 rounded-sm object-cover" })));
   footer.appendChild(h("button", {
     className: "folder-item w-full text-slate-500",
     onclick() {
