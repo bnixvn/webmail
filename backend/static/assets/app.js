@@ -948,6 +948,7 @@ function renderSidebar() {
     onclick() {
       const isDark = document.documentElement.classList.toggle("dark");
       localStorage.setItem("theme", isDark ? "dark" : "light");
+      render();
     },
   }, h("span", { style: { fontSize: "14px" } }, document.documentElement.classList.contains("dark") ? "☀️" : "🌙"), !collapsed ? h("span", {}, document.documentElement.classList.contains("dark") ? t("lightMode") : t("darkMode")) : null));
   footer.appendChild(h("button", {
@@ -960,7 +961,7 @@ function renderSidebar() {
   }, icon("logout"), !collapsed ? h("span", { className: "truncate text-xs" }, S.account?.email || t("signOut")) : null));
   items.push(footer);
 
-  return h("aside", { className: `sidebar-panel ${w} h-full bg-white border-r border-line flex flex-col shrink-0 desktop-only` }, ...items);
+  return h("aside", { className: `sidebar-panel ${w} h-full bg-white dark:bg-slate-800 border-r border-line flex flex-col shrink-0 desktop-only` }, ...items);
 }
 
 function renderMobileSidebar() {
@@ -971,7 +972,7 @@ function renderMobileSidebar() {
     onclick() { set({ mobileSidebar: false }); },
   });
 
-  const panel = h("div", { className: "mobile-panel fixed inset-y-0 left-0 z-50 w-[min(86vw,340px)] bg-white shadow-2xl flex flex-col md:hidden" });
+  const panel = h("div", { className: "mobile-panel fixed inset-y-0 left-0 z-50 w-[min(86vw,340px)] bg-white dark:bg-slate-800 shadow-2xl flex flex-col md:hidden" });
 
   // Header
   panel.appendChild(h("div", { className: "flex items-center justify-between p-4 border-b border-line" },
@@ -1053,6 +1054,7 @@ function renderMobileSidebar() {
       const isDark = document.documentElement.classList.toggle("dark");
       localStorage.setItem("theme", isDark ? "dark" : "light");
       set({ mobileSidebar: false });
+      render();
     },
   }, h("span", { style: { fontSize: "14px" } }, document.documentElement.classList.contains("dark") ? "☀️" : "🌙"),
      h("span", {}, document.documentElement.classList.contains("dark") ? t("lightMode") : t("darkMode"))));
@@ -1093,7 +1095,7 @@ function renderMessageList() {
       )
     : S.messages;
 
-  const section = h("section", { className: "flex flex-col h-full bg-white border-r border-line shrink-0 w-full md:w-96" });
+  const section = h("section", { className: "flex flex-col h-full bg-white dark:bg-slate-800 border-r border-line shrink-0 w-full md:w-96" });
 
   // Header
   const header = h("header", { className: "flex items-center gap-2 h-14 md:h-12 px-3 border-b border-line shrink-0" });
@@ -1230,10 +1232,10 @@ function renderThreadItem(thread) {
     : messages.some(m => m.uid === S.selectedUid);
 
   const bg = active
-    ? "bg-blue-100"
+    ? "bg-blue-100 dark:bg-blue-900/40"
     : hasUnread
-    ? "bg-emerald-50 hover:bg-emerald-100"
-    : "bg-white hover:bg-slate-50";
+    ? "bg-emerald-50 dark:bg-emerald-900/20 hover:bg-emerald-100 dark:hover:bg-emerald-900/30"
+    : "bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700";
 
   if (isSingle) {
     return renderMessageItem(latest);
@@ -1310,11 +1312,11 @@ function renderThreadItem(thread) {
 
   // Expanded thread messages
   if (isExpanded) {
-    const subList = h("div", { className: "border-t border-slate-100 bg-slate-50" });
+    const subList = h("div", { className: "border-t border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-900" });
     for (const msg of messages) {
       const subActive = S.selectedUid === msg.uid;
       const subUnread = !msg.seen;
-      const subBg = subActive ? "bg-blue-100" : subUnread ? "bg-emerald-50 hover:bg-emerald-100" : "bg-white hover:bg-slate-50";
+      const subBg = subActive ? "bg-blue-100 dark:bg-blue-900/40" : subUnread ? "bg-emerald-50 dark:bg-emerald-900/20 hover:bg-emerald-100 dark:hover:bg-emerald-900/30" : "bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700";
       const subItem = h("div", {
         className: `flex items-start gap-3 pl-8 pr-3 py-2 border-b border-line cursor-pointer ${subBg}`,
         onclick() { loadMessage(msg.uid); },
@@ -1337,7 +1339,7 @@ function renderMessageItem(msg) {
   const active = S.selectedUid === msg.uid;
   const selected = S.selectedUids.includes(msg.uid);
   const unread = !msg.seen;
-  const bg = active ? "bg-blue-100" : unread ? "bg-emerald-50 hover:bg-emerald-100" : "bg-white hover:bg-slate-50";
+  const bg = active ? "bg-blue-100 dark:bg-blue-900/40" : unread ? "bg-emerald-50 dark:bg-emerald-900/20 hover:bg-emerald-100 dark:hover:bg-emerald-900/30" : "bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700";
 
   const item = h("div", {
     className: `msg-item grid gap-2 px-3 py-2.5 border-b border-line ${bg}`,
@@ -1507,7 +1509,7 @@ function renderQuickReply(placeholder) {
 
 function renderThreadMsgBubble(m, isLast) {
   const isCollapsed = S.collapsedMsgs.has(m.uid);
-  const wrap = h("div", { className: "thread-bubble bg-white rounded-lg border border-line shadow-sm mb-3 overflow-hidden" });
+  const wrap = h("div", { className: "thread-bubble bg-white dark:bg-slate-800 rounded-lg border border-line shadow-sm mb-3 overflow-hidden" });
 
   // Header row — always visible, click to toggle
   const hdr = h("div", {
@@ -1598,7 +1600,7 @@ function renderThreadView(section, threadMsgs) {
   const lastMsg = threadMsgs[threadMsgs.length - 1];
 
   // Shared header: subject + common actions
-  const header = h("header", { className: "bg-white border-b border-line px-4 py-3 shrink-0" });
+  const header = h("header", { className: "bg-white dark:bg-slate-800 border-b border-line px-4 py-3 shrink-0" });
   const row1 = h("div", { className: "flex items-start gap-3" });
   row1.appendChild(h("button", {
     className: "p-1 rounded hover:bg-slate-100 md:hidden mt-0.5",
@@ -1690,7 +1692,7 @@ function renderMessageView() {
   }
 
   // Header
-  const header = h("header", { className: "bg-white border-b border-line px-4 py-3 shrink-0" });
+  const header = h("header", { className: "bg-white dark:bg-slate-800 border-b border-line px-4 py-3 shrink-0" });
 
   // Row 1: Back + Subject + Actions
   const row1 = h("div", { className: "flex items-start gap-3" });
@@ -1735,7 +1737,7 @@ function renderMessageView() {
   }));
   if (S.moreMenu) {
     const dropdown = h("div", {
-      className: "absolute right-0 top-8 bg-white border border-line rounded-lg shadow-lg py-1 z-50 w-48",
+      className: "absolute right-0 top-8 bg-white dark:bg-slate-700 border border-line rounded-lg shadow-lg py-1 z-50 w-48",
     });
     const menuItems = [
       { label: t("replyAll"), fn() { openCompose({ replyAll: msg }); } },
@@ -1784,7 +1786,7 @@ function renderMessageView() {
 
   // Content
   const content = h("div", { className: "flex-1 overflow-y-auto p-4" });
-  const article = h("article", { className: "bg-white rounded-lg border border-line shadow-sm p-6" });
+  const article = h("article", { className: "bg-white dark:bg-slate-800 rounded-lg border border-line shadow-sm p-6" });
 
   if (msg.html) {
     const htmlDiv = h("div", { className: "email-html", innerHTML: msg.html });
@@ -1799,7 +1801,7 @@ function renderMessageView() {
     !(att.disposition === "inline" && att.cid && (att.contentType || "").startsWith("image/"))
   );
   if (visibleAttachments.length > 0) {
-    const attSection = h("div", { className: "bg-white rounded-lg border border-line shadow-sm p-4 mt-3" });
+    const attSection = h("div", { className: "bg-white dark:bg-slate-800 rounded-lg border border-line shadow-sm p-4 mt-3" });
     attSection.appendChild(h("h3", { className: "text-sm font-medium mb-2" }, t("attachments", visibleAttachments.length)));
     const attGrid = h("div", { className: "grid grid-cols-1 sm:grid-cols-2 gap-2" });
     for (const att of visibleAttachments) {
@@ -2029,7 +2031,7 @@ function renderCompose() {
   });
 
   const modal = h("div", {
-    className: `compose-modal bg-white flex flex-col ${S.composeFullPage ? "w-full h-full" : "w-full h-full md:max-w-3xl md:h-[85vh] md:rounded-xl"} shadow-2xl`,
+    className: `compose-modal bg-white dark:bg-slate-800 flex flex-col ${S.composeFullPage ? "w-full h-full" : "w-full h-full md:max-w-3xl md:h-[85vh] md:rounded-xl"} shadow-2xl`,
     onclick(e) { e.stopPropagation(); },
   });
 
@@ -2044,7 +2046,7 @@ function renderCompose() {
     onclick() { set({ composeFullPage: !S.composeFullPage }); },
   }));
   hdrActions.appendChild(h("button", {
-    className: "p-1.5 rounded hover:bg-slate-100 text-slate-500",
+    className: "p-1.5 rounded hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500",
     onclick: closeCompose, innerHTML: I.x,
   }));
   hdr.appendChild(hdrActions);
@@ -2108,7 +2110,7 @@ function renderCompose() {
   form.appendChild(fields);
 
   // Rich text toolbar
-  const toolbar = h("div", { className: "flex items-center gap-0.5 px-4 h-10 border-b border-line bg-slate-50 shrink-0 overflow-x-auto" });
+  const toolbar = h("div", { className: "flex items-center gap-0.5 px-4 h-10 border-b border-line bg-slate-50 dark:bg-slate-900 shrink-0 overflow-x-auto" });
   toolbar.appendChild(toolbarBtn("bold", () => document.execCommand("bold")));
   toolbar.appendChild(toolbarBtn("italic", () => document.execCommand("italic")));
   toolbar.appendChild(toolbarBtn("underline", () => document.execCommand("underline")));
@@ -2167,7 +2169,7 @@ function renderCompose() {
     fileInput.value = "";
   });
   footer.appendChild(h("button", {
-    className: "p-2 rounded hover:bg-slate-100 text-slate-500",
+    className: "p-2 rounded hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500",
     type: "button",
     title: t("attachFiles"),
     innerHTML: I.paperclip,
@@ -2462,7 +2464,7 @@ function renderCalendarEditModal() {
   });
 
   const modal = h("div", {
-    className: "bg-white rounded-xl shadow-2xl w-full max-w-md mx-4",
+    className: "bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-md mx-4",
     onclick(e) { e.stopPropagation(); },
   });
 
@@ -2687,7 +2689,7 @@ function renderSignatureModal() {
   });
 
   const modal = h("div", {
-    className: "bg-white rounded-xl shadow-2xl w-full max-w-2xl mx-4 max-h-[90vh] flex flex-col",
+    className: "bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-2xl mx-4 max-h-[90vh] flex flex-col",
     onclick(e) { e.stopPropagation(); },
   });
 
@@ -2817,10 +2819,10 @@ function render() {
       app.appendChild(renderLogin());
     } else if (!S.ready) {
       // Logged in but still loading data
-      app.appendChild(h("div", { className: "flex items-center justify-center min-h-screen bg-slate-50" },
+      app.appendChild(h("div", { className: "flex items-center justify-center min-h-screen bg-slate-50 dark:bg-slate-900" },
         h("div", { className: "text-center" },
           h("div", { className: "spinner mx-auto mb-4" }),
-          h("p", { className: "text-sm text-slate-500" }, t("loadingMailbox")),
+          h("p", { className: "text-sm text-slate-500 dark:text-slate-400" }, t("loadingMailbox")),
         ),
       ));
     } else {

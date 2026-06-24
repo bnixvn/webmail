@@ -45,6 +45,7 @@
 /* ── Hover states ── */
 .dark .hover\:bg-slate-100:hover { background: #334155 !important; }
 .dark .hover\:bg-slate-50:hover { background: #1e293b !important; }
+.dark .bg-slate-50 { background: #1e293b !important; }
 
 /* ── Email HTML content ── */
 .dark .email-html { color: #e2e8f0 !important; }
