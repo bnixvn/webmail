@@ -130,6 +130,15 @@ def _session_key() -> bytes:
     return hashlib.sha256(AUTH_SECRET.encode()).digest()
 
 
+def _b64_encode(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
+
+
+def _b64_decode(s: str) -> bytes:
+    s += "=" * (-len(s) % 4)  # pad to multiple of 4
+    return base64.urlsafe_b64decode(s)
+
+
 def decrypt_session(token: str | None) -> dict | None:
     if not token:
         return None
@@ -138,9 +147,9 @@ def decrypt_session(token: str | None) -> dict | None:
         from cryptography.hazmat.primitives.ciphers.aead import AESGCM
         aesgcm = AESGCM(_session_key())
         decrypted = aesgcm.decrypt(
-            base64.urlsafe_b64decode(iv_b64 + "=="),
-            base64.urlsafe_b64decode(tag_b64 + "=="),
-            base64.urlsafe_b64decode(data_b64 + "=="),
+            _b64_decode(iv_b64),
+            _b64_decode(tag_b64),
+            _b64_decode(data_b64),
         )
         session = json.loads(decrypted.decode())
         if not session.get("email") or not session.get("password") or not session.get("createdAt"):
@@ -162,13 +171,7 @@ def encrypt_session(session: dict) -> str:
     # Node.js AES-256-GCM: ciphertext = tag (16 bytes) + encrypted
     tag = encrypted[:16]
     data = encrypted[16:]
-    return (
-        base64.urlsafe_b64encode(iv).rstrip(b"=").decode()
-        + "."
-        + base64.urlsafe_b64encode(tag).rstrip(b"=").decode()
-        + "."
-        + base64.urlsafe_b64encode(data).rstrip(b"=").decode()
-    )
+    return f"{_b64_encode(iv)}.{_b64_encode(tag)}.{_b64_encode(data)}"
 
 
 # ─── Middleware: session ──────────────────────────────────────────────────────
