@@ -148,8 +148,8 @@ def decrypt_session(token: str | None) -> dict | None:
         aesgcm = AESGCM(_session_key())
         decrypted = aesgcm.decrypt(
             _b64_decode(iv_b64),
-            _b64_decode(tag_b64),
-            _b64_decode(data_b64),
+            _b64_decode(tag_b64) + _b64_decode(data_b64),
+            None,
         )
         session = json.loads(decrypted.decode())
         if not session.get("email") or not session.get("password") or not session.get("createdAt"):
