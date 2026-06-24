@@ -637,18 +637,54 @@ def _unquote_imap_token(value: str) -> str:
 
 def _quote_imap_folder(folder: str) -> str:
     """
-    Quote an IMAP folder name for use in SELECT/LIST/etc.
-    IMAP atoms may only contain 7-bit chars (ASCII).
-    Folder names with 8-bit UTF-8 chars must be double-quoted,
-    and any double-quotes or backslashes inside must be escaped.
+    Convert folder name from display UTF-8 to IMAP Modified UTF-7,
+    then quote it for use in IMAP commands.
+    IMAP requires folder names to be either ASCII atoms (7-bit)
+    or Modified UTF-7 (RFC 3501) inside double-quotes.
     """
-    # Check if quoting is needed: non-ASCII or special IMAP atoms
-    needs_quote = any(ord(c) > 127 or c in ("(", ")", "{", " ", "%", "*", '"', "\\") for c in folder)
+    # Encode UTF-8 → Modified UTF-7
+    mutf7 = _encode_modified_utf7(folder)
+    # Quote if needed
+    needs_quote = any(ord(c) > 127 or c in ("(", ")", "{", " ", "%", "*", '"', "\\") for c in mutf7)
     if not needs_quote:
-        return folder
-    # Escape backslashes and double-quotes inside
-    escaped = folder.replace("\\", "\\\\").replace('"', '\\"')
+        return mutf7
+    # Escape backslashes and double-quotes for IMAP quoted-string
+    escaped = mutf7.replace("\\", "\\\\").replace('"', '\\"')
     return f'"{escaped}"'
+
+
+def _encode_modified_utf7(s: str) -> str:
+    """
+    Encode a UTF-8 string to IMAP Modified UTF-7 (RFC 3501).
+    ASCII chars are passed through literally.
+    Non-ASCII chars are encoded as base64 of UTF-16BE, wrapped in &...-.
+    The shift char is '+', and ',' is used instead of '/' in base64.
+    """
+    import base64
+    result = []
+    i = 0
+    while i < len(s):
+        c = ord(s[i])
+        if c <= 0x7F:
+            # ASCII: pass through literally, escape '&'
+            if c == 0x26:  # '&'
+                result.append("&-")  # shift out, literal '&', shift back
+            else:
+                result.append(chr(c))
+            i += 1
+        else:
+            # Non-ASCII: collect run of non-ASCII chars
+            start = i
+            while i < len(s) and ord(s[i]) > 0x7F:
+                i += 1
+            chunk = s[start:i]
+            # Encode as UTF-16BE, then base64
+            utf16 = chunk.encode("utf-16-be")
+            b64 = base64.b64encode(utf16).decode("ascii")
+            # Modified UTF-7 uses ',' instead of '+' for the base64 shift char
+            b64 = b64.replace("+", ",")
+            result.append(f"&{b64}-")
+    return "".join(result)
 
 
 def _decode_modified_utf7(s: str) -> str:
