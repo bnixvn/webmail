@@ -2906,53 +2906,47 @@ function render() {
     } else {
       const shell = h("div", { className: "flex h-screen overflow-hidden" });
 
-      if (S.view === "compose") {
-        // Full-page compose — no sidebar, no mail list
-        const main = h("div", { className: "flex-1 flex flex-col overflow-hidden min-w-0" });
-        main.appendChild(renderComposePage());
-        shell.appendChild(main);
-      } else {
-        shell.appendChild(renderSidebar());
-        const main = h("div", { className: "flex-1 flex flex-col overflow-hidden min-w-0" });
+      shell.appendChild(renderSidebar());
 
-        if (S.view === "mail") {
-          const mailView = h("div", { className: "flex-1 flex overflow-hidden relative" });
+      const main = h("div", { className: "flex-1 flex flex-col overflow-hidden min-w-0" });
 
-          // ── Desktop (≥768px): 3-panel layout ─────────────────────────────────
-          if (window.innerWidth >= 769) {
-            mailView.appendChild(renderMessageList());
-            // Compose takes the reading-pane slot; message view shows when not composing
-            if (S.compose) {
-              mailView.appendChild(renderComposePage());
-            } else {
-              mailView.appendChild(renderMessageView());
-            }
-          // ── Mobile (<768px): list OR detail, not both ──────────────────────
-          } else if (S.selectedUid) {
-            mailView.appendChild(S.compose ? renderComposePage() : renderMessageView());
+      if (S.view === "mail") {
+        const mailView = h("div", { className: "flex-1 flex overflow-hidden relative" });
+
+        // ── Desktop (≥768px): 3-panel layout ─────────────────────────────────
+        if (window.innerWidth >= 769) {
+          mailView.appendChild(renderMessageList());
+          // Compose takes the reading-pane slot; message view shows when not composing
+          if (S.compose) {
+            mailView.appendChild(renderComposePage());
           } else {
-            mailView.appendChild(renderMessageList());
+            mailView.appendChild(renderMessageView());
           }
-
-          // Mobile FAB: compose button (bottom-right, mobile-only)
-          const fab = h("button", {
-            className: "fab-compose md:hidden",
-            title: t("compose"),
-            onclick() { openCompose(); },
-            innerHTML: I.edit,
-          });
-          mailView.appendChild(fab);
-
-          main.appendChild(mailView);
-        } else if (S.view === "contacts") {
-          main.appendChild(renderContactsView());
-        } else if (S.view === "calendar") {
-          main.appendChild(renderCalendarView());
+        // ── Mobile (<768px): list OR detail, not both ──────────────────────
+        } else if (S.selectedUid) {
+          mailView.appendChild(S.compose ? renderComposePage() : renderMessageView());
+        } else {
+          mailView.appendChild(renderMessageList());
         }
 
-        shell.appendChild(main);
-        app.appendChild(renderMobileSidebar());
+        // Mobile FAB: compose button (bottom-right, mobile-only)
+        const fab = h("button", {
+          className: "fab-compose md:hidden",
+          title: t("compose"),
+          onclick() { openCompose(); },
+          innerHTML: I.edit,
+        });
+        mailView.appendChild(fab);
+
+        main.appendChild(mailView);
+      } else if (S.view === "contacts") {
+        main.appendChild(renderContactsView());
+      } else if (S.view === "calendar") {
+        main.appendChild(renderCalendarView());
       }
+
+      shell.appendChild(main);
+      app.appendChild(renderMobileSidebar());
 
       app.appendChild(shell);
       app.appendChild(renderSignatureModal());
