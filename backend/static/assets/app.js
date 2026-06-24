@@ -2097,7 +2097,7 @@ function openCompose(opts = {}) {
     draft.text = `\n\n--- Forwarded Message ---\nFrom: ${displayName(opts.forward.from)} <${displayEmail(opts.forward.from)}>\nDate: ${fullDate(opts.forward.date)}\nSubject: ${opts.forward.subject}\n\n${opts.forward.text || ""}`;
   }
 
-  set({ compose: draft, view: "compose", showCc: !!draft.cc, showBcc: false });
+  set({ compose: draft, showCc: !!draft.cc, showBcc: false });
   goCompose();
 }
 
@@ -3012,20 +3012,11 @@ function navigate(opts = {}) {
 
 function goCompose() {
   if (window.location.hash !== "#/compose") {
-    if (window.history.pushState) {
-      window.history.pushState({ view: "compose" }, "", "#/compose");
+    if (window.history.replaceState) {
+      window.history.replaceState(null, "", "#/compose");
     } else {
       window.location.hash = "#/compose";
     }
-  }
-}
-
-function goBackFromCompose() {
-  // Restore previous view/folder from browser history stack
-  if (window.history.length > 1) {
-    window.history.back();
-  } else {
-    navigate({ view: "mail", folder: "INBOX", clearUid: true });
   }
 }
 
