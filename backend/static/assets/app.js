@@ -1235,7 +1235,7 @@ function renderThreadItem(thread) {
     ? "bg-blue-100 dark:bg-blue-900/40"
     : hasUnread
     ? "bg-emerald-50 dark:bg-emerald-900/20 hover:bg-emerald-100 dark:hover:bg-emerald-900/30"
-    : "bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700";
+    : "bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-blue-900/40";
 
   if (isSingle) {
     return renderMessageItem(latest);
@@ -1316,7 +1316,7 @@ function renderThreadItem(thread) {
     for (const msg of messages) {
       const subActive = S.selectedUid === msg.uid;
       const subUnread = !msg.seen;
-      const subBg = subActive ? "bg-blue-100 dark:bg-blue-900/40" : subUnread ? "bg-emerald-50 dark:bg-emerald-900/20 hover:bg-emerald-100 dark:hover:bg-emerald-900/30" : "bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700";
+      const subBg = subActive ? "bg-blue-100 dark:bg-blue-900/40" : subUnread ? "bg-emerald-50 dark:bg-emerald-900/20 hover:bg-emerald-100 dark:hover:bg-emerald-900/30" : "bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-blue-900/40";
       const subItem = h("div", {
         className: `flex items-start gap-3 pl-8 pr-3 py-2 border-b border-line cursor-pointer ${subBg}`,
         onclick() { loadMessage(msg.uid); },
@@ -1339,7 +1339,7 @@ function renderMessageItem(msg) {
   const active = S.selectedUid === msg.uid;
   const selected = S.selectedUids.includes(msg.uid);
   const unread = !msg.seen;
-  const bg = active ? "bg-blue-100 dark:bg-blue-900/40" : unread ? "bg-emerald-50 dark:bg-emerald-900/20 hover:bg-emerald-100 dark:hover:bg-emerald-900/30" : "bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700";
+  const bg = active ? "bg-blue-100 dark:bg-blue-900/40" : unread ? "bg-emerald-50 dark:bg-emerald-900/20 hover:bg-emerald-100 dark:hover:bg-emerald-900/30" : "bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-blue-900/40";
 
   const item = h("div", {
     className: `msg-item grid gap-2 px-3 py-2.5 border-b border-line ${bg}`,
