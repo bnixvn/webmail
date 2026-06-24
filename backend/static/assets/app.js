@@ -80,6 +80,7 @@ const LOCALES = {
     // Contacts
     newContact: "New Contact",
     noContacts: "No contacts yet",
+    sendEmail: "Send Email",
     saving: "Saving...", save: "Save", cancel: "Cancel",
     firstName: "First name", lastName: "Last name",
     phone: "Phone", organization: "Organization", title: "Title", notes: "Notes",
@@ -171,6 +172,7 @@ const LOCALES = {
     // Danh bạ
     newContact: "Thêm liên hệ",
     noContacts: "Chưa có liên hệ",
+    sendEmail: "Gửi email",
     saving: "Đang lưu...", save: "Lưu", cancel: "Huỷ",
     firstName: "Tên", lastName: "Họ",
     phone: "Điện thoại", organization: "Tổ chức", title: "Chức danh", notes: "Ghi chú",
@@ -607,6 +609,18 @@ function splitMailboxes() {
 
 const avatarCache = new Map();
 const avatarPending = new Map();
+const contactByEmail = new Map(); // email -> contact object, built from S.contacts
+
+function rebuildContactIndex() {
+  contactByEmail.clear();
+  for (const c of S.contacts) {
+    if (c.email) contactByEmail.set(c.email.toLowerCase(), c);
+  }
+}
+
+function getContactByEmail(email) {
+  return contactByEmail.get((email || "").toLowerCase().trim()) || null;
+}
 
 async function getAvatarSources(email) {
   if (!email) return null;
@@ -626,6 +640,16 @@ function avatarBadge(size, email, sources) {
   el.textContent = initialsOf(email);
 
   function applySources(sources) {
+    // vCard PHOTO takes priority over BIMI/Gravatar
+    const contact = getContactByEmail(email);
+    if (contact?.photo) {
+      const img = document.createElement("img");
+      img.src = contact.photo;
+      img.alt = "";
+      img.onload = () => { el.textContent = ""; el.appendChild(img); };
+      img.onerror = () => { img.remove(); };
+      return;
+    }
     const src = sources.bimiUrl || sources.gravatarUrl;
     if (src) {
       const img = document.createElement("img");
@@ -2034,6 +2058,22 @@ function renderMessageView() {
   senderInfo.appendChild(h("div", { className: "text-xs text-slate-500 truncate" }, `<${displayEmail(msg.from)}>`));
   senderInfo.appendChild(h("div", { className: "text-xs text-slate-400" }, `To: ${msg.to ? msg.to.map(a => a.name || a.address).join(", ") : ""}`));
   senderRow.appendChild(senderInfo);
+
+  // Add to Contacts / View in Contacts button
+  const senderEmail = displayEmail(msg.from);
+  const existingContact = getContactByEmail(senderEmail);
+  const addContactBtn = h("button", {
+    className: "shrink-0 text-xs text-blue-600 hover:underline ml-auto px-2 py-1 rounded border border-blue-200 hover:bg-blue-50",
+    onclick() {
+      if (existingContact) {
+        set({ view: "contacts", contactEditing: { ...existingContact, _editing: true } });
+        if (!S.contacts.length) loadContacts();
+      } else {
+        set({ contactEditing: { fn: displayName(msg.from), email: senderEmail, phone: "", organization: "", title: "", note: "" } });
+      }
+    },
+  }, existingContact ? "View in Contacts" : "Add to Contacts");
+  senderRow.appendChild(addContactBtn);
   header.appendChild(senderRow);
   section.appendChild(header);
 
@@ -2271,7 +2311,7 @@ async function sendQuickReply() {
 function openCompose(opts = {}) {
   const orig = opts.replyTo || opts.replyAll || opts.forward || null;
   const draft = {
-    to: opts.replyTo ? displayEmail(opts.replyTo.from) : opts.replyAll ? [displayEmail(opts.replyAll.from), ...(opts.replyAll.to || []).map(a => a.address)].filter(Boolean).join(", ") : "",
+    to: opts.composeTo || (opts.replyTo ? displayEmail(opts.replyTo.from) : opts.replyAll ? [displayEmail(opts.replyAll.from), ...(opts.replyAll.to || []).map(a => a.address)].filter(Boolean).join(", ") : ""),
     cc: opts.replyAll ? (opts.replyAll.cc || []).map(a => a.address).filter(Boolean).join(", ") : "",
     bcc: "",
     subject: opts.replyTo || opts.replyAll ? `${(opts.replyTo || opts.replyAll).subject?.startsWith("Re:") ? "" : "Re: "}${(opts.replyTo || opts.replyAll).subject || ""}` : opts.forward ? `Fwd: ${opts.forward.subject || ""}` : "",
@@ -2494,17 +2534,98 @@ function renderRecipientInput(field, placeholder) {
     autocomplete: "off",
   });
 
+  // Contact suggestion dropdown
+  const ddId = `rcmd-${field}-${Date.now()}`;
+  const dd = h("div", {
+    id: ddId,
+    className: "contact-suggestions absolute z-50 bg-white dark:bg-slate-800 border border-line rounded-lg shadow-lg overflow-hidden hidden",
+    style: { minWidth: "280px", maxHeight: "240px", overflowY: "auto" },
+  });
+
+  let activeIdx = -1;
+
+  function getSuggestions(q) {
+    if (!q || q.length < 1) return [];
+    const lo = q.toLowerCase();
+    return S.contacts.filter(c => {
+      const fn = (c.fn || "").toLowerCase();
+      const em = (c.email || "").toLowerCase();
+      return fn.includes(lo) || em.includes(lo);
+    }).slice(0, 6);
+  }
+
+  function renderSuggestions(suggestions, query) {
+    clear(dd);
+    dd.classList.add("hidden");
+    activeIdx = -1;
+    if (!suggestions.length) return;
+    dd.classList.remove("hidden");
+    suggestions.forEach((c, idx) => {
+      const row = h("div", {
+        className: "contact-suggestion-row flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-blue-50 text-sm",
+        "data-idx": idx,
+        onclick() {
+          addRecipientText(field, `${c.fn ? c.fn + " <" + c.email + ">" : c.email}`);
+          input.value = "";
+          clear(dd);
+          dd.classList.add("hidden");
+          input.focus();
+        },
+      });
+      row.appendChild(avatarBadge(24, c.email || c.fn));
+      const info = h("div", { className: "min-w-0" });
+      info.appendChild(h("div", { className: "truncate" }, c.fn || "—"));
+      info.appendChild(h("div", { className: "text-xs text-slate-400 truncate" }, c.email || ""));
+      row.appendChild(info);
+      dd.appendChild(row);
+    });
+  }
+
+  input.addEventListener("input", e => {
+    const q = e.target.value.trim();
+    renderSuggestions(getSuggestions(q), q);
+  });
+
   input.addEventListener("keydown", e => {
-    if (["Enter", "Tab", ",", ";", " "].includes(e.key)) {
+    const rows = dd.querySelectorAll(".contact-suggestion-row");
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      activeIdx = Math.min(activeIdx + 1, rows.length - 1);
+      rows.forEach((r, i) => r.classList.toggle("bg-blue-50", i === activeIdx));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      activeIdx = Math.max(activeIdx - 1, -1);
+      rows.forEach((r, i) => r.classList.toggle("bg-blue-50", i === activeIdx));
+    } else if (e.key === "Enter" || e.key === "Tab") {
+      if (activeIdx >= 0 && rows[activeIdx]) {
+        e.preventDefault();
+        rows[activeIdx].click();
+        return;
+      }
       if (input.value.trim()) {
         e.preventDefault();
         addRecipientText(field, input.value);
+        input.value = "";
+        clear(dd);
+        dd.classList.add("hidden");
+      }
+    } else if (e.key === "Escape") {
+      clear(dd);
+      dd.classList.add("hidden");
+    } else if (["Enter", "Tab", ",", ";", " "].includes(e.key)) {
+      if (input.value.trim()) {
+        e.preventDefault();
+        addRecipientText(field, input.value);
+        input.value = "";
+        clear(dd);
+        dd.classList.add("hidden");
       }
     } else if (e.key === "Backspace" && !input.value && tokens.length) {
       e.preventDefault();
       setRecipientTokens(field, tokens.slice(0, -1));
     }
   });
+
   input.addEventListener("paste", e => {
     const text = e.clipboardData?.getData("text") || "";
     if (text) {
@@ -2512,12 +2633,18 @@ function renderRecipientInput(field, placeholder) {
       addRecipientText(field, text);
     }
   });
+
   input.addEventListener("blur", () => {
     if (input.value.trim()) addRecipientText(field, input.value);
+    setTimeout(() => {
+      clear(dd);
+      dd.classList.add("hidden");
+    }, 200);
   });
-  preventMobileScroll(input);
 
+  preventMobileScroll(input);
   wrap.appendChild(input);
+  wrap.appendChild(dd);
   return wrap;
 }
 
@@ -2810,6 +2937,7 @@ async function loadContacts() {
   try {
     const data = await api("/api/contacts");
     set({ contacts: data.contacts || [] });
+    rebuildContactIndex();
   } catch (err) {
     set({ contacts: [] });
   }
@@ -2875,6 +3003,15 @@ function renderContactEditPanel() {
   const panel = h("div", { className: "flex-1 overflow-y-auto p-6 max-w-lg" });
 
   panel.appendChild(h("h2", { className: "text-lg font-semibold mb-4" }, isNew ? t("newContact") : t("editContact")));
+
+  // Send email button (only when editing existing contact with email)
+  if (!isNew && c.email) {
+    panel.appendChild(h("button", {
+      className: "mb-4 flex items-center gap-2 px-4 py-2 rounded-lg bg-brand text-white text-sm hover:bg-brand-hover",
+      type: "button",
+      onclick() { openCompose({ composeTo: c.email }); },
+    }, icon("edit"), t("sendEmail") || "Send Email"));
+  }
 
   const form = h("form", { className: "space-y-4" });
   form.appendChild(formField(t("name"), "text", c.fn || "", v => { S.contactEditing.fn = v; }));

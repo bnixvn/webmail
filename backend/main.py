@@ -1822,6 +1822,11 @@ def _parse_vcard(vcard: str) -> dict:
     contact["title"] = get("TITLE")
     contact["note"] = get("NOTE")
 
+    # Parse PHOTO — base64-encoded inline photo from vCard
+    photo_m = re.search(r"^PHOTO[^:]*:(data:[^;]+;base64,)?([A-Za-z0-9+/=\r\n]+)$", vcard, re.MULTILINE | re.IGNORECASE)
+    if photo_m:
+        contact["photo"] = (photo_m.group(1) or "data:image/jpeg;base64,") + photo_m.group(2).replace("\r", "").replace("\n", "")
+
     return contact
 
 
