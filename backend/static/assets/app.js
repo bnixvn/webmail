@@ -81,6 +81,7 @@ const LOCALES = {
     newContact: "New Contact",
     noContacts: "No contacts yet",
     sendEmail: "Send Email",
+    contactAdded: "Contact added",
     saving: "Saving...", save: "Save", cancel: "Cancel",
     firstName: "First name", lastName: "Last name",
     phone: "Phone", organization: "Organization", title: "Title", notes: "Notes",
@@ -173,6 +174,7 @@ const LOCALES = {
     newContact: "Thêm liên hệ",
     noContacts: "Chưa có liên hệ",
     sendEmail: "Gửi email",
+    contactAdded: "Đã thêm liên hệ",
     saving: "Đang lưu...", save: "Lưu", cancel: "Huỷ",
     firstName: "Tên", lastName: "Họ",
     phone: "Điện thoại", organization: "Tổ chức", title: "Chức danh", notes: "Ghi chú",
@@ -2069,7 +2071,16 @@ function renderMessageView() {
         set({ view: "contacts", contactEditing: { ...existingContact, _editing: true } });
         if (!S.contacts.length) loadContacts();
       } else {
-        set({ contactEditing: { fn: displayName(msg.from), email: senderEmail, phone: "", organization: "", title: "", note: "" } });
+        const fn = displayName(msg.from);
+        const payload = { fn, email: senderEmail, phone: "", organization: "", title: "", note: "" };
+        addContactBtn.disabled = true;
+        api("/api/contacts", { method: "POST", body: JSON.stringify(payload) })
+          .then(async () => {
+            showToast(t("contactAdded") || "Contact added");
+            await loadContacts();
+          })
+          .catch(err => set({ error: err.message }))
+          .finally(() => { if (addContactBtn.isConnected) addContactBtn.disabled = false; });
       }
     },
   }, existingContact ? "View in Contacts" : "Add to Contacts");
