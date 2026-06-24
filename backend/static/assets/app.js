@@ -2894,9 +2894,12 @@ function render() {
   render();
 })();
 
-// Handle window resize
+// Handle window resize — only re-render when width changes (not keyboard open/close)
 let resizeTimer;
+let _lastWidth = window.innerWidth;
 window.addEventListener("resize", () => {
+  if (window.innerWidth === _lastWidth) return; // height-only change (keyboard), skip
+  _lastWidth = window.innerWidth;
   clearTimeout(resizeTimer);
   resizeTimer = setTimeout(render, 100);
 });
