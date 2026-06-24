@@ -1409,6 +1409,63 @@ function renderMessageItem(msg) {
   return item;
 }
 
+// ─── Thread Panel (Roundcube-style vertical list) ───────────────────────────
+// Panel giữa hiển thị tất cả mail trong thread.
+// Click chọn mail → hiển thị nội dung ở reading pane bên phải.
+
+function renderThreadPanel() {
+  const section = h("section", {
+    className: "flex flex-col h-full bg-white dark:bg-slate-800 border-r border-line shrink-0 w-72 overflow-hidden",
+  });
+
+  // Header
+  const hdr = h("div", { className: "shrink-0 px-3 py-2 border-b border-line" });
+  hdr.appendChild(h("span", { className: "text-xs font-medium text-slate-500" },
+    t("threadCount", S.threadMsgs.length),
+  ));
+  section.appendChild(hdr);
+
+  // Scrollable message list
+  const list = h("div", { className: "flex-1 overflow-y-auto" });
+  for (const msg of S.threadMsgs) {
+    const isActive = S.selectedUid === msg.uid;
+    const isUnread = !msg.seen;
+    const bg = isActive
+      ? "bg-blue-50 dark:bg-blue-900/30"
+      : isUnread
+      ? "bg-emerald-50/50 dark:bg-emerald-900/10"
+      : "bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700";
+
+    const item = h("div", {
+      className: `flex items-start gap-2.5 px-3 py-2.5 border-b border-line cursor-pointer ${bg}`,
+      onclick() { loadMessage(msg.uid); },
+    });
+
+    // Avatar
+    item.appendChild(avatarBadge(32, displayEmail(msg.from)));
+
+    // Content
+    const content = h("div", { className: "flex-1 min-w-0" });
+    const fromRow = h("div", { className: "flex items-center justify-between gap-1" });
+    fromRow.appendChild(h("span", {
+      className: `text-xs truncate ${isUnread ? "font-semibold" : "text-slate-700"}`
+    }, displayName(msg.from)));
+    fromRow.appendChild(h("span", { className: "text-[10px] text-slate-400 shrink-0" }, formatTime(msg.date)));
+    content.appendChild(fromRow);
+
+    // Snippet
+    content.appendChild(h("div", {
+      className: "text-xs text-slate-500 line-clamp-2 mt-0.5 truncate"
+    }, msg.snippet || ""));
+
+    item.appendChild(content);
+    list.appendChild(item);
+  }
+
+  section.appendChild(list);
+  return section;
+}
+
 // ─── Thread View ────────────────────────────────────────────────────────────
 
 // Reusable quick-reply builder (textarea + attachments)
@@ -1697,10 +1754,8 @@ function renderMessageView() {
   const msg = S.selectedMsg;
   if (!msg) return section;
 
-  // If we have multiple thread messages, render thread view
-  if (S.threadMsgs.length > 1) {
-    return renderThreadView(section, S.threadMsgs);
-  }
+  // Thread is handled by renderThreadPanel (3-panel layout on desktop).
+  // Here we always render just the selected message content.
 
   // Header
   const header = h("header", { className: "bg-white dark:bg-slate-800 border-b border-line px-4 py-3 shrink-0" });
@@ -2846,17 +2901,27 @@ function render() {
       if (S.view === "mail") {
         const mailView = h("div", { className: "flex-1 flex overflow-hidden relative" });
 
-        // Mobile: show list or detail, not both
-        if (S.selectedUid && window.innerWidth < 769) {
-          mailView.appendChild(renderMessageView());
-        } else if (!S.selectedUid && window.innerWidth < 769) {
+        // ── Desktop (≥768px): 3-panel layout ─────────────────────────────────
+        if (window.innerWidth >= 769) {
+          // Panel 1 — message list (always visible on desktop)
           mailView.appendChild(renderMessageList());
+
+          // Panel 2 — thread messages (only for multi-message threads)
+          if (S.threadMsgs.length > 1) {
+            mailView.appendChild(renderThreadPanel());
+          }
+
+          // Panel 3 — reading pane (selected message content)
+          mailView.appendChild(renderMessageView());
+
+        // ── Mobile (<768px): list OR detail, not both ──────────────────────
+        } else if (S.selectedUid) {
+          mailView.appendChild(renderMessageView());
         } else {
           mailView.appendChild(renderMessageList());
-          mailView.appendChild(renderMessageView());
         }
 
-        // Mobile FAB: compose button (bottom-right, desktop-only via CSS)
+        // Mobile FAB: compose button (bottom-right, mobile-only)
         const fab = h("button", {
           className: "fab-compose md:hidden",
           title: t("compose"),

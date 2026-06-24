@@ -518,7 +518,7 @@ async def _async_get_attachment(raw_source: bytes, index: int) -> dict | None:
 
 async def _fetch_message_source(session: dict, folder: str, uid: int) -> tuple[str | None, bytes | None]:
     async def _do(client):
-        select_resp = await client.select(folder)
+        select_resp = await client.select(_quote_imap_folder(folder))
         _require_imap_ok(select_resp, f"SELECT {folder}")
         fetch_resp = await client.uid("FETCH", str(uid), "(UID FLAGS INTERNALDATE BODY.PEEK[])")
         _require_imap_ok(fetch_resp, "UID FETCH")
@@ -633,6 +633,22 @@ def _unquote_imap_token(value: str) -> str:
     if len(value) >= 2 and value[0] == '"' and value[-1] == '"':
         value = value[1:-1].replace(r"\\", "\\").replace(r"\"", '"')
     return _decode_modified_utf7(value)
+
+
+def _quote_imap_folder(folder: str) -> str:
+    """
+    Quote an IMAP folder name for use in SELECT/LIST/etc.
+    IMAP atoms may only contain 7-bit chars (ASCII).
+    Folder names with 8-bit UTF-8 chars must be double-quoted,
+    and any double-quotes or backslashes inside must be escaped.
+    """
+    # Check if quoting is needed: non-ASCII or special IMAP atoms
+    needs_quote = any(ord(c) > 127 or c in ("(", ")", "{", " ", "%", "*", '"', "\\") for c in folder)
+    if not needs_quote:
+        return folder
+    # Escape backslashes and double-quotes inside
+    escaped = folder.replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{escaped}"'
 
 
 def _decode_modified_utf7(s: str) -> str:
@@ -886,7 +902,7 @@ async def create_mailbox(request: Request, body: dict):
         raise HTTPException(400, "Path is required.")
 
     async def _do(client):
-        await client.create(path)
+        await client.create(_quote_imap_folder(path))
 
     await with_imap_retry(session, _do)
     return JSONResponse({"ok": True, "path": path}, status_code=201)
@@ -901,7 +917,7 @@ async def list_messages(request: Request):
     limit = int(request.query_params.get("limit", "40"))
 
     async def _do(client):
-        select_resp = await client.select(folder)
+        select_resp = await client.select(_quote_imap_folder(folder))
         _require_imap_ok(select_resp, f"SELECT {folder}")
 
         search_resp = await client.uid_search("ALL")
@@ -1010,7 +1026,7 @@ async def get_thread(request: Request):
     for folder in folders_to_search:
         async def _search_folder(client, _folder=folder, _subj=norm_subject):
             try:
-                sel = await client.select(_folder, readonly=True)
+                sel = await client.select(_quote_imap_folder(_folder), readonly=True)
                 _require_imap_ok(sel, f"SELECT {_folder}")
                 # IMAP SEARCH by subject text
                 search_resp = await client.uid("SEARCH", "SUBJECT", f'"{_subj}"')
@@ -1076,7 +1092,7 @@ async def get_message(request: Request, uid: int):
     folder = request.query_params.get("folder", "INBOX")
 
     async def _do(client):
-        select_resp = await client.select(folder)
+        select_resp = await client.select(_quote_imap_folder(folder))
         _require_imap_ok(select_resp, f"SELECT {folder}")
         fetch_resp = await client.uid("FETCH", str(uid), "(UID FLAGS INTERNALDATE BODY.PEEK[])")
         _require_imap_ok(fetch_resp, "UID FETCH")
@@ -1093,7 +1109,7 @@ async def get_message(request: Request, uid: int):
         raise HTTPException(404, "Message not found.")
 
     async def _mark_seen(client):
-        select_resp = await client.select(folder)
+        select_resp = await client.select(_quote_imap_folder(folder))
         _require_imap_ok(select_resp, f"SELECT {folder}")
         store_resp = await client.uid("STORE", str(uid), "+FLAGS", "\\Seen")
         _require_imap_ok(store_resp, "UID STORE")
@@ -1164,7 +1180,7 @@ async def update_flags(request: Request, uid: int, body: dict):
     enabled = bool(body.get("enabled", True))
 
     async def _do(client):
-        select_resp = await client.select(folder)
+        select_resp = await client.select(_quote_imap_folder(folder))
         _require_imap_ok(select_resp, f"SELECT {folder}")
         cmd = "+FLAGS" if enabled else "-FLAGS"
         store_resp = await client.uid("STORE", str(uid), cmd, flag)
@@ -1181,9 +1197,9 @@ async def move_message(request: Request, uid: int, body: dict):
     destination = body.get("destination", "Trash")
 
     async def _do(client):
-        select_resp = await client.select(folder)
+        select_resp = await client.select(_quote_imap_folder(folder))
         _require_imap_ok(select_resp, f"SELECT {folder}")
-        copy_resp = await client.uid("COPY", str(uid), destination)
+        copy_resp = await client.uid("COPY", str(uid), _quote_imap_folder(destination))
         _require_imap_ok(copy_resp, "UID COPY")
         store_resp = await client.uid("STORE", str(uid), "+FLAGS", "\\Deleted")
         _require_imap_ok(store_resp, "UID STORE")
@@ -1200,7 +1216,7 @@ async def delete_message(request: Request, uid: int):
     folder = request.query_params.get("folder", "INBOX")
 
     async def _do(client):
-        select_resp = await client.select(folder)
+        select_resp = await client.select(_quote_imap_folder(folder))
         _require_imap_ok(select_resp, f"SELECT {folder}")
         store_resp = await client.uid("STORE", str(uid), "+FLAGS", "\\Deleted")
         _require_imap_ok(store_resp, "UID STORE")
@@ -1345,7 +1361,7 @@ async def send_message(request: Request, body: dict):
 
         async def _append_sent(client):
             try:
-                await client.append(sent_folder, raw_bytes, flags=["\\Seen"])
+                await client.append(_quote_imap_folder(sent_folder), raw_bytes, flags=["\\Seen"])
             except Exception:
                 # Try common alternatives
                 for alt in ["Sent Messages", "Sent Items", "INBOX.Sent"]:
