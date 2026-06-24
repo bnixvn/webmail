@@ -362,6 +362,7 @@ input, textarea, [contenteditable] {
   display: flex;
   flex-direction: column;
   justify-content: center;
+  width: 100%;
 }
 
 /* Language flag images */
@@ -380,6 +381,7 @@ input, textarea, [contenteditable] {
   justify-content: space-between;
   padding: 12px 32px;
   flex-shrink: 0;
+  width: 100%;
 }
 
 /* Language group */
@@ -463,7 +465,6 @@ input, textarea, [contenteditable] {
 /* Form */
 .login-form {
   width: 100%;
-  max-width: 360px;
   padding: 0 32px 32px;
 }
 
