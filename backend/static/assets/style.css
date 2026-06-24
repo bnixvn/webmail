@@ -336,14 +336,12 @@ input, textarea, [contenteditable] {
   flex: 1;
   position: relative;
   background-color: rgb(237, 248, 255);
+  background-image: url("/brand/mail-view.png");
+  background-size: cover;
+  background-position: center center;
   display: flex;
-  padding: 75px 150px;
   justify-content: center;
-}
-.login-screenshot {
-  border-radius: 20px;
-  display: block;
-  max-width: 42rem;
+  align-items: center;
 }
 
 /* Right panel: form */

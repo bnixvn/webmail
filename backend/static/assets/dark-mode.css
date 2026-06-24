@@ -166,6 +166,7 @@
 }
 .dark .login-panel-left {
   background-color: #0f172a;
+  background-image: url("/brand/mail-view.png");
 }
 .dark .login-flag-img {
   opacity: 0.85;
