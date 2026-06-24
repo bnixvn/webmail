@@ -376,7 +376,7 @@ async function loadMessage(uid) {
 async function doLogout() {
   try { await api("/api/auth/logout", { method: "POST" }); } catch {}
   set({
-    account: null, ready: false, mailboxes: [], messages: [],
+    account: null, mailboxes: [], messages: [],
     selectedUid: null, selectedMsg: null, compose: null,
     signature: null, sigOpen: false, loginError: "",
   });
@@ -1804,55 +1804,54 @@ function renderSignatureModal() {
 
 function render() {
   _rendering = true;
-  const app = $("#app");
-  clear(app);
+  try {
+    const app = $("#app");
+    clear(app);
 
-  // Close more menu on outside click
-  if (S.moreMenu) {
-    document.addEventListener("click", () => set({ moreMenu: false }), { once: true });
-  }
-
-  if (!S.ready) {
-    // Still loading — show nothing
-    return;
-  }
-
-  if (!S.account) {
-    app.appendChild(renderLogin());
-  } else {
-    const shell = h("div", { className: "flex h-screen overflow-hidden" });
-    shell.appendChild(renderSidebar());
-
-    const main = h("div", { className: "flex-1 flex flex-col overflow-hidden min-w-0" });
-
-    if (S.view === "mail") {
-      const mailView = h("div", { className: "flex-1 flex overflow-hidden" });
-
-      // Mobile: show list or detail, not both
-      if (S.selectedUid && window.innerWidth < 769) {
-        mailView.appendChild(renderMessageView());
-      } else if (!S.selectedUid && window.innerWidth < 769) {
-        mailView.appendChild(renderMessageList());
-      } else {
-        mailView.appendChild(renderMessageList());
-        mailView.appendChild(renderMessageView());
-      }
-
-      main.appendChild(mailView);
-    } else if (S.view === "contacts") {
-      main.appendChild(renderContactsView());
-    } else if (S.view === "calendar") {
-      main.appendChild(renderCalendarView());
+    // Close more menu on outside click
+    if (S.moreMenu) {
+      document.addEventListener("click", () => set({ moreMenu: false }), { once: true });
     }
 
-    shell.appendChild(main);
-    app.appendChild(shell);
-    app.appendChild(renderMobileSidebar());
-    app.appendChild(renderCompose());
-    app.appendChild(renderSignatureModal());
-  }
+    if (!S.account) {
+      app.appendChild(renderLogin());
+    } else if (S.ready) {
+      const shell = h("div", { className: "flex h-screen overflow-hidden" });
+      shell.appendChild(renderSidebar());
 
-  _rendering = false;
+      const main = h("div", { className: "flex-1 flex flex-col overflow-hidden min-w-0" });
+
+      if (S.view === "mail") {
+        const mailView = h("div", { className: "flex-1 flex overflow-hidden" });
+
+        // Mobile: show list or detail, not both
+        if (S.selectedUid && window.innerWidth < 769) {
+          mailView.appendChild(renderMessageView());
+        } else if (!S.selectedUid && window.innerWidth < 769) {
+          mailView.appendChild(renderMessageList());
+        } else {
+          mailView.appendChild(renderMessageList());
+          mailView.appendChild(renderMessageView());
+        }
+
+        main.appendChild(mailView);
+      } else if (S.view === "contacts") {
+        main.appendChild(renderContactsView());
+      } else if (S.view === "calendar") {
+        main.appendChild(renderCalendarView());
+      }
+
+      shell.appendChild(main);
+      app.appendChild(shell);
+      app.appendChild(renderMobileSidebar());
+      app.appendChild(renderCompose());
+      app.appendChild(renderSignatureModal());
+    }
+  } catch (err) {
+    console.error("Render error:", err);
+  } finally {
+    _rendering = false;
+  }
 }
 
 // ─── Init ────────────────────────────────────────────────────────────────────
