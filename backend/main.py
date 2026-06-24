@@ -104,15 +104,45 @@ async def _get_imap_for_session(session: dict) -> aioimaplib.IMAP4_SSL:
     """Resolve IMAP config for a session."""
     email = session["email"]
     domain = email.split("@")[1].lower()
-    mx_host = await _resolve_mx(domain)
-    imap_host = os.environ.get("IMAP_HOST", "").strip() or mx_host
-    imap_port = int(os.environ.get("IMAP_PORT", "993"))
+    imap_host = session.get("imap_host") or os.environ.get("IMAP_HOST", "").strip() or await _discover_mail_host(domain, "imap")
+    imap_port = int(session.get("imap_port") or os.environ.get("IMAP_PORT", "993"))
     return await _get_pooled_imap(email, session["password"], imap_host, imap_port)
 
 
-async def _resolve_mx(domain: str) -> str:
-    """Resolve MX record for a domain via socket (no external deps)."""
+async def _discover_mail_host(domain: str, service: str = "imap") -> str:
+    """Auto-discover mail server for a domain.
+
+    Tries in order:
+    1. SRV records (_imaps._tcp / _submission._tcp) — RFC 6186
+    2. Common hostnames (mail., imap., smtp.)
+    3. MX record fallback
+    """
     loop = asyncio.get_event_loop()
+
+    # 1. Try SRV records
+    try:
+        import dns.resolver
+        srv_name = f"_imaps._tcp.{domain}" if service == "imap" else f"_submission._tcp.{domain}"
+        resolver = dns.resolver.Resolver()
+        resolver.timeout = 3
+        answers = resolver.resolve(srv_name, "SRV")
+        records = sorted([(r.priority, r.weight, str(r.target).rstrip("."), r.port) for r in answers])
+        if records:
+            return records[0][2]
+    except Exception:
+        pass
+
+    # 2. Try common hostnames
+    prefixes = ["mail", "imap", "smtp"] if service == "imap" else ["mail", "smtp"]
+    for prefix in prefixes:
+        hostname = f"{prefix}.{domain}"
+        try:
+            await loop.run_in_executor(None, socket.gethostbyname, hostname)
+            return hostname
+        except Exception:
+            continue
+
+    # 3. MX fallback
     try:
         import dns.resolver
         resolver = dns.resolver.Resolver()
@@ -123,12 +153,7 @@ async def _resolve_mx(domain: str) -> str:
             return records[0][1]
     except Exception:
         pass
-    # Fallback: try to resolve mail.{domain} via socket
-    try:
-        ip = await loop.run_in_executor(None, socket.gethostbyname, f"mail.{domain}")
-        return f"mail.{domain}"
-    except Exception:
-        pass
+
     return f"mail.{domain}"
 
 
@@ -426,15 +451,18 @@ async def login(request: Request, body: dict):
     email = (body.get("email") or "").lower().strip()
     password = body.get("password") or ""
     remember = body.get("remember", True)
+    imap_host_override = (body.get("imapHost") or "").strip()
+    imap_port_override = body.get("imapPort") or ""
+    smtp_host_override = (body.get("smtpHost") or "").strip()
+    smtp_port_override = body.get("smtpPort") or ""
 
     if not email or "@" not in email or not password:
         raise HTTPException(400, "Invalid credentials.")
 
-    # Verify IMAP login
+    # Resolve IMAP server
     domain = email.split("@")[1].lower()
-    mx = await _resolve_mx(domain)
-    imap_host = os.environ.get("IMAP_HOST", "").strip() or mx
-    imap_port = int(os.environ.get("IMAP_PORT", "993"))
+    imap_host = imap_host_override or os.environ.get("IMAP_HOST", "").strip() or await _discover_mail_host(domain, "imap")
+    imap_port = int(imap_port_override or os.environ.get("IMAP_PORT", "993"))
 
     client = aioimaplib.IMAP4_SSL(host=imap_host, port=imap_port, timeout=IMAP_TIMEOUT)
     try:
@@ -449,6 +477,16 @@ async def login(request: Request, body: dict):
         "password": password,
         "createdAt": int(time.time() * 1000),
     }
+    # Store server overrides in session if user provided them
+    if imap_host_override:
+        session["imap_host"] = imap_host_override
+    if imap_port_override:
+        session["imap_port"] = int(imap_port_override)
+    if smtp_host_override:
+        session["smtp_host"] = smtp_host_override
+    if smtp_port_override:
+        session["smtp_port"] = int(smtp_port_override)
+
     response = JSONResponse({"email": email, "domain": domain})
     response.set_cookie(
         key=SESSION_COOKIE,
@@ -820,9 +858,8 @@ async def send_message(request: Request, body: dict):
 
     # Send via SMTP
     domain = email.split("@")[1].lower()
-    mx = await _resolve_mx(domain)
-    smtp_host = os.environ.get("SMTP_HOST", "").strip() or mx
-    smtp_port = int(os.environ.get("SMTP_PORT", "465"))
+    smtp_host = session.get("smtp_host") or os.environ.get("SMTP_HOST", "").strip() or await _discover_mail_host(domain, "smtp")
+    smtp_port = int(session.get("smtp_port") or os.environ.get("SMTP_PORT", "465"))
     smtp_secure = os.environ.get("SMTP_SECURE", "true").lower() != "false"
 
     import aiosmtplib

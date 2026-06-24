@@ -281,6 +281,24 @@ function renderLogin() {
           h("input", { name: "remember", type: "checkbox", checked: "checked", className: "rounded" }),
           " Stay signed in",
         ),
+        // Advanced toggle
+        h("button", {
+          type: "button",
+          className: "text-xs opacity-70 hover:opacity-100 underline",
+          onclick() {
+            const adv = document.getElementById("login-advanced");
+            adv.style.display = adv.style.display === "none" ? "block" : "none";
+          },
+        }, "⚙ Mail server settings (optional)"),
+        h("div", { id: "login-advanced", style: { display: "none" }, className: "space-y-3 p-3 rounded bg-white/10" },
+          h("p", { className: "text-xs opacity-70" }, "Auto-detected via DNS. Only fill in if auto-detection fails."),
+          h("div", { className: "grid grid-cols-2 gap-3" },
+            h("input", { name: "imapHost", placeholder: "IMAP host", className: "px-3 py-2 rounded-[3px] text-ink text-sm outline-none focus:ring-2 focus:ring-[#68b7ff]" }),
+            h("input", { name: "imapPort", placeholder: "IMAP port (993)", className: "px-3 py-2 rounded-[3px] text-ink text-sm outline-none focus:ring-2 focus:ring-[#68b7ff]" }),
+            h("input", { name: "smtpHost", placeholder: "SMTP host", className: "px-3 py-2 rounded-[3px] text-ink text-sm outline-none focus:ring-2 focus:ring-[#68b7ff]" }),
+            h("input", { name: "smtpPort", placeholder: "SMTP port (465)", className: "px-3 py-2 rounded-[3px] text-ink text-sm outline-none focus:ring-2 focus:ring-[#68b7ff]" }),
+          ),
+        ),
         S.loginError ? h("p", { className: "text-sm bg-red-500/20 border border-red-400/40 rounded px-3 py-2" }, S.loginError) : null,
         h("button", { type: "submit", className: "w-[170px] py-3 rounded-[3px] text-sm font-medium transition-colors", style: { background: "#3d83bd" }, onmouseover(e) { e.target.style.background = "#4f9ade" }, onmouseout(e) { e.target.style.background = "#3d83bd" } }, "Sign in"),
       ),
@@ -294,12 +312,16 @@ async function onLogin(e) {
   const email = form.email.value.trim();
   const password = form.password.value;
   const remember = form.remember.checked;
+  const imapHost = form.imapHost?.value.trim() || "";
+  const imapPort = form.imapPort?.value.trim() || "";
+  const smtpHost = form.smtpHost?.value.trim() || "";
+  const smtpPort = form.smtpPort?.value.trim() || "";
   set({ loginError: "" });
 
   try {
     const data = await api("/api/auth/login", {
       method: "POST",
-      body: JSON.stringify({ email, password, remember }),
+      body: JSON.stringify({ email, password, remember, imapHost, imapPort, smtpHost, smtpPort }),
     });
     set({ account: { email: data.email, domain: data.domain } });
     await bootstrap();
