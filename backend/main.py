@@ -63,7 +63,7 @@ async def _get_pooled_imap(email: str, password: str, imap_host: str, imap_port:
             client, last_used = entry
             if now - last_used < POOL_TTL:
                 try:
-                    client.noop()
+                    await client.noop()
                     _pool[email] = (client, now)
                     return client
                 except Exception:
@@ -491,7 +491,7 @@ async def list_mailboxes(request: Request):
     client = await _get_imap_for_session(session)
 
     # List with status
-    _, folders = await client.list(subtype=True)
+    _, folders = await client.list()
     mailboxes = []
     for line in folders:
         if not line:
