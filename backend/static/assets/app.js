@@ -622,6 +622,7 @@ function renderLogin() {
           onclick() {
             const isDark = document.documentElement.classList.toggle("dark");
             localStorage.setItem("theme", isDark ? "dark" : "light");
+            render();
           },
         }, document.documentElement.classList.contains("dark") ? "☀️ " + t("lightMode") : "🌙 " + t("darkMode")),
       ),
