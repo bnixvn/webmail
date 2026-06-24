@@ -2103,24 +2103,17 @@ function openCompose(opts = {}) {
 
 function closeCompose() {
   set({ compose: null, showCc: false, showBcc: false });
-  goBackFromCompose();
 }
 
 function renderComposePage() {
   if (!S.compose) return h("div", { style: { display: "none" } });
 
   const page = h("div", {
-    className: "flex-1 flex flex-col overflow-hidden min-w-0 bg-white dark:bg-slate-800",
+    className: "flex-1 flex flex-col h-full min-w-0 bg-white dark:bg-slate-800",
   });
 
-  // Header with back button + send button
+  // Header with close (X) + send button
   const hdr = h("div", { className: "flex items-center justify-between h-14 px-4 border-b border-slate-200 dark:border-slate-700 shrink-0" });
-  hdr.appendChild(h("button", {
-    className: "p-2 rounded hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500",
-    onclick: closeCompose,
-    innerHTML: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>`,
-    title: t("discard") || "Back",
-  }));
   hdr.appendChild(h("span", { className: "text-base font-semibold" }, t("newMessage")));
   hdr.appendChild(h("button", {
     className: "px-5 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand-hover disabled:opacity-50",
@@ -2888,8 +2881,8 @@ function renderSignatureModal() {
 function render() {
   _rendering = true;
   // Preserve contenteditable editor content across re-renders so typing isn't lost
-  const savedHtml = S.view === "compose" && S.compose
-    ? document.querySelector(".compose-editor")?.innerHTML || null
+  const savedHtml = S.compose && document.querySelector(".compose-editor")
+    ? document.querySelector(".compose-editor").innerHTML || null
     : null;
   try {
     const app = $("#app");
@@ -2928,10 +2921,15 @@ function render() {
           // ── Desktop (≥768px): 3-panel layout ─────────────────────────────────
           if (window.innerWidth >= 769) {
             mailView.appendChild(renderMessageList());
-            mailView.appendChild(renderMessageView());
+            // Compose takes the reading-pane slot; message view shows when not composing
+            if (S.compose) {
+              mailView.appendChild(renderComposePage());
+            } else {
+              mailView.appendChild(renderMessageView());
+            }
           // ── Mobile (<768px): list OR detail, not both ──────────────────────
           } else if (S.selectedUid) {
-            mailView.appendChild(renderMessageView());
+            mailView.appendChild(S.compose ? renderComposePage() : renderMessageView());
           } else {
             mailView.appendChild(renderMessageList());
           }
@@ -3021,7 +3019,7 @@ function navigate(opts = {}) {
 function goCompose() {
   if (window.location.hash !== "#/compose") {
     if (window.history.pushState) {
-      window.history.pushState(null, "", "#/compose");
+      window.history.pushState({ view: "compose" }, "", "#/compose");
     } else {
       window.location.hash = "#/compose";
     }
