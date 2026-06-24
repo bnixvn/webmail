@@ -742,6 +742,21 @@ async function loadMessages() {
 }
 
 async function loadMessage(uid) {
+  // If this message is already in the loaded thread, just switch selection (no API call)
+  const existingInThread = S.threadMsgs.length > 1 ? S.threadMsgs.find(m => m.uid === uid) : null;
+  if (existingInThread) {
+    navigate({ uid });
+    const clickedKey = `${uid}|${existingInThread.folder || S.folder}`;
+    const collapsed = new Set();
+    for (const m of S.threadMsgs) {
+      const key = `${m.uid}|${m.folder || S.folder}`;
+      if (key !== clickedKey) collapsed.add(key);
+    }
+    const msgs = S.messages.map(m => m.uid === uid ? { ...m, seen: true } : m);
+    set({ selectedUid: uid, selectedMsg: existingInThread, messages: msgs, collapsedMsgs: collapsed });
+    return;
+  }
+
   navigate({ uid }); // update URL before loading (no full re-render)
   set({ loadingMsg: true, selectedUid: uid, selectedMsg: null, quickReply: "", quickAttachments: [], threadMsgs: [], loadingThread: false });
   try {
@@ -750,7 +765,8 @@ async function loadMessage(uid) {
     // Mark as read locally
     const msgs = S.messages.map(m => m.uid === uid ? { ...m, seen: true } : m);
     set({ selectedMsg: msg, loadingMsg: false, messages: msgs });
-    // Load thread siblings in background
+
+    // Load thread (all messages with same subject across folders)
     loadThread(msg);
   } catch (err) {
     set({ loadingMsg: false, error: err.message });
@@ -792,9 +808,12 @@ async function loadThread(anchorMsg) {
     }
 
     // Auto-collapse all except the anchor (the one user clicked)
+    // Use uid+folder composite key to avoid collisions across folders
+    const anchorKey = `${anchorMsg.uid}|${S.folder}`;
     const collapsed = new Set();
     for (const m of results) {
-      if (m.uid !== anchorMsg.uid) collapsed.add(m.uid);
+      const key = `${m.uid}|${m.folder || S.folder}`;
+      if (key !== anchorKey) collapsed.add(key);
     }
     set({ threadMsgs: results, loadingThread: false, collapsedMsgs: collapsed });
   } catch (err) {
@@ -1355,43 +1374,52 @@ function renderThreadItem(thread) {
   return wrap;
 }
 
-function renderMessageItem(msg) {
+function renderMessageItem(msg, inThread, isReply) {
   const active = S.selectedUid === msg.uid;
   const selected = S.selectedUids.includes(msg.uid);
   const unread = !msg.seen;
   const bg = active ? "bg-blue-100 dark:bg-blue-900/40" : unread ? "bg-emerald-50 dark:bg-emerald-900/20 hover:bg-emerald-100 dark:hover:bg-emerald-900/30" : "bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-blue-900/40";
+  const indent = inThread ? "pl-8" : "px-3";
 
   const item = h("div", {
-    className: `msg-item grid gap-2 px-3 py-2.5 border-b border-line ${bg}`,
-    style: { gridTemplateColumns: "20px 40px 1fr auto" },
+    className: `msg-item grid gap-2 ${indent} pr-3 py-2.5 border-b border-line ${bg} cursor-pointer`,
+    style: { gridTemplateColumns: inThread ? "28px 1fr auto" : "20px 40px 1fr auto" },
     onclick(e) {
       if (e.target.type === "checkbox") return;
       loadMessage(msg.uid);
     },
   });
 
-  // Checkbox
-  item.appendChild(h("div", { className: "flex items-start pt-2" },
-    h("input", {
-      type: "checkbox",
-      checked: selected ? "checked" : undefined,
-      onchange(e) {
-        e.stopPropagation();
-        if (e.target.checked) set({ selectedUids: [...S.selectedUids, msg.uid] });
-        else set({ selectedUids: S.selectedUids.filter(u => u !== msg.uid) });
-      },
-    }),
-  ));
+  if (inThread) {
+    // Thread child: reply icon or bullet
+    const replyIcon = isReply
+      ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>`
+      : `<svg width="8" height="8" viewBox="0 0 8 8"><circle cx="4" cy="4" r="3" fill="currentColor"/></svg>`;
+    item.appendChild(h("div", { className: "flex items-center justify-center text-slate-400 pt-0.5", innerHTML: replyIcon }));
+  } else {
+    // Checkbox
+    item.appendChild(h("div", { className: "flex items-start pt-2" },
+      h("input", {
+        type: "checkbox",
+        checked: selected ? "checked" : undefined,
+        onchange(e) {
+          e.stopPropagation();
+          if (e.target.checked) set({ selectedUids: [...S.selectedUids, msg.uid] });
+          else set({ selectedUids: S.selectedUids.filter(u => u !== msg.uid) });
+        },
+      }),
+    ));
 
-  // Avatar with unseen dot
-  const avatarWrap = h("div", { className: "relative" });
-  avatarWrap.appendChild(avatarBadge(40, displayEmail(msg.from)));
-  if (unread) {
-    avatarWrap.appendChild(h("div", {
-      className: "absolute -left-2 top-6 w-2 h-2 rounded-full bg-blue-500",
-    }));
+    // Avatar with unseen dot
+    const avatarWrap = h("div", { className: "relative" });
+    avatarWrap.appendChild(avatarBadge(40, displayEmail(msg.from)));
+    if (unread) {
+      avatarWrap.appendChild(h("div", {
+        className: "absolute -left-2 top-6 w-2 h-2 rounded-full bg-blue-500",
+      }));
+    }
+    item.appendChild(avatarWrap);
   }
-  item.appendChild(avatarWrap);
 
   // Content
   const content = h("div", { className: "min-w-0" });
@@ -1400,7 +1428,9 @@ function renderMessageItem(msg) {
   if (msg.flagged) fromRow.appendChild(h("span", { innerHTML: I.starFill }));
   content.appendChild(fromRow);
   content.appendChild(h("div", { className: `text-sm truncate ${unread ? "font-medium text-ink" : "text-slate-700"}` }, msg.subject || t("noSubject")));
-  content.appendChild(h("div", { className: "text-xs text-slate-500 line-clamp-2 mt-0.5" }, msg.snippet || ""));
+  if (!inThread) {
+    content.appendChild(h("div", { className: "text-xs text-slate-500 line-clamp-2 mt-0.5" }, msg.snippet || ""));
+  }
   item.appendChild(content);
 
   // Time
@@ -1576,22 +1606,21 @@ function renderQuickReply(placeholder) {
 }
 
 function renderThreadMsgBubble(m, isLast) {
-  const isCollapsed = S.collapsedMsgs.has(m.uid);
+  const msgKey = `${m.uid}|${m.folder || S.folder}`;
+  const isCollapsed = S.collapsedMsgs.has(msgKey);
   const wrap = h("div", { className: "thread-bubble bg-white dark:bg-slate-800 rounded-lg border border-line shadow-sm mb-3 overflow-hidden" });
 
   // Header row — always visible, click to toggle
   const hdr = h("div", {
     className: `flex items-center gap-3 px-4 py-3 cursor-pointer select-none hover:bg-slate-50 ${isCollapsed ? "" : "border-b border-line"}`,
     onclick() {
+      const next = new Set(S.collapsedMsgs);
       if (isCollapsed) {
-        const next = new Set(S.collapsedMsgs);
-        next.delete(m.uid);
-        set({ collapsedMsgs: next });
+        next.delete(msgKey);
       } else {
-        const next = new Set(S.collapsedMsgs);
-        next.add(m.uid);
-        set({ collapsedMsgs: next });
+        next.add(msgKey);
       }
+      set({ collapsedMsgs: next });
     },
   });
   hdr.appendChild(avatarBadge(36, displayEmail(m.from)));
@@ -1754,8 +1783,13 @@ function renderMessageView() {
   const msg = S.selectedMsg;
   if (!msg) return section;
 
-  // Thread is handled by renderThreadPanel (3-panel layout on desktop).
-  // Here we always render just the selected message content.
+  // ── Thread view: Gmail-style collapsible bubbles ────────────────────────
+  // Show when thread has been loaded and contains multiple messages
+  if (S.threadMsgs.length > 1) {
+    return renderThreadView(section, S.threadMsgs);
+  }
+
+  // ── Single message view ────────────────────────────────────────────────
 
   // Header
   const header = h("header", { className: "bg-white dark:bg-slate-800 border-b border-line px-4 py-3 shrink-0" });
@@ -2906,12 +2940,7 @@ function render() {
           // Panel 1 — message list (always visible on desktop)
           mailView.appendChild(renderMessageList());
 
-          // Panel 2 — thread messages (only for multi-message threads)
-          if (S.threadMsgs.length > 1) {
-            mailView.appendChild(renderThreadPanel());
-          }
-
-          // Panel 3 — reading pane (selected message content)
+          // Panel 2 — reading pane (selected message content)
           mailView.appendChild(renderMessageView());
 
         // ── Mobile (<768px): list OR detail, not both ──────────────────────

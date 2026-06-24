@@ -681,8 +681,9 @@ def _encode_modified_utf7(s: str) -> str:
             # Encode as UTF-16BE, then base64
             utf16 = chunk.encode("utf-16-be")
             b64 = base64.b64encode(utf16).decode("ascii")
-            # Modified UTF-7 uses ',' instead of '+' for the base64 shift char
-            b64 = b64.replace("+", ",")
+            # Modified UTF-7 uses ',' instead of '/' in base64 and strips padding
+            b64 = b64.replace("/", ",")
+            b64 = b64.rstrip("=")
             result.append(f"&{b64}-")
     return "".join(result)
 
@@ -712,8 +713,8 @@ def _decode_modified_utf7(s: str) -> str:
         else:
             # Modified UTF-7: &...- encodes UTF-16BE as base64 (with ',' instead of '+')
             try:
-                # ',' is used as the shift-to-base64 character in Modified UTF-7
-                b64 = encoded.replace(",", "+")
+                # Modified UTF-7 uses ',' instead of '/' in base64
+                b64 = encoded.replace(",", "/")
                 # Pad to multiple of 4
                 b64 += "=" * (-len(b64) % 4)
                 decoded = base64.b64decode(b64)
@@ -904,7 +905,7 @@ async def list_mailboxes(request: Request):
 
             # Get status
             try:
-                status_resp = await client.status(name, "(MESSAGES UNSEEN)")
+                status_resp = await client.status(_quote_imap_folder(name), "(MESSAGES UNSEEN)")
                 _require_imap_ok(status_resp, f"STATUS {name}")
                 status_str = next(
                     (_imap_text(item) for item in _imap_lines(status_resp) if "MESSAGES" in _imap_text(item)),
@@ -1043,7 +1044,7 @@ async def get_thread(request: Request):
                 # parse last token as folder name
                 parts = re.split(r'\s+"?\.?"?\s+', txt.strip())
                 if parts:
-                    return parts[-1].strip('"')
+                    return _unquote_imap_token(parts[-1])
         return None
 
     sent_folder = None
@@ -1383,10 +1384,10 @@ async def send_message(request: Request, body: dict):
                     if "\\Sent" in txt or re.search(r'"?Sent"?', txt, re.IGNORECASE):
                         parts = txt.strip().split('"."')
                         if len(parts) >= 2:
-                            return parts[-1].strip().strip('"')
+                            return _unquote_imap_token(parts[-1])
                         parts2 = txt.strip().split()
                         if parts2:
-                            return parts2[-1].strip('"')
+                            return _unquote_imap_token(parts2[-1])
                 return None
             sent_folder = await with_imap_retry(session, _find_sent) or "Sent"
         except Exception:
