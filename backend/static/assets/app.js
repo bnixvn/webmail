@@ -733,6 +733,7 @@ async function loadMessages() {
 }
 
 async function loadMessage(uid) {
+  navigate({ uid }); // update URL before loading (no full re-render)
   set({ loadingMsg: true, selectedUid: uid, selectedMsg: null, quickReply: "", quickAttachments: [], threadMsgs: [], loadingThread: false });
   try {
     const data = await api(`/api/messages/${uid}?folder=${encodeURIComponent(S.folder)}`);
@@ -837,7 +838,8 @@ function renderSidebar() {
     viewNav.appendChild(h("button", {
       className: `folder-item w-full ${active ? "active" : ""} ${collapsed ? "justify-center" : ""}`,
       onclick() {
-        set({ view: v.key });
+        navigate({ view: v.key, uid: null });
+        set({ view: v.key, selectedUid: null, selectedMsg: null, threadMsgs: [] });
         if (v.key === "contacts" && !S.contacts.length) loadContacts();
         if (v.key === "calendar" && !S.calendarEvents.length) loadCalendarEvents();
       },
@@ -860,7 +862,7 @@ function renderSidebar() {
         const active = S.folder === mb.path;
         mainList.appendChild(h("button", {
           className: `folder-item w-full ${active ? "active" : ""}`,
-          onclick() { set({ folder: mb.path, selectedUid: null, selectedMsg: null }); loadMessages(); },
+          onclick() { navigate({ folder: mb.path, uid: null }); set({ folder: mb.path, selectedUid: null, selectedMsg: null, threadMsgs: [] }); loadMessages(); },
         },
           icon(mb._info.icon),
           h("span", { className: "flex-1 text-left truncate" }, folderDisplayName(mb._info)),
@@ -902,7 +904,7 @@ function renderSidebar() {
         custList.appendChild(h("button", {
           className: `folder-item w-full ${active ? "active" : ""}`,
           style: { paddingLeft: (20 + (mb.depth || 0) * 12) + "px" },
-          onclick() { set({ folder: mb.path, selectedUid: null, selectedMsg: null }); loadMessages(); },
+          onclick() { navigate({ folder: mb.path, uid: null }); set({ folder: mb.path, selectedUid: null, selectedMsg: null, threadMsgs: [] }); loadMessages(); },
         },
           icon("folder"),
           h("span", { className: "flex-1 text-left truncate" }, mb.name || mb.path),
@@ -918,7 +920,7 @@ function renderSidebar() {
         folderIcons.appendChild(h("button", {
           className: `w-full flex justify-center p-2 rounded-lg ${S.folder === mb.path ? "bg-blue-100 text-blue-700" : "text-slate-500 hover:bg-slate-100"}`,
           title: folderDisplayName(info, mb.name || mb.path),
-          onclick() { set({ folder: mb.path, selectedUid: null, selectedMsg: null }); loadMessages(); },
+          onclick() { navigate({ folder: mb.path, uid: null }); set({ folder: mb.path, selectedUid: null, selectedMsg: null, threadMsgs: [] }); loadMessages(); },
         }, icon(info.icon)));
       }
       items.push(folderIcons);
@@ -1020,7 +1022,8 @@ function renderMobileSidebar() {
     viewNav.appendChild(h("button", {
       className: `folder-item w-full ${S.view === v.key ? "active" : ""}`,
       onclick() {
-        set({ view: v.key, mobileSidebar: false });
+        navigate({ view: v.key, uid: null });
+        set({ view: v.key, selectedUid: null, selectedMsg: null, threadMsgs: [], mobileSidebar: false });
         if (v.key === "contacts" && !S.contacts.length) loadContacts();
         if (v.key === "calendar" && !S.calendarEvents.length) loadCalendarEvents();
       },
@@ -1037,7 +1040,8 @@ function renderMobileSidebar() {
     folderSection.appendChild(h("button", {
       className: `folder-item w-full ${active ? "active" : ""}`,
       onclick() {
-        set({ folder: mb.path, selectedUid: null, selectedMsg: null, mobileSidebar: false });
+        navigate({ folder: mb.path, uid: null });
+        set({ folder: mb.path, selectedUid: null, selectedMsg: null, threadMsgs: [], mobileSidebar: false });
         loadMessages();
       },
     },
@@ -1602,7 +1606,7 @@ function renderThreadView(section, threadMsgs) {
   const row1 = h("div", { className: "flex items-start gap-3" });
   row1.appendChild(h("button", {
     className: "p-1 rounded hover:bg-slate-100 md:hidden mt-0.5",
-    onclick() { set({ selectedUid: null, selectedMsg: null, threadMsgs: [] }); },
+    onclick() { navigate({ uid: null }); set({ selectedUid: null, selectedMsg: null, threadMsgs: [] }); },
     innerHTML: I.chevL,
   }));
   row1.appendChild(h("h1", { className: "flex-1 text-lg md:text-2xl font-semibold min-w-0 truncate" },
@@ -1698,7 +1702,7 @@ function renderMessageView() {
   // Mobile back
   row1.appendChild(h("button", {
     className: "p-1 rounded hover:bg-slate-100 md:hidden mt-0.5",
-    onclick() { set({ selectedUid: null, selectedMsg: null }); },
+    onclick() { navigate({ uid: null }); set({ selectedUid: null, selectedMsg: null, threadMsgs: [] }); },
     innerHTML: I.chevL,
   }));
 
@@ -2863,9 +2867,84 @@ function render() {
   }
 }
 
+// ─── URL Router (hash-based: #/mail/Sent or #/contacts) ───────────────────────
+// Preserves browser back/forward, deep-links, and mobile swipe gestures.
+// No backend changes needed — hash changes are client-side only.
+
+function parseHash() {
+  const hash = (window.location.hash || "#").slice(1); // strip leading #
+  if (!hash || hash === "/") return { view: "mail", folder: null };
+  const parts = hash.split("/").filter(Boolean);
+  if (parts[0] === "contacts") return { view: "contacts", folder: null };
+  if (parts[0] === "calendar") return { view: "calendar", folder: null };
+  // Default: mail — /mail, /mail/INBOX, /mail/Sent/uid123
+  return {
+    view: "mail",
+    folder: parts[1] ? decodeURIComponent(parts[1]) : "INBOX",
+    uid: parts[2] ? parseInt(parts[2], 10) : null,
+  };
+}
+
+function buildHash(view, folder, uid) {
+  if (view === "contacts") return "#/contacts";
+  if (view === "calendar") return "#/calendar";
+  let h = "#/mail";
+  if (folder) h += "/" + encodeURIComponent(folder);
+  if (uid) h += "/" + uid;
+  return h;
+}
+
+// Replace full page URL without reloading (uses History API, not hash).
+// Falls back to hash if pushState is unavailable.
+function navigate(opts = {}) {
+  const view = opts.view !== undefined ? opts.view : S.view;
+  const folder = opts.folder !== undefined ? opts.folder : S.folder;
+  const uid = opts.uid !== undefined ? opts.uid : (opts.clearUid ? null : S.selectedUid);
+
+  const hash = buildHash(view, folder, uid);
+  if (window.location.hash !== hash) {
+    if (window.history.pushState) {
+      window.history.pushState(null, "", hash);
+    } else {
+      window.location.hash = hash;
+    }
+  }
+}
+
+function onPopState() {
+  // Browser back/forward — sync state from URL
+  const { view, folder, uid } = parseHash();
+  const needsLoad =
+    view !== S.view ||
+    folder !== S.folder ||
+    (uid && uid !== S.selectedUid) ||
+    (uid === null && S.selectedUid !== null);
+
+  if (needsLoad) {
+    set({
+      view,
+      folder: folder || "INBOX",
+      selectedUid: uid,
+      selectedMsg: null,
+      threadMsgs: [],
+    });
+    if (folder && folder !== S.folder) loadMessages();
+    if (uid) loadMessage(uid);
+  }
+}
+
 // ─── Init ────────────────────────────────────────────────────────────────────
 
 (async function init() {
+  // Restore state from URL before first render
+  const { view, folder, uid } = parseHash();
+  S.view = view;
+  S.folder = folder || "INBOX";
+  S.selectedUid = uid || null;
+
+  // Listen for browser back/forward
+  window.addEventListener("popstate", onPopState);
+
   try {
     const data = await api("/api/auth/me");
     if (data.authenticated) {
