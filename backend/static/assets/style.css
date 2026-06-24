@@ -160,11 +160,9 @@ input, textarea, [contenteditable] {
 }
 .qr-editor {
   outline: none;
-}
-.qr-editor:empty::before {
-  content: attr(data-placeholder);
-  color: #94a3b8;
-  pointer-events: none;
+  display: block;
+  width: 100%;
+  min-height: 72px;
 }
 .qr-attach-bar {
   display: flex;

@@ -1398,28 +1398,16 @@ function renderMessageItem(msg) {
 
 // ─── Thread View ────────────────────────────────────────────────────────────
 
-// Reusable rich quick-reply builder (toolbar + contentEditable + attachments)
+// Reusable quick-reply builder (textarea + attachments)
 function renderQuickReply(placeholder) {
-  // Outer container (no border)
   const outer = h("div", { className: "qr-outer" });
 
-  // Bordered wrapper: toolbar + editor
+  // Border wrapper
   const wrap = h("div", { className: "qr-rich-wrap" });
 
-  // Toolbar row
-  const toolbar = h("div", { className: "flex items-center gap-0.5 px-2 py-1 border border-b-0 border-line rounded-t-lg bg-slate-50" });
-  toolbar.appendChild(toolbarBtn("bold", () => document.execCommand("bold")));
-  toolbar.appendChild(toolbarBtn("italic", () => document.execCommand("italic")));
-  toolbar.appendChild(toolbarBtn("underline", () => document.execCommand("underline")));
-  toolbar.appendChild(h("div", { className: "w-px h-4 bg-slate-300 mx-0.5" }));
-  toolbar.appendChild(toolbarBtn("list", () => document.execCommand("insertUnorderedList")));
-  toolbar.appendChild(toolbarBtn("link", () => {
-    const url = prompt(t("enterUrl"));
-    if (url) document.execCommand("createLink", false, url);
-  }));
-  // Attachment button
+  // Toolbar: just attach button
+  const toolbar = h("div", { className: "flex items-center gap-1 px-2 py-1 border border-b-0 border-line rounded-t-lg bg-slate-50" });
   const fileInput = h("input", { type: "file", multiple: "multiple", className: "hidden" });
-  toolbar.appendChild(h("div", { className: "flex-1" }));
   toolbar.appendChild(h("button", {
     className: "toolbar-btn",
     type: "button",
@@ -1430,17 +1418,23 @@ function renderQuickReply(placeholder) {
   toolbar.appendChild(fileInput);
   wrap.appendChild(toolbar);
 
-  // Editor
-  const editor = h("div", {
-    className: "qr-editor border border-line rounded-b-lg px-3 py-2 text-sm min-h-[40px] max-h-[160px] overflow-y-auto outline-none",
-    contenteditable: "true",
-    "data-placeholder": placeholder,
+  // Editor — textarea so Enter = newline, Shift+Enter = send
+  const editor = h("textarea", {
+    className: "qr-editor border border-line rounded-b-lg px-3 py-2 text-sm outline-none resize-none w-full",
+    placeholder,
+    rows: 3,
   });
-  if (S.quickReply) editor.innerHTML = textToHtml(S.quickReply);
+  if (S.quickReply) editor.value = S.quickReply;
   wrap.appendChild(editor);
   outer.appendChild(wrap);
 
-  // Attachment previews (outside border)
+  // Auto-grow textarea as user types
+  editor.addEventListener("input", () => {
+    editor.style.height = "auto";
+    editor.style.height = editor.scrollHeight + "px";
+  });
+
+  // Attachment previews
   const attContainer = h("div", { className: "flex flex-wrap gap-1 mt-1" });
   function renderAttPreviews() {
     clear(attContainer);
@@ -1461,7 +1455,7 @@ function renderQuickReply(placeholder) {
   renderAttPreviews();
   outer.appendChild(attContainer);
 
-  // Send button (outside border)
+  // Send button
   const bottomRow = h("div", { className: "flex items-center justify-end mt-2" });
   const sendBtn = h("button", {
     className: "qr-send-btn p-2 rounded-full bg-brand text-white hover:bg-brand-hover disabled:opacity-50",
@@ -1474,22 +1468,20 @@ function renderQuickReply(placeholder) {
 
   // Logic
   function updateSendBtn() {
-    const hasContent = editor.textContent.trim().length > 0;
+    const hasContent = editor.value.trim().length > 0;
     sendBtn.disabled = S.quickSending || (!hasContent && S.quickAttachments.length === 0);
   }
 
   editor.addEventListener("input", () => {
-    S.quickReply = editor.innerHTML;
+    S.quickReply = editor.value;
     updateSendBtn();
   });
-  preventMobileScroll(editor);
+
+  // Ctrl/Cmd+Enter to send; plain Enter = newline
   editor.addEventListener("keydown", e => {
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendQuickReply(); }
-  });
-  editor.addEventListener("paste", e => {
-    // Paste as plain text to avoid messy formatting
-    if (e.clipboardData.types.includes("text/html")) {
-      // keep HTML for rich paste
+    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+      e.preventDefault();
+      sendQuickReply();
     }
   });
 
@@ -1507,9 +1499,7 @@ function renderQuickReply(placeholder) {
     fileInput.value = "";
   });
 
-  // Initial state
   updateSendBtn();
-  // Expose editor ref for sendQuickReply
   outer._qrEditor = editor;
   outer._qrSendBtn = sendBtn;
   return outer;
@@ -1954,17 +1944,14 @@ async function batchDelete() {
 }
 
 async function sendQuickReply() {
-  // Get content from the rich editor
   const editor = document.querySelector(".qr-editor");
   const sendBtn = document.querySelector(".qr-send-btn");
-  const html = editor ? editor.innerHTML : S.quickReply;
-  const text = editor ? editor.textContent : S.quickReply;
+  const text = editor ? editor.value : S.quickReply;
   if (!text.trim() && S.quickAttachments.length === 0) return;
   if (!S.selectedMsg) return;
   if (S.quickSending) return;
 
   S.quickSending = true;
-  if (editor) editor.setAttribute("contenteditable", "false");
   if (sendBtn) sendBtn.disabled = true;
 
   try {
@@ -1972,8 +1959,8 @@ async function sendQuickReply() {
     const body = {
       to: displayEmail(msg.from),
       subject: msg.subject?.startsWith("Re:") ? msg.subject : `Re: ${msg.subject || ""}`,
-      text: text,
-      html: html,
+      text,
+      html: null,
       inReplyTo: msg.messageId || "",
       references: [msg.references, msg.inReplyTo, msg.messageId].filter(Boolean).join(" ").trim(),
     };
@@ -1988,12 +1975,11 @@ async function sendQuickReply() {
     S.quickSending = false;
     S.quickReply = "";
     S.quickAttachments = [];
-    if (editor) { editor.innerHTML = ""; editor.setAttribute("contenteditable", "true"); }
+    if (editor) { editor.value = ""; editor.style.height = "auto"; }
     if (sendBtn) sendBtn.disabled = true;
     showToast(t("sentOk"));
   } catch (err) {
     S.quickSending = false;
-    if (editor) editor.setAttribute("contenteditable", "true");
     if (sendBtn) sendBtn.disabled = false;
     set({ error: err.message });
   }
