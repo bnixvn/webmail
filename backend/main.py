@@ -136,18 +136,49 @@ async def _get_imap_for_session(session: dict) -> aioimaplib.IMAP4_SSL:
 
 
 async def _discover_mail_host(domain: str, service: str = "imap") -> str:
-    """Auto-discover mail server via MX record."""
+    """
+    Auto-discover mail server — Roundcube-style with TCP probing.
+    Tries: mail.{domain} → {domain} → MX record → mail.{domain} (fallback)
+    For SMTP, probes both port 465 (SMTPS) and 587 (STARTTLS).
+    """
+    ports = [993] if service == "imap" else [465, 587]
+
+    candidates = [f"mail.{domain}", domain]
+
+    # Add MX record hosts
     try:
         import dns.resolver
         resolver = dns.resolver.Resolver()
-        resolver.timeout = 5
+        resolver.timeout = 3
         answers = resolver.resolve(domain, "MX")
-        records = sorted([(r.preference, str(r.exchange).rstrip(".")) for r in answers])
-        if records:
-            return records[0][1]
+        mx_hosts = sorted([str(r.exchange).rstrip(".") for r in answers])
+        candidates.extend(mx_hosts)
     except Exception:
         pass
-    return f"mail.{domain}"
+
+    # Always have mail.{domain} as final fallback
+    if f"mail.{domain}" not in candidates:
+        candidates.append(f"mail.{domain}")
+
+    # Probe each candidate with TCP connect
+    for host in candidates:
+        for port in ports:
+            try:
+                _, writer = await asyncio.wait_for(
+                    asyncio.open_connection(host, port, ssl=False),
+                    timeout=5,
+                )
+                writer.close()
+                await writer.wait_closed()
+                # Return host:port as "host" string for SMTP with non-default port
+                if service == "smtp" and port != 465:
+                    return f"{host}:{port}"
+                return host
+            except Exception:
+                continue
+
+    # Last resort
+    return candidates[0]
 
 
 # ─── Session (AES-256-GCM, matching Next.js) ──────────────────────────────────
@@ -460,6 +491,15 @@ async def login(request: Request, body: dict):
     imap_host = imap_host_override or os.environ.get("IMAP_HOST", "").strip() or await _discover_mail_host(domain, "imap")
     imap_port = int(imap_port_override or os.environ.get("IMAP_PORT", "993"))
 
+    # Resolve SMTP server (for sending)
+    smtp_host_raw = smtp_host_override or os.environ.get("SMTP_HOST", "").strip() or await _discover_mail_host(domain, "smtp")
+    if ":" in smtp_host_raw and not smtp_host_raw.startswith("["):
+        smtp_host, smtp_discovered_port = smtp_host_raw.rsplit(":", 1)
+        smtp_port = int(smtp_port_override or os.environ.get("SMTP_PORT", smtp_discovered_port))
+    else:
+        smtp_host = smtp_host_raw
+        smtp_port = int(smtp_port_override or os.environ.get("SMTP_PORT", "465"))
+
     client = aioimaplib.IMAP4_SSL(host=imap_host, port=imap_port, timeout=IMAP_TIMEOUT)
     try:
         await client.wait_hello_from_server()
@@ -472,6 +512,10 @@ async def login(request: Request, body: dict):
         "email": email,
         "password": password,
         "createdAt": int(time.time() * 1000),
+        "imap_host": imap_host,
+        "imap_port": imap_port,
+        "smtp_host": smtp_host,
+        "smtp_port": smtp_port,
     }
     # Store server overrides in session if user provided them
     if imap_host_override:
@@ -884,8 +928,14 @@ async def send_message(request: Request, body: dict):
 
     # Send via SMTP
     domain = email.split("@")[1].lower()
-    smtp_host = session.get("smtp_host") or os.environ.get("SMTP_HOST", "").strip() or await _discover_mail_host(domain, "smtp")
-    smtp_port = int(session.get("smtp_port") or os.environ.get("SMTP_PORT", "465"))
+    smtp_host_raw = session.get("smtp_host") or os.environ.get("SMTP_HOST", "").strip() or await _discover_mail_host(domain, "smtp")
+    # Handle host:port format from discovery (e.g., "mail.domain.com:587")
+    if ":" in smtp_host_raw and not smtp_host_raw.startswith("["):
+        smtp_host, discovered_port = smtp_host_raw.rsplit(":", 1)
+        smtp_port = int(session.get("smtp_port") or os.environ.get("SMTP_PORT", discovered_port))
+    else:
+        smtp_host = smtp_host_raw
+        smtp_port = int(session.get("smtp_port") or os.environ.get("SMTP_PORT", "465"))
     smtp_secure = os.environ.get("SMTP_SECURE", "true").lower() != "false"
 
     import aiosmtplib
