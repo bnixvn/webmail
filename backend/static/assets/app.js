@@ -2835,7 +2835,7 @@ function render() {
       const main = h("div", { className: "flex-1 flex flex-col overflow-hidden min-w-0" });
 
       if (S.view === "mail") {
-        const mailView = h("div", { className: "flex-1 flex overflow-hidden" });
+        const mailView = h("div", { className: "flex-1 flex overflow-hidden relative" });
 
         // Mobile: show list or detail, not both
         if (S.selectedUid && window.innerWidth < 769) {
@@ -2846,6 +2846,15 @@ function render() {
           mailView.appendChild(renderMessageList());
           mailView.appendChild(renderMessageView());
         }
+
+        // Mobile FAB: compose button (bottom-right, desktop-only via CSS)
+        const fab = h("button", {
+          className: "fab-compose md:hidden",
+          title: t("compose"),
+          onclick() { openCompose(); },
+          innerHTML: I.edit,
+        });
+        mailView.appendChild(fab);
 
         main.appendChild(mailView);
       } else if (S.view === "contacts") {

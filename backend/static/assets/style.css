@@ -284,6 +284,37 @@ input, textarea, [contenteditable] {
   .mobile-only { display: none !important; }
 }
 
+/* Mobile FAB compose button */
+.fab-compose {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 30;
+  width: 56px;
+  height: 56px;
+  border-radius: 9999px;
+  background: #284f7d;
+  color: white;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 16px rgba(40, 79, 125, 0.4);
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+.fab-compose:hover {
+  background: #3d83bd;
+  transform: scale(1.06);
+}
+.fab-compose:active {
+  transform: scale(0.95);
+}
+.fab-compose svg {
+  width: 22px;
+  height: 22px;
+}
+
 /* Thread view bubbles */
 .thread-bubble {
   transition: box-shadow 0.15s ease;
