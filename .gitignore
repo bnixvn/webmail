@@ -20,6 +20,8 @@ Thumbs.db
 # IDE
 .vscode/
 .idea/
+.agents/
+.claude/
 
 # Build
 release/
