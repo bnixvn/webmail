@@ -1387,7 +1387,7 @@ function renderQuickReply(placeholder) {
 
   // Editor
   const editor = h("div", {
-    className: "qr-editor border border-line rounded-b-lg px-3 py-2 text-sm min-h-[40px] max-h-[160px] overflow-y-auto outline-none focus:ring-2 focus:ring-blue-300",
+    className: "qr-editor border border-line rounded-b-lg px-3 py-2 text-sm min-h-[40px] max-h-[160px] overflow-y-auto outline-none",
     contenteditable: "true",
     "data-placeholder": placeholder,
   });

@@ -139,12 +139,6 @@ body {
 .toolbar-btn.active { background: #dbeafe; color: #2563eb; }
 
 /* Quick reply rich editor */
-.qr-rich-wrap {
-  transition: border-color 0.15s, box-shadow 0.15s;
-}
-.qr-rich-wrap:focus-within {
-  box-shadow: 0 0 0 2px rgba(59,130,246,0.15);
-}
 .qr-rich-wrap .qr-toolbar {
   border-bottom: 1px solid #f1f5f9;
   padding: 4px 6px;
