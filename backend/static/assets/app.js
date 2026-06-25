@@ -3048,16 +3048,6 @@ function renderContactEditPanel() {
     panel.appendChild(mhdr);
   } else {
     panel.appendChild(h("h2", { className: "text-lg font-semibold mb-4 px-6 pt-6" }, isNew ? t("newContact") : t("editContact")));
-
-  actions.appendChild(h("div", { className: "flex-1" }));
-  // Hide Cancel on mobile — back button in header is enough
-  if (!isMobile) {
-    actions.appendChild(h("button", {
-      className: "px-4 py-2 rounded-lg border border-line text-sm hover:bg-slate-50",
-      type: "button",
-      onclick() { set({ contactEditing: null }); },
-    }, t("cancel")));
-  }
   }
 
   const inner = h("div", { className: "px-4 pb-6" });
@@ -3102,6 +3092,14 @@ function renderContactEditPanel() {
         } catch (err) { set({ error: err.message }); }
       },
     }, t("deleteContact")));
+  }
+  // Cancel only on desktop (mobile has Back in header)
+  if (!isMobile) {
+    actions.appendChild(h("button", {
+      className: "px-4 py-2 rounded-lg border border-line text-sm hover:bg-slate-50",
+      type: "button",
+      onclick() { set({ contactEditing: null }); },
+    }, t("cancel")));
   }
   actions.appendChild(h("div", { className: "flex-1" }));
   actions.appendChild(h("button", {
