@@ -2038,10 +2038,10 @@ function renderMessageItem(msg, inThread, isReply) {
   content.appendChild(h("div", { className: `text-sm truncate ${unread ? "font-medium text-ink" : "text-slate-700"}` }, msg.subject || t("noSubject")));
   // Label chips
   if (msg.labels && msg.labels.length > 0) {
-    const labelRow = h("div", { className: "flex items-center gap-1 mt-0.5 flex-wrap" });
+    const labelRow = h("div", { className: "flex items-center gap-1 mt-1 flex-wrap" });
     for (const lb of msg.labels) {
       labelRow.appendChild(h("span", {
-        className: "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium text-white",
+        className: "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold text-white shadow-sm",
         style: { backgroundColor: lb.color || "#6366f1" },
       }, lb.name));
     }
@@ -4180,20 +4180,32 @@ function renderLabelManagerModal() {
     placeholder: t("labelName"),
     value: S.labelEditing?.name || "",
   });
+  // Don't call set() on input — just update state to avoid re-render losing focus
   nameInput.addEventListener("input", e => {
-    set({ labelEditing: { ...(S.labelEditing || {}), name: e.target.value } });
+    if (!S.labelEditing) S.labelEditing = {};
+    S.labelEditing.name = e.target.value;
   });
 
-  const colorWrap = h("div", { className: "flex items-center gap-1 flex-wrap" });
+  const colorWrap = h("div", { className: "flex items-center gap-1.5 flex-wrap" });
   const currentColor = S.labelEditing?.color || LABEL_COLORS[0];
   for (const c of LABEL_COLORS) {
-    colorWrap.appendChild(h("button", {
-      className: `w-5 h-5 rounded-full border-2 ${c === currentColor ? "border-slate-800 dark:border-white scale-110" : "border-transparent"}`,
+    const dot = h("button", {
+      className: `w-6 h-6 rounded-full border-2 transition-transform ${c === currentColor ? "border-slate-800 dark:border-white scale-125 shadow-md" : "border-slate-200 dark:border-slate-600 hover:scale-110"}`,
       style: { backgroundColor: c },
       onclick() {
-        set({ labelEditing: { ...(S.labelEditing || { name: "" }), color: c } });
+        // Save cursor position before re-render
+        const sel = nameInput.selectionStart;
+        const val = nameInput.value;
+        S.labelEditing = { ...(S.labelEditing || { name: "" }), color: c };
+        set({ labelEditing: S.labelEditing });
+        // Restore focus & cursor after re-render
+        requestAnimationFrame(() => {
+          const inp = document.querySelector('input[placeholder="' + t("labelName") + '"]');
+          if (inp) { inp.focus(); inp.setSelectionRange(sel, sel); }
+        });
       },
-    }));
+    });
+    colorWrap.appendChild(dot);
   }
 
   const addBtn = h("button", {
