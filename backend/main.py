@@ -75,7 +75,48 @@ def _contacts_init():
         db.commit()
 
 
+CALENDAR_DB = os.path.join(DATA_DIR, "contacts", "calendar.db")
+
+
+def _calendar_init():
+    """Init calendar SQLite DB schema once per process."""
+    import sqlite3
+    with sqlite3.connect(CALENDAR_DB) as db:
+        db.execute("""CREATE TABLE IF NOT EXISTS events (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            uid         TEXT    UNIQUE NOT NULL,
+            account     TEXT    NOT NULL,
+            summary     TEXT    NOT NULL DEFAULT '',
+            description TEXT    DEFAULT '',
+            location    TEXT    DEFAULT '',
+            dtstart     TEXT    NOT NULL DEFAULT '',
+            dtend       TEXT    DEFAULT '',
+            all_day     INTEGER NOT NULL DEFAULT 0,
+            recurrence  TEXT    DEFAULT '',
+            attendees   TEXT    DEFAULT '',
+            created_at  TEXT    NOT NULL,
+            updated_at  TEXT    NOT NULL
+        )""")
+        db.execute("CREATE TABLE IF NOT EXISTS events_migrated (account TEXT PRIMARY KEY)")
+        db.commit()
+
+
+def _event_row(row: tuple) -> dict:
+    return {
+        "uid": row[1],
+        "summary": row[3] or "",
+        "description": row[4] or "",
+        "location": row[5] or "",
+        "dtstart": row[6] or "",
+        "dtend": row[7] or "",
+        "allDay": bool(row[8]),
+        "recurrence": row[9] or "",
+        "attendees": row[10] or "",
+    }
+
+
 _contacts_init()
+_calendar_init()
 
 # Static files directory (served by FastAPI)
 STATIC_DIR = Path(__file__).parent / "static"
@@ -1903,190 +1944,282 @@ def _xml_text(xml: str, tag: str) -> str | None:
     return m.group(1).strip() if m else None
 
 
-# ── Calendar (CalDAV) ────────────────────────────────────────────────────────
+# ── Calendar (SQLite) ───────────────────────────────────────────────────────
 
 @app.get("/api/calendar")
 async def list_calendar_events(request: Request):
     session = await require_session(request)
-    config = _get_dav_config(session)
-    email = session["email"]
+    account = session["email"]
     start_str = request.query_params.get("start")
     end_str = request.query_params.get("end")
 
-    calendar_url = f"{config['serverUrl']}/calendars/{email}/calendar/"
+    import sqlite3
+    with sqlite3.connect(CALENDAR_DB) as db:
+        db.row_factory = sqlite3.Row
+        query = "SELECT * FROM events WHERE account=? ORDER BY dtstart"
+        params = [account]
+        if start_str:
+            query += " AND dtstart >= ?"
+            params.append(start_str)
+        if end_str:
+            query += " AND dtstart <= ?"
+            params.append(end_str)
+        rows = db.execute(query, params).fetchall()
 
-    # PROPFIND to list calendar objects
-    propfind_body = """<?xml version="1.0" encoding="utf-8"?>
-<D:propfind xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">
-  <D:prop>
-    <D:getetag/>
-    <D:getcontenttype/>
-    <C:calendar-data/>
-  </D:prop>
-</D:propfind>"""
-
-    try:
-        resp = await _dav_request("PROPFIND", calendar_url, session, propfind_body,
-                                  {"Depth": "1"})
-        if resp.status_code not in (207, 200):
-            # Try alternative URL patterns
-            alt_urls = [
-                f"{config['serverUrl']}/dav/calendars/{email}/calendar/",
-                f"{config['serverUrl']}/.well-known/caldav",
-            ]
-            for alt_url in alt_urls:
-                resp = await _dav_request("PROPFIND", alt_url, session, propfind_body,
-                                          {"Depth": "1"})
-                if resp.status_code in (207, 200):
-                    calendar_url = alt_url
-                    break
-            else:
-                return JSONResponse({"events": []})
-
-        # Parse response XML for calendar-data
-        xml_body = resp.text
-        events = []
-
-        # Split by response boundaries
-        responses = re.split(r"<D:response>|<d:response>|<response>", xml_body, flags=re.IGNORECASE)
-        for resp_block in responses[1:]:
-            href_match = re.search(r"<D:href>([^<]+)</D:href>|<d:href>([^<]+)</d:href>|<href>([^<]+)</href>",
-                                   resp_block, re.IGNORECASE)
-            if not href_match:
-                continue
-            href = next(g for g in href_match.groups() if g is not None)
-
-            # Extract calendar-data
-            cal_data_match = re.search(
-                r"<C:calendar-data[^>]*>([\s\S]*?)</C:calendar-data>|"
-                r"<cal:calendar-data[^>]*>([\s\S]*?)</cal:calendar-data>|"
-                r"<calendar-data[^>]*>([\s\S]*?)</calendar-data>",
-                resp_block, re.IGNORECASE)
-            if not cal_data_match:
-                continue
-            ics_data = next(g for g in cal_data_match.groups() if g is not None)
-            # Unescape XML entities
-            ics_data = ics_data.replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&").replace("&quot;", '"')
-
-            etag_match = re.search(r"<D:getetag>([^<]+)</D:getetag>|<getetag>([^<]+)</getetag>",
-                                   resp_block, re.IGNORECASE)
-            etag = None
-            if etag_match:
-                etag = next(g for g in etag_match.groups() if g is not None)
-
-            parsed = _parse_ics(ics_data)
-            if not parsed.get("uid") or not parsed.get("dtstart"):
-                continue
-
-            # Time range filter
-            if start_str and parsed["dtstart"] < start_str:
-                continue
-            if end_str and parsed["dtstart"] > end_str:
-                continue
-
-            events.append({
-                "uid": parsed["uid"],
-                "summary": parsed.get("summary", "(No title)"),
-                "description": parsed.get("description"),
-                "location": parsed.get("location"),
-                "dtstart": parsed["dtstart"],
-                "dtend": parsed.get("dtend", ""),
-                "allDay": parsed.get("allDay", False),
-                "recurrence": parsed.get("recurrence"),
-                "etag": etag,
-                "url": href,
-            })
-
-        events.sort(key=lambda e: e["dtstart"])
-        return JSONResponse({"events": events})
-
-    except Exception as e:
-        return JSONResponse({"events": []})
+    events = [_event_row(tuple(r)) for r in rows]
+    return JSONResponse({"events": events})
 
 
 @app.post("/api/calendar")
 async def create_calendar_event(request: Request, body: dict):
     session = await require_session(request)
-    config = _get_dav_config(session)
-    email = session["email"]
+    account = session["email"]
 
-    uid = str(uuid.uuid4())
-    ics = _build_ics(body, uid)
-    calendar_url = f"{config['serverUrl']}/calendars/{email}/calendar/"
-    put_url = f"{calendar_url}{uid}.ics"
+    uid = body.get("uid") or str(uuid.uuid4())
+    now = datetime.utcnow().isoformat()
 
-    try:
-        resp = await _dav_request("PUT", put_url, session, ics,
-                                  {"Content-Type": "text/calendar; charset=utf-8"})
-        if resp.status_code in (200, 201, 204):
-            return JSONResponse({
-                "uid": uid,
-                "summary": body.get("summary", ""),
-                "description": body.get("description"),
-                "location": body.get("location"),
-                "dtstart": body.get("dtstart", ""),
-                "dtend": body.get("dtend", ""),
-                "allDay": body.get("allDay", False),
-                "recurrence": body.get("recurrence"),
-            })
-        raise HTTPException(502, f"CalDAV create failed: {resp.status_code}")
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(502, f"CalDAV error: {e}")
+    import sqlite3
+    with sqlite3.connect(CALENDAR_DB) as db:
+        db.execute(
+            """INSERT INTO events
+               (uid, account, summary, description, location, dtstart, dtend,
+                all_day, recurrence, attendees, created_at, updated_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (uid, account,
+             body.get("summary", ""), body.get("description", ""),
+             body.get("location", ""), body.get("dtstart", ""),
+             body.get("dtend", ""),
+             1 if body.get("allDay") else 0,
+             body.get("recurrence", ""),
+             json.dumps(body.get("attendees", [])),
+             now, now),
+        )
+        db.commit()
+
+    return JSONResponse({
+        "uid": uid,
+        "summary": body.get("summary", ""),
+        "description": body.get("description", ""),
+        "location": body.get("location", ""),
+        "dtstart": body.get("dtstart", ""),
+        "dtend": body.get("dtend", ""),
+        "allDay": bool(body.get("allDay")),
+        "recurrence": body.get("recurrence", ""),
+        "attendees": body.get("attendees", []),
+    })
 
 
 @app.put("/api/calendar/{uid}")
 async def update_calendar_event(request: Request, uid: str, body: dict):
     session = await require_session(request)
-    config = _get_dav_config(session)
-    email = session["email"]
+    account = session["email"]
+    now = datetime.utcnow().isoformat()
 
-    ics = _build_ics(body, uid)
-    calendar_url = f"{config['serverUrl']}/calendars/{email}/calendar/"
-    put_url = body.get("url") or f"{calendar_url}{uid}.ics"
+    import sqlite3
+    with sqlite3.connect(CALENDAR_DB) as db:
+        cur = db.execute(
+            """UPDATE events
+               SET summary=?, description=?, location=?, dtstart=?, dtend=?,
+                   all_day=?, recurrence=?, attendees=?, updated_at=?
+               WHERE uid=? AND account=?""",
+            (body.get("summary", ""), body.get("description", ""),
+             body.get("location", ""), body.get("dtstart", ""),
+             body.get("dtend", ""),
+             1 if body.get("allDay") else 0,
+             body.get("recurrence", ""),
+             json.dumps(body.get("attendees", [])),
+             now, uid, account),
+        )
+        db.commit()
+        if cur.rowcount == 0:
+            raise HTTPException(404, "Event not found")
 
-    try:
-        resp = await _dav_request("PUT", put_url, session, ics,
-                                  {"Content-Type": "text/calendar; charset=utf-8"})
-        if resp.status_code in (200, 201, 204):
-            return JSONResponse({"ok": True})
-        raise HTTPException(502, f"CalDAV update failed: {resp.status_code}")
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(502, f"CalDAV error: {e}")
+    return JSONResponse({"ok": True})
 
 
 @app.delete("/api/calendar/{uid}")
 async def delete_calendar_event(request: Request, uid: str):
     session = await require_session(request)
-    config = _get_dav_config(session)
-    email = session["email"]
+    account = session["email"]
 
-    # Try to find the event URL
-    body = await request.body()
-    url = None
-    if body:
-        try:
-            data = json.loads(body)
-            url = data.get("url")
-        except Exception:
-            pass
+    import sqlite3
+    with sqlite3.connect(CALENDAR_DB) as db:
+        cur = db.execute("DELETE FROM events WHERE uid=? AND account=?", (uid, account))
+        db.commit()
+        if cur.rowcount == 0:
+            raise HTTPException(404, "Event not found")
 
-    if not url:
-        calendar_url = f"{config['serverUrl']}/calendars/{email}/calendar/"
-        url = f"{calendar_url}{uid}.ics"
+    return JSONResponse({"ok": True})
 
+
+# ── Calendar utilities ──────────────────────────────────────────────────────
+
+@app.post("/api/calendar/import")
+async def import_calendar_event(request: Request, body: dict):
+    """Parse .ics attachment data and save as calendar event."""
+    session = await require_session(request)
+    account = session["email"]
+
+    ics_data = body.get("ics", "")
+    if not ics_data:
+        raise HTTPException(400, "ICS data is required")
+
+    parsed = _parse_ics(ics_data)
+    if not parsed.get("summary") and not parsed.get("dtstart"):
+        raise HTTPException(400, "Invalid ICS data")
+
+    uid = parsed.get("uid") or str(uuid.uuid4())
+    now = datetime.utcnow().isoformat()
+
+    import sqlite3
+    with sqlite3.connect(CALENDAR_DB) as db:
+        db.execute(
+            """INSERT OR IGNORE INTO events
+               (uid, account, summary, description, location, dtstart, dtend,
+                all_day, recurrence, attendees, created_at, updated_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (uid, account,
+             parsed.get("summary", ""), parsed.get("description", ""),
+             parsed.get("location", ""), parsed.get("dtstart", ""),
+             parsed.get("dtend", ""),
+             1 if parsed.get("allDay") else 0,
+             parsed.get("recurrence", ""),
+             json.dumps([]),
+             now, now),
+        )
+        db.commit()
+
+    return JSONResponse({
+        "uid": uid,
+        "summary": parsed.get("summary", ""),
+        "dtstart": parsed.get("dtstart", ""),
+    })
+
+
+@app.get("/api/calendar/today")
+async def calendar_today_events(request: Request):
+    """Get today's events for sidebar widget."""
+    session = await require_session(request)
+    account = session["email"]
+
+    today = datetime.utcnow().date().isoformat()
+
+    import sqlite3
+    with sqlite3.connect(CALENDAR_DB) as db:
+        db.row_factory = sqlite3.Row
+        rows = db.execute(
+            "SELECT * FROM events WHERE account=? AND date(dtstart)=? ORDER BY dtstart",
+            (account, today),
+        ).fetchall()
+
+    return JSONResponse({"events": [_event_row(tuple(r)) for r in rows]})
+
+
+@app.post("/api/calendar/send-invite")
+async def send_calendar_invite(request: Request, body: dict):
+    """Build .ics METHOD:REQUEST and send as email invite via SMTP."""
+    session = await require_session(request)
+    account = session["email"]
+    password = session["password"]
+
+    event = body.get("event", {})
+    attendee_list = body.get("attendees", [])
+
+    if not attendee_list:
+        raise HTTPException(400, "At least one attendee is required")
+
+    uid = event.get("uid") or str(uuid.uuid4())
+    now = _format_ics_date(datetime.utcnow().isoformat() + "Z", False)
+    all_day = event.get("allDay", False)
+
+    lines = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//BNIX Webmail//EN",
+        "METHOD:REQUEST",
+        "BEGIN:VEVENT",
+        f"UID:{uid}",
+        f"DTSTAMP:{now}",
+    ]
+    if event.get("dtstart"):
+        prefix = "DTSTART;VALUE=DATE" if all_day else "DTSTART"
+        lines.append(f"{prefix}:{_format_ics_date(event['dtstart'], all_day)}")
+    if event.get("dtend"):
+        prefix = "DTEND;VALUE=DATE" if all_day else "DTEND"
+        lines.append(f"{prefix}:{_format_ics_date(event['dtend'], all_day)}")
+    lines.append(f"SUMMARY:{event.get('summary', '')}")
+    if event.get("description"):
+        lines.append(f"DESCRIPTION:{event['description'].replace(chr(10), '\\n').replace(',', '\\,')}")
+    if event.get("location"):
+        lines.append(f"LOCATION:{event['location']}")
+
+    account_name = session.get("display_name", "")
+    if account_name:
+        lines.append(f"ORGANIZER;CN={account_name}:mailto:{account}")
+    else:
+        lines.append(f"ORGANIZER:mailto:{account}")
+
+    for att in attendee_list:
+        att_email = att.get("email", "")
+        att_name = att.get("name", "")
+        if att_email:
+            if att_name:
+                lines.append(f"ATTENDEE;CN={att_name}:mailto:{att_email}")
+            else:
+                lines.append(f"ATTENDEE:mailto:{att_email}")
+
+    lines.extend(["END:VEVENT", "END:VCALENDAR"])
+    ics_content = "\r\n".join(lines)
+
+    to_recipients = [att.get("email", "") for att in attendee_list if att.get("email")]
+
+    mime_msg = EmailMessage()
+    mime_msg["From"] = formataddr((str(Header(account_name, "utf-8")), account)) if account_name else account
+    mime_msg["To"] = ", ".join(to_recipients)
+    mime_msg["Subject"] = str(Header(f"Invitation: {event.get('summary', 'Event')}", "utf-8"))
+    mime_msg["Content-Type"] = "multipart/mixed"
+    mime_msg["MIME-Version"] = "1.0"
+
+    body_text = (
+        f"You are invited to: {event.get('summary', '')}\n"
+        f"Time: {event.get('dtstart', '')}\n"
+        f"Location: {event.get('location', '')}\n\n"
+        f"{event.get('description', '')}"
+    )
+    mime_msg.set_content(body_text, subtype="plain", charset="utf-8")
+
+    ics_bytes = ics_content.encode("utf-8")
+    mime_msg.add_attachment(
+        ics_bytes,
+        maintype="text",
+        subtype="calendar",
+        filename="invite.ics",
+    )
+
+    domain = account.split("@")[1].lower()
+    smtp_host_raw = session.get("smtp_host") or os.environ.get("SMTP_HOST", "").strip() or await _discover_mail_host(domain, "smtp")
+    if ":" in smtp_host_raw and not smtp_host_raw.startswith("["):
+        smtp_host, discovered_port = smtp_host_raw.rsplit(":", 1)
+        smtp_port = int(session.get("smtp_port") or discovered_port)
+    else:
+        smtp_host = smtp_host_raw
+        smtp_port = int(session.get("smtp_port") or os.environ.get("SMTP_PORT", "465"))
+
+    use_tls = os.environ.get("SMTP_SECURE", "true").lower() != "false"
+    smtp = aiosmtplib.SMTP(timeout=SMTP_TIMEOUT)
     try:
-        resp = await _dav_request("DELETE", url, session)
-        if resp.status_code in (200, 204, 404):
-            return JSONResponse({"ok": True})
-        raise HTTPException(502, f"CalDAV delete failed: {resp.status_code}")
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(502, f"CalDAV error: {e}")
+        await smtp.connect()
+        if use_tls and smtp.can_starttls:
+            await smtp.starttls()
+        await smtp.login(account, password)
+        await smtp.send_message(mime_msg)
+    finally:
+        await smtp.quit()
+
+    return JSONResponse({"ok": True, "sent": len(to_recipients)})
+
+
+# ── Contacts (SQLite) ────────────────────────────────────────────────────────
 
 
 # ── Contacts (SQLite) ────────────────────────────────────────────────────────

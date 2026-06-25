@@ -92,6 +92,15 @@ const LOCALES = {
     allDay: "All day",
     noEvents: "No events this month",
     deleteEvent: "Delete",
+    createEvent: "Create Event",
+    addToCalendar: "Add to Calendar",
+    sendInvite: "Send Invite",
+    attendees: "Attendees",
+    importSuccess: "Event added to calendar",
+    inviteSent: "Invite sent",
+    todayEvents: "TODAY'S EVENTS",
+    noEventsToday: "No events today",
+    viewAll: "View all",
     // Signature modal
     signatureTitle: "Signature Settings",
     displayName: "Display Name", emailAddress: "Email address",
@@ -185,6 +194,15 @@ const LOCALES = {
     allDay: "Cả ngày",
     noEvents: "Không có sự kiện tháng này",
     deleteEvent: "Xoá",
+    createEvent: "Tạo sự kiện",
+    addToCalendar: "Thêm vào lịch",
+    sendInvite: "Gửi lời mời",
+    attendees: "Người tham gia",
+    importSuccess: "Đã thêm vào lịch",
+    inviteSent: "Đã gửi lời mời",
+    todayEvents: "SỰ KIỆN HÔM NAY",
+    noEventsToday: "Không có sự kiện",
+    viewAll: "Xem tất cả",
     // Chữ ký
     signatureTitle: "Cài đặt chữ ký",
     displayName: "Tên hiển thị", emailAddress: "Địa chỉ email",
@@ -733,6 +751,7 @@ const S = {
   moveMenu: null,
   contacts: [],
   calendarEvents: [],
+  todayEvents: [],
   calMonth: new Date(),
   calSelected: null,
   calEditing: null,
@@ -902,7 +921,7 @@ async function bootstrap() {
       mailboxes: mbData.mailboxes || [],
       ready: true,
     });
-    await loadMessages();
+    await Promise.all([loadMessages(), loadTodayEvents()]);
   } catch (err) {
     // Only logout on actual auth errors (401/403)
     if (err.status === 401 || err.status === 403) {
@@ -1096,6 +1115,37 @@ function renderSidebar() {
       }
       items.push(folderIcons);
     }
+  }
+
+  // Today's events widget (only when expanded + in mail view)
+  if (!collapsed && S.view === "mail") {
+    const todaySection = h("div", { className: "px-3 py-3 border-t border-line" });
+
+    const todayHeader = h("div", { className: "flex items-center justify-between mb-2" });
+    todayHeader.appendChild(h("span", { className: "text-[11px] font-semibold uppercase text-slate-400 tracking-wider" }, t("todayEvents") || "Today's events"));
+    todayHeader.appendChild(h("button", {
+      className: "text-[11px] text-blue-600 hover:underline",
+      onclick() { set({ view: "calendar" }); },
+    }, t("viewAll") || "View all"));
+
+    const todayEvents = S.todayEvents || [];
+    if (todayEvents.length === 0) {
+      todaySection.appendChild(todayHeader);
+      todaySection.appendChild(h("p", { className: "text-xs text-slate-400" }, t("noEventsToday") || "No events today"));
+    } else {
+      todaySection.appendChild(todayHeader);
+      for (const evt of todayEvents.slice(0, 3)) {
+        const evtTime = evt.allDay ? t("allDay") : (evt.dtstart ? new Date(evt.dtstart).toLocaleTimeString(t("dateLocale"), { hour: "numeric", minute: "2-digit" }) : "");
+        todaySection.appendChild(h("button", {
+          className: "block w-full text-left px-2 py-1.5 rounded hover:bg-slate-50 text-xs truncate",
+          onclick() { set({ view: "calendar", calSelected: evt.dtstart?.slice(0, 10) }); },
+        },
+          h("span", { className: "font-medium" }, evt.summary || "(No title)"),
+          evtTime ? h("span", { className: "ml-1 text-slate-400" }, evtTime) : null,
+        ));
+      }
+    }
+    items.push(todaySection);
   }
 
   // Footer spacer
@@ -2120,7 +2170,9 @@ function renderMessageView() {
     for (const att of visibleAttachments) {
       const openUrl = `/api/messages/${msg.uid}/attachments/${att.index}?folder=${encodeURIComponent(S.folder)}`;
       const downloadUrl = `${openUrl}&download=1`;
-      attGrid.appendChild(h("div", {
+      const isIcs = (att.filename || "").toLowerCase().endsWith(".ics") || (att.contentType || "").includes("calendar");
+
+      const attItem = h("div", {
         className: "attachment-item cursor-pointer hover:bg-slate-50",
         onclick() { window.open(openUrl, "_blank", "noopener"); },
       },
@@ -2135,17 +2187,54 @@ function renderMessageView() {
           onclick(e) { e.stopPropagation(); },
           innerHTML: I.download,
         }),
-      ));
+      );
+
+      if (isIcs) {
+        const calBtn = h("button", {
+          className: "px-2 py-0.5 rounded text-xs bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200",
+          title: t("addToCalendar"),
+          onclick(e) {
+            e.stopPropagation();
+            fetch(openUrl)
+              .then(r => r.text())
+              .then(text => api("/api/calendar/import", {
+                method: "POST",
+                body: JSON.stringify({ ics: text }),
+              }))
+              .then(() => showToast(t("importSuccess") || "Event added to calendar"))
+              .catch(err => set({ error: err.message }));
+          },
+        }, t("addToCalendar") || "Add to Calendar");
+        attItem.appendChild(calBtn);
+      }
+
+      attGrid.appendChild(attItem);
     }
     attSection.appendChild(attGrid);
     content.appendChild(attSection);
   }
 
   // Reply actions
-  const replyActions = h("div", { className: "flex items-center gap-2 mt-4" });
+  const replyActions = h("div", { className: "flex items-center gap-2 mt-4 flex-wrap" });
   replyActions.appendChild(pillBtn("reply", t("reply"), () => openCompose({ replyTo: msg })));
   replyActions.appendChild(pillBtn("replyAll", t("replyAll"), () => openCompose({ replyAll: msg })));
   replyActions.appendChild(pillBtn("forward", t("forward"), () => openCompose({ forward: msg })));
+
+  const calBtn = h("button", {
+    className: "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-line text-sm text-slate-600 hover:bg-slate-50",
+    onclick() {
+      set({ view: "calendar", calEditing: {
+        summary: msg.subject || "",
+        description: `From: ${displayName(msg.from)} <${displayEmail(msg.from)}>\nTo: ${(msg.to || []).map(a => a.name || a.address).join(", ")}`,
+        dtstart: "",
+        dtend: "",
+        allDay: false,
+        location: "",
+        attendees: [],
+      }});
+    },
+  }, icon("calendar"), t("createEvent") || "Create Event");
+  replyActions.appendChild(calBtn);
   content.appendChild(replyActions);
 
   // Quick reply
@@ -2744,6 +2833,15 @@ async function loadCalendarEvents() {
   }
 }
 
+async function loadTodayEvents() {
+  try {
+    const data = await api("/api/calendar/today");
+    set({ todayEvents: data.events || [] });
+  } catch {
+    set({ todayEvents: [] });
+  }
+}
+
 function renderCalendarView() {
   const view = h("div", { className: "flex-1 flex flex-col h-full overflow-hidden" });
 
@@ -2781,7 +2879,7 @@ function renderCalendarView() {
   }));
   navBtns.appendChild(h("button", {
     className: "ml-2 px-3 py-1.5 rounded-lg bg-brand text-white text-sm hover:bg-brand-hover",
-    onclick() { set({ calEditing: { summary: "", dtstart: "", dtend: "", allDay: false, description: "", location: "" } }); },
+    onclick() { set({ calEditing: { summary: "", dtstart: "", dtend: "", allDay: false, description: "", location: "", attendees: [] } }); },
   }, t("newEvent")));
   hdr.appendChild(navBtns);
   view.appendChild(hdr);
@@ -2909,7 +3007,45 @@ function renderCalendarEditModal() {
   form.appendChild(formField(t("startDate"), "datetime-local", evt.dtstart ? evt.dtstart.slice(0, 16) : "", v => { S.calEditing.dtstart = v; }));
   form.appendChild(formField(t("endDate"), "datetime-local", evt.dtend ? evt.dtend.slice(0, 16) : "", v => { S.calEditing.dtend = v; }));
 
-  const actions = h("div", { className: "flex items-center gap-2 pt-2" });
+  // Attendees field
+  const attLabel = h("label", { className: "block text-sm font-medium text-slate-700" }, t("attendees") + " (email,...)");
+  const attInput = h("textarea", {
+    className: "w-full px-3 py-2 border border-line rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-300",
+    rows: 2,
+    placeholder: "name@example.com, name2@example.com",
+  });
+  const atts = evt.attendees || [];
+  const attEmails = Array.isArray(atts) ? atts.map(a => typeof a === "string" ? a : a.email).filter(Boolean).join(", ") : "";
+  attInput.value = attEmails;
+  attInput.addEventListener("input", () => {
+    const emails = attInput.value.split(",").map(e => e.trim()).filter(Boolean);
+    S.calEditing.attendees = emails.map(email => ({ email, name: "" }));
+  });
+  preventMobileScroll(attInput);
+  form.appendChild(attLabel);
+  form.appendChild(attInput);
+
+  const actions = h("div", { className: "flex flex-wrap items-center gap-2 pt-2" });
+
+  // Send invite button (only when attendees are filled)
+  const inviteBtn = h("button", {
+    className: "px-3 py-2 rounded-lg bg-purple-600 text-white text-sm hover:bg-purple-700 flex items-center gap-1.5",
+    type: "button",
+    onclick() {
+      const atts = S.calEditing.attendees || [];
+      const emails = Array.isArray(atts) ? atts.map(a => typeof a === "string" ? a : a.email).filter(Boolean) : [];
+      if (!emails.length) { set({ error: "Add attendees before sending invite" }); return; }
+      inviteBtn.disabled = true;
+      api("/api/calendar/send-invite", {
+        method: "POST",
+        body: JSON.stringify({ event: S.calEditing, attendees: S.calEditing.attendees }),
+      })
+        .then(() => showToast(t("inviteSent") || "Invite sent"))
+        .catch(err => set({ error: err.message }))
+        .finally(() => { if (inviteBtn.isConnected) inviteBtn.disabled = false; });
+    },
+  }, icon("send"), t("sendInvite") || "Send Invite");
+  actions.appendChild(inviteBtn);
   if (!isNew) {
     actions.appendChild(h("button", {
       className: "px-4 py-2 rounded-lg border border-red-300 text-red-600 text-sm hover:bg-red-50",
@@ -2921,7 +3057,7 @@ function renderCalendarEditModal() {
           await loadCalendarEvents();
         } catch (err) { set({ error: err.message }); }
       },
-    }, t("deleteContact")));
+    }, t("deleteEvent")));
   }
   actions.appendChild(h("div", { className: "flex-1" }));
   actions.appendChild(h("button", {
