@@ -14,8 +14,21 @@ Self-hosted webmail client built with Python FastAPI. Supports IMAP/SMTP email, 
 ## Requirements
 
 - **Python 3.10+**
+- **Node.js 18+** & **npm** — only needed locally to (re)build the Tailwind CSS bundle. Production server does not require Node.
 - **Caddy** (reverse proxy with automatic HTTPS)
 - **Linux server** (Ubuntu 24.04 / Debian 12+ recommended)
+
+### Building Tailwind CSS
+
+The frontend uses Tailwind. The compiled CSS lives at `backend/static/assets/css/tailwind.css` and is committed to the repo, so production servers only need Python.
+
+Rebuild when you change styles, `index.html`, or `app.js`:
+
+```bash
+npm install        # one-time
+npm run build:css  # one-shot build
+npm run watch:css  # rebuild on save
+```
 
 ## Quick Start (Production)
 

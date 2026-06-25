@@ -1,0 +1,13 @@
+{
+  "name": "bnix-webmail",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Build Tailwind CSS for BNIX Webmail",
+  "scripts": {
+    "build:css": "tailwindcss -c tailwind.config.js -i backend/static/assets/css/tailwind.src.css -o backend/static/assets/css/tailwind.css --minify",
+    "watch:css": "tailwindcss -c tailwind.config.js -i backend/static/assets/css/tailwind.src.css -o backend/static/assets/css/tailwind.css --watch"
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.4.0"
+  }
+}
