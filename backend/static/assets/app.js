@@ -2064,23 +2064,32 @@ function renderMessageView() {
   // Add to Contacts / View in Contacts button
   const senderEmail = displayEmail(msg.from);
   const existingContact = getContactByEmail(senderEmail);
+  let addedContact = null; // holds the newly created contact object
+
   const addContactBtn = h("button", {
     className: "shrink-0 text-xs text-blue-600 hover:underline ml-auto px-2 py-1 rounded border border-blue-200 hover:bg-blue-50",
     onclick() {
-      if (existingContact) {
-        set({ view: "contacts", contactEditing: { ...existingContact, _editing: true } });
+      const currentContact = addedContact || existingContact;
+      if (currentContact) {
+        set({ view: "contacts", contactEditing: { ...currentContact, _editing: true } });
         if (!S.contacts.length) loadContacts();
       } else {
         const fn = displayName(msg.from);
         const payload = { fn, email: senderEmail, phone: "", organization: "", title: "", note: "" };
         addContactBtn.disabled = true;
         api("/api/contacts", { method: "POST", body: JSON.stringify(payload) })
-          .then(async () => {
+          .then((created) => {
+            addedContact = { fn, email: senderEmail, phone: "", organization: "", title: "", note: "", uid: created.uid || senderEmail };
+            S.contacts.push(addedContact);
+            rebuildContactIndex();
             showToast(t("contactAdded") || "Contact added");
-            await loadContacts();
+            addContactBtn.textContent = "View in Contacts";
+            addContactBtn.disabled = false;
           })
-          .catch(err => set({ error: err.message }))
-          .finally(() => { if (addContactBtn.isConnected) addContactBtn.disabled = false; });
+          .catch(err => {
+            set({ error: err.message });
+            addContactBtn.disabled = false;
+          });
       }
     },
   }, existingContact ? "View in Contacts" : "Add to Contacts");

@@ -1684,17 +1684,27 @@ def _get_dav_config(session: dict) -> dict:
 
 
 async def _dav_request(method: str, url: str, session: dict, body: str | None = None,
-                       headers: dict | None = None) -> httpx.Response:
-    """Make an authenticated WebDAV request."""
+                       headers: dict | None = None, retries: int = 2) -> httpx.Response:
+    """Make an authenticated WebDAV request with connection-error retry."""
     config = _get_dav_config(session)
     auth = (config["username"], config["password"])
     hdrs = {"Content-Type": "application/xml; charset=utf-8"}
     if headers:
         hdrs.update(headers)
 
-    async with httpx.AsyncClient(verify=False, timeout=30) as client:
-        resp = await client.request(method, url, auth=auth, headers=hdrs, content=body)
-    return resp
+    last_err = None
+    for attempt in range(retries + 1):
+        try:
+            async with httpx.AsyncClient(verify=False, timeout=30) as client:
+                resp = await client.request(method, url, auth=auth, headers=hdrs, content=body)
+            return resp
+        except (httpx.ConnectError, httpx.RemoteProtocolError,
+                httpx.PoolTimeoutError, OSError, ssl.SSLError) as e:
+            last_err = e
+            if attempt < retries:
+                await asyncio.sleep(0.5 * (attempt + 1))
+
+    raise HTTPException(502, f"CardDAV connection failed after {retries + 1} attempts: {last_err}")
 
 
 def _parse_ics_date(value: str, params: dict | None = None) -> tuple[str, bool]:
