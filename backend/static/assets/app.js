@@ -2978,12 +2978,7 @@ function renderContactsView() {
   actionBtns.appendChild(h("button", {
     className: "px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-sm hover:bg-emerald-700 flex items-center gap-1.5",
     onclick() {
-      const link = document.createElement("a");
-      link.href = "/api/contacts/export";
-      link.download = "";
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      window.location.href = "/api/contacts/export";
     },
   }, icon("download"), "Export"));
   actionBtns.appendChild(h("button", {
@@ -3042,7 +3037,7 @@ function renderContactEditPanel() {
     panel.appendChild(h("button", {
       className: "mb-4 flex items-center gap-2 px-4 py-2 rounded-lg bg-brand text-white text-sm hover:bg-brand-hover",
       type: "button",
-      onclick() { openCompose({ composeTo: c.email }); },
+      onclick() { openCompose({ composeTo: c.email }); set({ view: "mail" }); },
     }, icon("edit"), t("sendEmail") || "Send Email"));
   }
 
