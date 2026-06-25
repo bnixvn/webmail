@@ -4193,15 +4193,14 @@ function renderLabelManagerModal() {
       className: `w-6 h-6 rounded-full border-2 transition-transform ${c === currentColor ? "border-slate-800 dark:border-white scale-125 shadow-md" : "border-slate-200 dark:border-slate-600 hover:scale-110"}`,
       style: { backgroundColor: c },
       onclick() {
-        // Save cursor position before re-render
-        const sel = nameInput.selectionStart;
-        const val = nameInput.value;
-        S.labelEditing = { ...(S.labelEditing || { name: "" }), color: c };
+        // Capture name from live DOM before re-render destroys it
+        const currentName = nameInput.value;
+        S.labelEditing = { ...(S.labelEditing || {}), name: currentName, color: c };
         set({ labelEditing: S.labelEditing });
         // Restore focus & cursor after re-render
         requestAnimationFrame(() => {
           const inp = document.querySelector('input[placeholder="' + t("labelName") + '"]');
-          if (inp) { inp.focus(); inp.setSelectionRange(sel, sel); }
+          if (inp) { inp.focus(); inp.setSelectionRange(currentName.length, currentName.length); }
         });
       },
     });

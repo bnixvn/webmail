@@ -1447,7 +1447,7 @@ async def get_message_labels(request: Request):
                JOIN labels l ON l.uid = ml.label_uid
                WHERE ml.account = ?
                ORDER BY l.name""",
-            (session["account"],)
+            (session["email"],)
         ).fetchall()
     result = {}
     for row in rows:
@@ -2635,7 +2635,7 @@ async def list_labels(request: Request):
     with sqlite3.connect(LABELS_DB) as db:
         rows = db.execute(
             "SELECT * FROM labels WHERE account = ? ORDER BY name",
-            (session["account"],)
+            (session["email"],)
         ).fetchall()
     return JSONResponse([_label_row(r) for r in rows])
 
@@ -2654,7 +2654,7 @@ async def create_label(request: Request):
     with sqlite3.connect(LABELS_DB) as db:
         db.execute(
             "INSERT INTO labels (uid, account, name, color, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
-            (uid, session["account"], name, color, now, now)
+            (uid, session["email"], name, color, now, now)
         )
         db.commit()
     return JSONResponse({"uid": uid, "name": name, "color": color})
@@ -2668,7 +2668,7 @@ async def update_label(request: Request, label_uid: str):
     with sqlite3.connect(LABELS_DB) as db:
         row = db.execute(
             "SELECT * FROM labels WHERE uid = ? AND account = ?",
-            (label_uid, session["account"])
+            (label_uid, session["email"])
         ).fetchone()
         if not row:
             raise HTTPException(404, "Label not found")
@@ -2690,11 +2690,11 @@ async def delete_label(request: Request, label_uid: str):
     with sqlite3.connect(LABELS_DB) as db:
         db.execute(
             "DELETE FROM labels WHERE uid = ? AND account = ?",
-            (label_uid, session["account"])
+            (label_uid, session["email"])
         )
         db.execute(
             "DELETE FROM message_labels WHERE label_uid = ? AND account = ?",
-            (label_uid, session["account"])
+            (label_uid, session["email"])
         )
         db.commit()
     return JSONResponse({"ok": True})
@@ -2716,7 +2716,7 @@ async def add_message_label(request: Request, uid: int):
         try:
             db.execute(
                 "INSERT INTO message_labels (account, message_id, label_uid, folder, created_at) VALUES (?, ?, ?, ?, ?)",
-                (session["account"], message_key, label_uid, folder, now)
+                (session["email"], message_key, label_uid, folder, now)
             )
             db.commit()
         except sqlite3.IntegrityError:
@@ -2733,7 +2733,7 @@ async def remove_message_label(request: Request, uid: int, label_uid: str):
     with sqlite3.connect(LABELS_DB) as db:
         db.execute(
             "DELETE FROM message_labels WHERE account = ? AND message_id = ? AND label_uid = ?",
-            (session["account"], message_key, label_uid)
+            (session["email"], message_key, label_uid)
         )
         db.commit()
     return JSONResponse({"ok": True})
