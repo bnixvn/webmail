@@ -66,6 +66,12 @@ const LOCALES = {
     reply: "Reply", replyAll: "Reply All", forward: "Forward",
     archive: "Archive", reportSpam: "Report spam", delete: "Delete", moveTo: "Move to",
     star: "Star", unstar: "Unstar", markRead: "Mark Read", markUnread: "Mark Unread",
+    // Labels
+    labels: "Labels", manageLabels: "Manage Labels", newLabel: "New Label",
+    labelName: "Label name", labelColor: "Color", noLabels: "No labels yet",
+    addLabel: "Add label", removeLabel: "Remove label", deleteLabel: "Delete label",
+    deleteLabelConfirm: (n) => `Delete label "${n}"?`,
+    filterLabeled: "Labeled",
     attachments: (n) => `Attachments (${n})`,
     attachment: (n) => `${n} attachment${n > 1 ? "s" : ""}`,
     quickReplyPh: "Write a quick reply...",
@@ -175,6 +181,12 @@ const LOCALES = {
     reply: "Trả lời", replyAll: "Trả lời tất cả", forward: "Chuyển tiếp",
     archive: "Lưu trữ", reportSpam: "Báo spam", delete: "Xoá", moveTo: "Chuyển tới",
     star: "Đánh dấu", unstar: "Bỏ đánh dấu", markRead: "Đánh dấu đã đọc", markUnread: "Đánh dấu chưa đọc",
+    // Nhãn
+    labels: "Nhãn", manageLabels: "Quản lý nhãn", newLabel: "Nhãn mới",
+    labelName: "Tên nhãn", labelColor: "Màu sắc", noLabels: "Chưa có nhãn nào",
+    addLabel: "Thêm nhãn", removeLabel: "Gỡ nhãn", deleteLabel: "Xoá nhãn",
+    deleteLabelConfirm: (n) => `Xoá nhãn "${n}"?`,
+    filterLabeled: "Có nhãn",
     attachments: (n) => `Tệp đính kèm (${n})`,
     attachment: (n) => `${n} tệp đính kèm`,
     quickReplyPh: "Trả lời nhanh...",
@@ -277,6 +289,9 @@ const I = {
   trash:     `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>`,
   star:      `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`,
   starFill:  `<svg width="16" height="16" viewBox="0 0 24 24" fill="#f59e0b" stroke="#f59e0b" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`,
+  tag:       `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/></svg>`,
+  tagFill:   `<svg width="16" height="16" viewBox="0 0 24 24" fill="#6366f1" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5" fill="white"/></svg>`,
+  label:     `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/></svg>`,
   mail:      `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>`,
   reply:     `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>`,
   replyAll:  `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="7 17 2 12 7 7"/><polyline points="12 17 7 12 12 7"/><path d="M22 18v-2a4 4 0 0 0-4-4H7"/></svg>`,
@@ -765,9 +780,63 @@ function moveMenuButton(scope, onPick) {
   return wrap;
 }
 
+function renderLabelDropdown(uid) {
+  if (S.labelMenu !== uid) return null;
+  const msg = S.messages.find(m => m.uid === uid);
+  if (!msg) return null;
+  const msgLabels = (msg.labels || []).map(l => l.labelUid);
+
+  const dropdown = h("div", {
+    className: "absolute right-0 top-6 z-50 w-56 max-h-72 overflow-y-auto rounded-lg border border-line bg-white dark:bg-slate-700 shadow-lg py-1",
+    onclick(e) { e.stopPropagation(); },
+  });
+
+  if (S.labels.length === 0) {
+    dropdown.appendChild(h("div", { className: "px-3 py-2 text-sm text-slate-400" }, t("noLabels")));
+    dropdown.appendChild(h("button", {
+      className: "w-full flex items-center gap-2 px-3 py-2 text-sm text-left text-brand hover:bg-slate-50 dark:hover:bg-slate-600",
+      onclick(e) {
+        e.stopPropagation();
+        set({ labelMenu: null, labelManagerOpen: true });
+      },
+    }, icon("plus"), t("newLabel")));
+    return dropdown;
+  }
+
+  for (const label of S.labels) {
+    const assigned = msgLabels.includes(label.uid);
+    dropdown.appendChild(h("button", {
+      className: "w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-slate-50 dark:hover:bg-slate-600",
+      onclick(e) {
+        e.stopPropagation();
+        toggleMessageLabel(uid, label.uid, !assigned, msg.messageId);
+      },
+    },
+      h("span", {
+        className: "w-3 h-3 rounded-full shrink-0",
+        style: { backgroundColor: label.color },
+      }),
+      h("span", { className: "flex-1 truncate" }, label.name),
+      assigned ? h("span", { className: "text-brand", innerHTML: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>` }) : null,
+    ));
+  }
+
+  dropdown.appendChild(h("div", { className: "border-t border-line my-1" }));
+  dropdown.appendChild(h("button", {
+    className: "w-full flex items-center gap-2 px-3 py-2 text-sm text-left text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-600",
+    onclick(e) {
+      e.stopPropagation();
+      set({ labelMenu: null, labelManagerOpen: true });
+    },
+  }, icon("settings"), t("manageLabels")));
+
+  return dropdown;
+}
+
 function messageMatchesFilter(msg) {
   if (S.msgFilter === "unread") return !msg.seen;
   if (S.msgFilter === "starred") return !!msg.flagged;
+  if (S.msgFilter === "labeled") return msg.labels && msg.labels.length > 0;
   return true;
 }
 
@@ -984,6 +1053,12 @@ const S = {
   sigHtmlDraft: "",
   moreMenu: false,
   moveMenu: null,
+  // Labels
+  labels: [],
+  labelsLoaded: false,
+  labelMenu: null,        // uid or "batch" or null
+  labelEditing: null,     // label being edited
+  labelManagerOpen: false,
   contacts: [],
   calendarEvents: [],
   todayEvents: [],
@@ -1156,7 +1231,7 @@ async function bootstrap() {
       mailboxes: mbData.mailboxes || [],
       ready: true,
     });
-    await Promise.all([loadMessages(), loadTodayEvents()]);
+    await Promise.all([loadMessages(), loadTodayEvents(), loadLabels()]);
   } catch (err) {
     // Only logout on actual auth errors (401/403)
     if (err.status === 401 || err.status === 403) {
@@ -1195,6 +1270,8 @@ async function loadMessages(append = false) {
       loadingMsgs: false,
       loadingMore: false,
     });
+    // Load labels for messages
+    if (!append) loadMessageLabels();
   } catch (err) {
     set({ error: err.message, loadingMsgs: false, loadingMore: false });
   }
@@ -1364,6 +1441,40 @@ function renderSidebar() {
       }
       items.push(folderIcons);
     }
+  }
+
+  // Labels section (mail view only, when expanded)
+  if (!collapsed && S.view === "mail" && S.labels.length > 0) {
+    items.push(h("div", { className: "px-3 pt-4 pb-1 flex items-center justify-between" },
+      h("div", { className: "text-[11px] font-semibold uppercase text-slate-400 tracking-wider flex items-center gap-1" },
+        h("span", { innerHTML: I.tag, className: "text-slate-400" }),
+        t("labels"),
+      ),
+      h("button", {
+        className: "text-slate-400 hover:text-slate-600 p-0.5",
+        title: t("manageLabels"),
+        onclick() { set({ labelManagerOpen: true }); },
+        innerHTML: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z\"/><circle cx=\"12\" cy=\"12\" r=\"3\"/></svg>`,
+      }),
+    ));
+    const labelList = h("div", { className: "px-2 space-y-0.5" });
+    for (const label of S.labels) {
+      const labelCount = S.messages.filter(m => (m.labels || []).some(l => l.labelUid === label.uid)).length;
+      labelList.appendChild(h("button", {
+        className: `folder-item w-full ${S.msgFilter === "labeled" ? "" : ""}`,
+        onclick() {
+          set({ msgFilter: "labeled" });
+        },
+      },
+        h("span", {
+          className: "w-2.5 h-2.5 rounded-full shrink-0",
+          style: { backgroundColor: label.color },
+        }),
+        h("span", { className: "flex-1 text-left truncate text-sm" }, label.name),
+        labelCount > 0 ? h("span", { className: "text-[11px] text-slate-400" }, String(labelCount)) : null,
+      ));
+    }
+    items.push(labelList);
   }
 
   // Today's events widget (only when expanded + in mail view)
@@ -1659,6 +1770,7 @@ function renderMessageList() {
     { key: "all", label: t("filterAll") },
     { key: "unread", label: t("filterUnread") },
     { key: "starred", label: t("filterStarred") },
+    { key: "labeled", label: t("filterLabeled") },
   ];
   for (const f of filterDefs) {
     const active = S.msgFilter === f.key;
@@ -1805,7 +1917,17 @@ function renderThreadItem(thread) {
   const content = h("div", { className: "min-w-0" });
   const fromRow = h("div", { className: "flex items-center gap-1.5" });
   fromRow.appendChild(h("span", { className: `truncate text-sm ${hasUnread ? "font-semibold" : ""}` }, displayName(latest.from)));
-  if (hasFlagged) fromRow.appendChild(h("span", { innerHTML: I.starFill }));
+  // Star toggle button
+  const starBtn = h("button", {
+    className: "p-0.5 rounded hover:bg-amber-100 dark:hover:bg-amber-900/30 shrink-0",
+    title: hasFlagged ? t("unstar") : t("star"),
+    innerHTML: hasFlagged ? I.starFill : I.star,
+    onclick(e) {
+      e.stopPropagation();
+      toggleFlagFromList(latest.uid, "\\Flagged", !hasFlagged);
+    },
+  });
+  fromRow.appendChild(starBtn);
   // Thread count badge
   fromRow.appendChild(h("span", {
     className: "shrink-0 px-1.5 py-0.5 rounded-full text-[11px] font-medium " + (hasUnread ? "bg-blue-500 text-white" : "bg-slate-200 text-slate-600"),
@@ -1901,16 +2023,60 @@ function renderMessageItem(msg, inThread, isReply) {
   const content = h("div", { className: "min-w-0" });
   const fromRow = h("div", { className: "flex items-center gap-1" });
   fromRow.appendChild(h("span", { className: `truncate text-sm ${unread ? "font-semibold" : ""}` }, displayName(msg.from)));
-  if (msg.flagged) fromRow.appendChild(h("span", { innerHTML: I.starFill }));
+  // Star toggle button
+  const starBtn = h("button", {
+    className: "p-0.5 rounded hover:bg-amber-100 dark:hover:bg-amber-900/30 shrink-0",
+    title: msg.flagged ? t("unstar") : t("star"),
+    innerHTML: msg.flagged ? I.starFill : I.star,
+    onclick(e) {
+      e.stopPropagation();
+      toggleFlagFromList(msg.uid, "\\Flagged", !msg.flagged);
+    },
+  });
+  fromRow.appendChild(starBtn);
   content.appendChild(fromRow);
   content.appendChild(h("div", { className: `text-sm truncate ${unread ? "font-medium text-ink" : "text-slate-700"}` }, msg.subject || t("noSubject")));
+  // Label chips
+  if (msg.labels && msg.labels.length > 0) {
+    const labelRow = h("div", { className: "flex items-center gap-1 mt-0.5 flex-wrap" });
+    for (const lb of msg.labels) {
+      labelRow.appendChild(h("span", {
+        className: "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium text-white",
+        style: { backgroundColor: lb.color || "#6366f1" },
+      }, lb.name));
+    }
+    content.appendChild(labelRow);
+  }
   if (!inThread) {
     content.appendChild(h("div", { className: "text-xs text-slate-500 line-clamp-2 mt-0.5" }, msg.snippet || ""));
   }
   item.appendChild(content);
 
-  // Time
-  item.appendChild(h("div", { className: "text-xs text-slate-400 whitespace-nowrap pt-1" }, formatTime(msg.date)));
+  // Time + label button
+  const timeCol = h("div", { className: "flex flex-col items-end gap-1 pt-1" });
+  timeCol.appendChild(h("div", { className: "text-xs text-slate-400 whitespace-nowrap" }, formatTime(msg.date)));
+  // Label assignment button
+  if (!inThread) {
+    const hasLabels = msg.labels && msg.labels.length > 0;
+    const labelBtn = h("button", {
+      className: `p-0.5 rounded ${hasLabels ? "text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/30" : "text-slate-300 hover:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700"}`,
+      title: t("labels"),
+      innerHTML: hasLabels ? I.tagFill : I.tag,
+      onclick(e) {
+        e.stopPropagation();
+        set({ labelMenu: S.labelMenu === msg.uid ? null : msg.uid });
+      },
+    });
+    timeCol.appendChild(labelBtn);
+  }
+  item.appendChild(timeCol);
+
+  // Label dropdown
+  const labelDropdown = renderLabelDropdown(msg.uid);
+  if (labelDropdown) {
+    item.style.position = "relative";
+    item.appendChild(labelDropdown);
+  }
 
   return item;
 }
@@ -2394,6 +2560,48 @@ function renderMessageView() {
   }, existingContact ? "View in Contacts" : "Add to Contacts");
   senderRow.appendChild(addContactBtn);
   header.appendChild(senderRow);
+
+  // Labels row in message view
+  const msgLabels = (S.messages.find(m => m.uid === msg.uid)?.labels) || [];
+  if (msgLabels.length > 0 || S.labels.length > 0) {
+    const labelRow = h("div", { className: "flex items-center gap-1.5 mt-2 flex-wrap" });
+    for (const lb of msgLabels) {
+      labelRow.appendChild(h("span", {
+        className: "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium text-white",
+        style: { backgroundColor: lb.color || "#6366f1" },
+      },
+        lb.name,
+        h("button", {
+          className: "ml-0.5 hover:bg-white/20 rounded-full p-0.5",
+          title: t("removeLabel"),
+          innerHTML: `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>`,
+          onclick(e) {
+            e.stopPropagation();
+            toggleMessageLabel(msg.uid, lb.labelUid, false, msg.messageId);
+          },
+        }),
+      ));
+    }
+    // Add label button
+    const addLabelWrap = h("div", { className: "relative" });
+    const addLabelBtn = h("button", {
+      className: "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] border border-dashed border-slate-300 text-slate-400 hover:border-indigo-400 hover:text-indigo-500",
+      innerHTML: I.plus + t("addLabel"),
+      onclick(e) {
+        e.stopPropagation();
+        set({ labelMenu: S.labelMenu === msg.uid ? null : msg.uid });
+      },
+    });
+    addLabelWrap.appendChild(addLabelBtn);
+    const labelDropdown = renderLabelDropdown(msg.uid);
+    if (labelDropdown) {
+      labelDropdown.className = labelDropdown.className.replace("right-0 top-6", "left-0 top-7");
+      addLabelWrap.appendChild(labelDropdown);
+    }
+    labelRow.appendChild(addLabelWrap);
+    header.appendChild(labelRow);
+  }
+
   section.appendChild(header);
 
   // Content
@@ -2531,6 +2739,128 @@ async function toggleFlag(flag, enabled) {
   } catch (err) {
     set({ error: err.message });
   }
+}
+
+async function toggleFlagFromList(uid, flag, enabled) {
+  try {
+    await api(`/api/messages/${uid}/flags`, {
+      method: "PATCH",
+      body: JSON.stringify({ folder: S.folder, flag, enabled }),
+    });
+    // Update local state
+    const messages = S.messages.map(m =>
+      m.uid === uid ? { ...m, flagged: flag === "\\Flagged" ? enabled : m.flagged, seen: flag === "\\Seen" ? enabled : m.seen } : m
+    );
+    const patch = { messages };
+    if (S.selectedMsg && S.selectedMsg.uid === uid) {
+      patch.selectedMsg = { ...S.selectedMsg, flagged: flag === "\\Flagged" ? enabled : S.selectedMsg.flagged, seen: flag === "\\Seen" ? enabled : S.selectedMsg.seen };
+    }
+    set(patch);
+  } catch (err) {
+    set({ error: err.message });
+  }
+}
+
+// ─── Labels ──────────────────────────────────────────────────────────────────
+
+async function loadLabels() {
+  try {
+    const labels = await api("/api/labels");
+    set({ labels, labelsLoaded: true });
+  } catch (err) {
+    console.error("Failed to load labels:", err);
+  }
+}
+
+async function loadMessageLabels() {
+  try {
+    const map = await api("/api/messages/labels");
+    // Attach labels to messages
+    const messages = S.messages.map(m => {
+      const key1 = m.messageId || `${S.folder}:${m.uid}`;
+      const key2 = `${S.folder}:${m.uid}`;
+      const labels = map[key1] || map[key2] || [];
+      return { ...m, labels };
+    });
+    set({ messages });
+  } catch (err) {
+    console.error("Failed to load message labels:", err);
+  }
+}
+
+async function createLabel(name, color) {
+  try {
+    const label = await api("/api/labels", {
+      method: "POST",
+      body: JSON.stringify({ name, color }),
+    });
+    set({ labels: [...S.labels, label] });
+    showToast(t("addLabel"));
+    return label;
+  } catch (err) {
+    set({ error: err.message });
+  }
+}
+
+async function updateLabel(uid, name, color) {
+  try {
+    const label = await api(`/api/labels/${uid}`, {
+      method: "PUT",
+      body: JSON.stringify({ name, color }),
+    });
+    set({ labels: S.labels.map(l => l.uid === uid ? label : l) });
+    return label;
+  } catch (err) {
+    set({ error: err.message });
+  }
+}
+
+async function deleteLabelFn(uid) {
+  try {
+    await api(`/api/labels/${uid}`, { method: "DELETE" });
+    set({ labels: S.labels.filter(l => l.uid !== uid) });
+    // Remove from messages
+    const messages = S.messages.map(m => ({
+      ...m,
+      labels: (m.labels || []).filter(l => l.labelUid !== uid),
+    }));
+    set({ messages });
+  } catch (err) {
+    set({ error: err.message });
+  }
+}
+
+async function toggleMessageLabel(uid, labelUid, add, messageId) {
+  try {
+    if (add) {
+      await api(`/api/messages/${uid}/labels`, {
+        method: "POST",
+        body: JSON.stringify({ labelUid, folder: S.folder, messageId }),
+      });
+    } else {
+      await api(`/api/messages/${uid}/labels/${labelUid}?folder=${encodeURIComponent(S.folder)}&messageId=${encodeURIComponent(messageId || "")}`, {
+        method: "DELETE",
+      });
+    }
+    // Update local state
+    const label = S.labels.find(l => l.uid === labelUid);
+    const messages = S.messages.map(m => {
+      if (m.uid !== uid) return m;
+      const existing = m.labels || [];
+      if (add && label) {
+        return { ...m, labels: [...existing, { labelUid, name: label.name, color: label.color }] };
+      } else {
+        return { ...m, labels: existing.filter(l => l.labelUid !== labelUid) };
+      }
+    });
+    set({ messages });
+  } catch (err) {
+    set({ error: err.message });
+  }
+}
+
+function msgHasKey(m) {
+  return m.messageId || `${S.folder}:${m.uid}`;
 }
 
 async function moveMsg(dest) {
@@ -3809,6 +4139,130 @@ function renderSignatureModal() {
   return overlay;
 }
 
+// ─── Label Manager Modal ─────────────────────────────────────────────────────
+
+const LABEL_COLORS = [
+  "#6366f1", "#8b5cf6", "#a855f7", "#d946ef", "#ec4899",
+  "#f43f5e", "#ef4444", "#f97316", "#f59e0b", "#eab308",
+  "#84cc16", "#22c55e", "#10b981", "#14b8a6", "#06b6d4",
+  "#0ea5e9", "#3b82f6", "#64748b",
+];
+
+function renderLabelManagerModal() {
+  if (!S.labelManagerOpen) return h("div", { style: { display: "none" } });
+
+  const overlay = h("div", {
+    className: "fixed inset-0 z-50 flex items-center justify-center bg-black/30",
+    onclick(e) { if (e.target === overlay) set({ labelManagerOpen: false, labelEditing: null }); },
+  });
+
+  const modal = h("div", {
+    className: "bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-md mx-4 max-h-[80vh] flex flex-col",
+    onclick(e) { e.stopPropagation(); },
+  });
+
+  // Header
+  modal.appendChild(h("div", { className: "flex items-center justify-between h-14 px-4 border-b border-line shrink-0" },
+    h("h2", { className: "text-lg font-semibold" }, t("manageLabels")),
+    h("button", {
+      className: "p-1 rounded hover:bg-slate-100",
+      innerHTML: I.x,
+      onclick() { set({ labelManagerOpen: false, labelEditing: null }); },
+    }),
+  ));
+
+  const body = h("div", { className: "flex-1 overflow-y-auto p-4 space-y-3" });
+
+  // Add new label form
+  const addForm = h("div", { className: "flex items-center gap-2" });
+  const nameInput = h("input", {
+    className: "flex-1 px-3 py-2 text-sm border border-line rounded-lg bg-white dark:bg-slate-700",
+    placeholder: t("labelName"),
+    value: S.labelEditing?.name || "",
+  });
+  nameInput.addEventListener("input", e => {
+    set({ labelEditing: { ...(S.labelEditing || {}), name: e.target.value } });
+  });
+
+  const colorWrap = h("div", { className: "flex items-center gap-1 flex-wrap" });
+  const currentColor = S.labelEditing?.color || LABEL_COLORS[0];
+  for (const c of LABEL_COLORS) {
+    colorWrap.appendChild(h("button", {
+      className: `w-5 h-5 rounded-full border-2 ${c === currentColor ? "border-slate-800 dark:border-white scale-110" : "border-transparent"}`,
+      style: { backgroundColor: c },
+      onclick() {
+        set({ labelEditing: { ...(S.labelEditing || { name: "" }), color: c } });
+      },
+    }));
+  }
+
+  const addBtn = h("button", {
+    className: "px-3 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand-hover shrink-0",
+    async onclick() {
+      const name = (S.labelEditing?.name || "").trim();
+      if (!name) return;
+      if (S.labelEditing?.uid) {
+        await updateLabel(S.labelEditing.uid, name, S.labelEditing.color);
+      } else {
+        await createLabel(name, S.labelEditing?.color || LABEL_COLORS[0]);
+      }
+      set({ labelEditing: null });
+    },
+  }, S.labelEditing?.uid ? t("save") : t("addLabel"));
+
+  addForm.appendChild(nameInput);
+  addForm.appendChild(addBtn);
+  body.appendChild(addForm);
+  body.appendChild(colorWrap);
+
+  // Existing labels list
+  body.appendChild(h("div", { className: "border-t border-line pt-3 mt-3" }));
+  if (S.labels.length === 0) {
+    body.appendChild(h("div", { className: "text-sm text-slate-400 text-center py-4" }, t("noLabels")));
+  } else {
+    for (const label of S.labels) {
+      const row = h("div", { className: "flex items-center gap-2 py-2" });
+      row.appendChild(h("span", {
+        className: "w-4 h-4 rounded-full shrink-0",
+        style: { backgroundColor: label.color },
+      }));
+      row.appendChild(h("span", { className: "flex-1 text-sm truncate" }, label.name));
+      row.appendChild(h("button", {
+        className: "p-1 rounded hover:bg-slate-100 text-slate-400 hover:text-slate-600",
+        title: t("editContact"),
+        innerHTML: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>`,
+        onclick() {
+          set({ labelEditing: { uid: label.uid, name: label.name, color: label.color } });
+        },
+      }));
+      row.appendChild(h("button", {
+        className: "p-1 rounded hover:bg-red-50 text-slate-400 hover:text-red-500",
+        title: t("deleteLabel"),
+        innerHTML: I.trash,
+        async onclick() {
+          if (confirm(t("deleteLabelConfirm", label.name))) {
+            await deleteLabelFn(label.uid);
+          }
+        },
+      }));
+      body.appendChild(row);
+    }
+  }
+
+  modal.appendChild(body);
+
+  // Footer
+  modal.appendChild(h("div", { className: "flex justify-end h-12 px-4 border-t border-line shrink-0" },
+    h("button", {
+      className: "px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 rounded-lg",
+      onclick() { set({ labelManagerOpen: false, labelEditing: null }); },
+    }, t("cancel")),
+  ));
+
+  overlay.appendChild(modal);
+  return overlay;
+}
+
 // ─── Main Render ─────────────────────────────────────────────────────────────
 
 function render() {
@@ -3822,8 +4276,8 @@ function render() {
     clear(app);
 
     // Close floating menus on outside click
-    if (S.moreMenu || S.moveMenu) {
-      document.addEventListener("click", () => set({ moreMenu: false, moveMenu: null }), { once: true });
+    if (S.moreMenu || S.moveMenu || S.labelMenu) {
+      document.addEventListener("click", () => set({ moreMenu: false, moveMenu: null, labelMenu: null }), { once: true });
     }
 
     if (!S.account) {
@@ -3885,6 +4339,7 @@ function render() {
 
       app.appendChild(shell);
       app.appendChild(renderSignatureModal());
+      app.appendChild(renderLabelManagerModal());
 
       // Restore editor content after DOM is rebuilt so typing is never lost
       if (savedHtml !== null) {

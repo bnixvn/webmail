@@ -121,6 +121,49 @@ def _event_row(row: tuple) -> dict:
 _contacts_init()
 _calendar_init()
 
+# ─── Labels Database ──────────────────────────────────────────────────────────
+
+LABELS_DB = os.path.join(DATA_DIR, "contacts", "labels.db")
+
+
+def _labels_init():
+    """Init labels SQLite DB schema once per process."""
+    import sqlite3
+    with sqlite3.connect(LABELS_DB) as db:
+        db.execute("""CREATE TABLE IF NOT EXISTS labels (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            uid        TEXT    UNIQUE NOT NULL,
+            account    TEXT    NOT NULL,
+            name       TEXT    NOT NULL DEFAULT '',
+            color      TEXT    NOT NULL DEFAULT '#6366f1',
+            created_at TEXT    NOT NULL,
+            updated_at TEXT    NOT NULL
+        )""")
+        db.execute("""CREATE TABLE IF NOT EXISTS message_labels (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            account    TEXT    NOT NULL,
+            message_id TEXT    NOT NULL,
+            label_uid  TEXT    NOT NULL,
+            folder     TEXT    NOT NULL DEFAULT 'INBOX',
+            created_at TEXT    NOT NULL,
+            UNIQUE(account, message_id, label_uid)
+        )""")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_ml_account ON message_labels(account)")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_ml_msg ON message_labels(account, message_id)")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_ml_label ON message_labels(label_uid)")
+        db.commit()
+
+
+def _label_row(row: tuple) -> dict:
+    return {
+        "uid": row[1],
+        "name": row[3] or "",
+        "color": row[4] or "#6366f1",
+    }
+
+
+_labels_init()
+
 # Static files directory (served by FastAPI)
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -1392,6 +1435,34 @@ async def get_thread(request: Request):
     return JSONResponse({"messages": deduped})
 
 
+@app.get("/api/messages/labels")
+async def get_message_labels(request: Request):
+    """Get all message-label associations for the current account."""
+    session = await require_session(request)
+    import sqlite3
+    with sqlite3.connect(LABELS_DB) as db:
+        rows = db.execute(
+            """SELECT ml.message_id, ml.label_uid, l.name, l.color, ml.folder
+               FROM message_labels ml
+               JOIN labels l ON l.uid = ml.label_uid
+               WHERE ml.account = ?
+               ORDER BY l.name""",
+            (session["account"],)
+        ).fetchall()
+    result = {}
+    for row in rows:
+        msg_id = row[0]
+        if msg_id not in result:
+            result[msg_id] = []
+        result[msg_id].append({
+            "labelUid": row[1],
+            "name": row[2],
+            "color": row[3],
+            "folder": row[4],
+        })
+    return JSONResponse(result)
+
+
 @app.get("/api/messages/{uid}")
 async def get_message(request: Request, uid: int):
     session = await require_session(request)
@@ -2556,6 +2627,117 @@ async def serve_favicon():
 
 
 # ─── Startup ─────────────────────────────────────────────────────────────────
+
+@app.get("/api/labels")
+async def list_labels(request: Request):
+    session = await require_session(request)
+    import sqlite3
+    with sqlite3.connect(LABELS_DB) as db:
+        rows = db.execute(
+            "SELECT * FROM labels WHERE account = ? ORDER BY name",
+            (session["account"],)
+        ).fetchall()
+    return JSONResponse([_label_row(r) for r in rows])
+
+
+@app.post("/api/labels")
+async def create_label(request: Request):
+    session = await require_session(request)
+    body = await request.json()
+    name = (body.get("name") or "").strip()
+    color = body.get("color") or "#6366f1"
+    if not name:
+        raise HTTPException(400, "Label name is required")
+    uid = str(uuid.uuid4())
+    now = datetime.utcnow().isoformat()
+    import sqlite3
+    with sqlite3.connect(LABELS_DB) as db:
+        db.execute(
+            "INSERT INTO labels (uid, account, name, color, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+            (uid, session["account"], name, color, now, now)
+        )
+        db.commit()
+    return JSONResponse({"uid": uid, "name": name, "color": color})
+
+
+@app.put("/api/labels/{label_uid}")
+async def update_label(request: Request, label_uid: str):
+    session = await require_session(request)
+    body = await request.json()
+    import sqlite3
+    with sqlite3.connect(LABELS_DB) as db:
+        row = db.execute(
+            "SELECT * FROM labels WHERE uid = ? AND account = ?",
+            (label_uid, session["account"])
+        ).fetchone()
+        if not row:
+            raise HTTPException(404, "Label not found")
+        name = (body.get("name") or row[3]).strip()
+        color = body.get("color") or row[4]
+        now = datetime.utcnow().isoformat()
+        db.execute(
+            "UPDATE labels SET name = ?, color = ?, updated_at = ? WHERE uid = ?",
+            (name, color, now, label_uid)
+        )
+        db.commit()
+    return JSONResponse({"uid": label_uid, "name": name, "color": color})
+
+
+@app.delete("/api/labels/{label_uid}")
+async def delete_label(request: Request, label_uid: str):
+    session = await require_session(request)
+    import sqlite3
+    with sqlite3.connect(LABELS_DB) as db:
+        db.execute(
+            "DELETE FROM labels WHERE uid = ? AND account = ?",
+            (label_uid, session["account"])
+        )
+        db.execute(
+            "DELETE FROM message_labels WHERE label_uid = ? AND account = ?",
+            (label_uid, session["account"])
+        )
+        db.commit()
+    return JSONResponse({"ok": True})
+
+
+@app.post("/api/messages/{uid}/labels")
+async def add_message_label(request: Request, uid: int):
+    session = await require_session(request)
+    body = await request.json()
+    label_uid = body.get("labelUid")
+    folder = body.get("folder", "INBOX")
+    if not label_uid:
+        raise HTTPException(400, "labelUid is required")
+    now = datetime.utcnow().isoformat()
+    # Use messageId if available, otherwise use uid+folder as identifier
+    message_key = body.get("messageId") or f"{folder}:{uid}"
+    import sqlite3
+    with sqlite3.connect(LABELS_DB) as db:
+        try:
+            db.execute(
+                "INSERT INTO message_labels (account, message_id, label_uid, folder, created_at) VALUES (?, ?, ?, ?, ?)",
+                (session["account"], message_key, label_uid, folder, now)
+            )
+            db.commit()
+        except sqlite3.IntegrityError:
+            pass  # Already assigned
+    return JSONResponse({"ok": True})
+
+
+@app.delete("/api/messages/{uid}/labels/{label_uid}")
+async def remove_message_label(request: Request, uid: int, label_uid: str):
+    session = await require_session(request)
+    folder = request.query_params.get("folder", "INBOX")
+    message_key = request.query_params.get("messageId") or f"{folder}:{uid}"
+    import sqlite3
+    with sqlite3.connect(LABELS_DB) as db:
+        db.execute(
+            "DELETE FROM message_labels WHERE account = ? AND message_id = ? AND label_uid = ?",
+            (session["account"], message_key, label_uid)
+        )
+        db.commit()
+    return JSONResponse({"ok": True})
+
 
 @app.on_event("startup")
 async def startup():
