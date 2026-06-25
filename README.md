@@ -145,7 +145,7 @@ webmail/
 |--------|------|-------------|
 | POST | `/api/auth/login` | Login with email + password |
 | POST | `/api/auth/logout` | Logout |
-| GET | `/api/auth/me` | Check session |
+| GET | `/api/auth/me` | Check session (public — returns `{authenticated: false}` if not logged in, no 401) |
 | GET | `/api/mailboxes` | List mailboxes |
 | GET | `/api/messages` | List messages |
 | GET | `/api/messages/{uid}` | Get message |

@@ -1140,8 +1140,20 @@ async def logout(request: Request):
 
 @app.get("/api/auth/me")
 async def me(request: Request):
-    session = await require_session(request)
+    # Public endpoint: returns auth state without throwing 401, so the client
+    # can probe the session on page load without polluting the console.
+    session = await _load_session(request)
+    if not session:
+        return {"authenticated": False}
     return {"authenticated": True, "email": session["email"], "domain": session["email"].split("@")[1]}
+
+
+async def _load_session(request: Request) -> dict | None:
+    """Return the decrypted session or None if missing/invalid. Never raises."""
+    token = request.cookies.get(SESSION_COOKIE)
+    if not token:
+        return None
+    return decrypt_session(token)
 
 
 # ── Mailboxes ──────────────────────────────────────────────────────────────────
