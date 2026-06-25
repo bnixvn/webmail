@@ -462,14 +462,27 @@ function folderDisplayName(info, fallback = "") {
 
 function folderTarget(kind) {
   const wanted = kind.toLowerCase();
-  for (const mb of S.mailboxes) {
-    const info = classifyFolder(mb);
-    if (!info) continue;
-    if (info.label.toLowerCase() === wanted) return mb.path;
-    if (wanted === "spam" && info.special === "junk") return mb.path;
-  }
+  const main = mainFolderForKind(wanted);
+  if (main) return main.path;
   const fallback = { archive: "Archive", spam: "Spam", trash: "Trash", drafts: "Drafts", sent: "Sent" };
   return fallback[wanted] || kind;
+}
+
+function mainFolderForKind(kind) {
+  const wanted = kind.toLowerCase();
+  const { mainFolders } = splitMailboxes();
+  return mainFolders.find(mb => {
+    const info = mb._info || classifyFolder(mb);
+    if (!info) return false;
+    if (info.label.toLowerCase() === wanted) return true;
+    return wanted === "spam" && info.special === "junk";
+  }) || null;
+}
+
+function moveBody(destination, role = null) {
+  const body = { folder: S.folder, destination };
+  if (role) body.role = role;
+  return JSON.stringify(body);
 }
 
 function mailboxLabel(mb) {
@@ -590,10 +603,10 @@ function messageMatchesFilter(msg) {
 }
 
 function mailboxRank(mailbox) {
-  return (mailbox.path === S.folder ? 1000 : 0) +
-    (mailbox.specialUse ? 100 : 0) +
-    ((mailbox.unseen || 0) > 0 ? 10 : 0) +
-    ((mailbox.total || 0) > 0 ? 1 : 0);
+  return (mailbox.path === S.folder ? 1000000 : 0) +
+    ((mailbox.unseen || 0) * 1000) +
+    ((mailbox.total || 0) * 10) +
+    (mailbox.specialUse ? 1 : 0);
 }
 
 function splitMailboxes() {
@@ -2305,9 +2318,10 @@ async function toggleFlag(flag, enabled) {
 async function moveMsg(dest) {
   if (!S.selectedMsg) return;
   try {
+    const role = dest === folderTarget("spam") ? "junk" : null;
     await api(`/api/messages/${S.selectedMsg.uid}/move`, {
       method: "POST",
-      body: JSON.stringify({ folder: S.folder, destination: dest }),
+      body: moveBody(dest, role),
     });
     set({ selectedUid: null, selectedMsg: null, threadMsgs: [], moveMenu: null });
     showToast(t("movedOk"));
@@ -2336,7 +2350,7 @@ async function batchMove(destination) {
     try {
       await api(`/api/messages/${uid}/move`, {
         method: "POST",
-        body: JSON.stringify({ folder: S.folder, destination }),
+        body: moveBody(destination),
       });
     } catch {
       failed += 1;
@@ -2351,30 +2365,40 @@ async function batchMove(destination) {
 
 async function batchArchive() {
   const destination = folderTarget("archive");
+  let failed = 0;
   for (const uid of S.selectedUids) {
     try {
       await api(`/api/messages/${uid}/move`, {
         method: "POST",
-        body: JSON.stringify({ folder: S.folder, destination }),
+        body: moveBody(destination),
       });
-    } catch {}
+    } catch {
+      failed += 1;
+    }
   }
   set({ selectedUids: [] });
+  if (failed) set({ error: `${failed} message(s) could not be moved.` });
+  else showToast(t("movedOk"));
   await refreshMailboxes();
   await loadMessages();
 }
 
 async function batchSpam() {
   const destination = folderTarget("spam");
+  let failed = 0;
   for (const uid of S.selectedUids) {
     try {
       await api(`/api/messages/${uid}/move`, {
         method: "POST",
-        body: JSON.stringify({ folder: S.folder, destination }),
+        body: moveBody(destination, "junk"),
       });
-    } catch {}
+    } catch {
+      failed += 1;
+    }
   }
   set({ selectedUids: [] });
+  if (failed) set({ error: `${failed} message(s) could not be moved.` });
+  else showToast(t("movedOk"));
   await refreshMailboxes();
   await loadMessages();
 }

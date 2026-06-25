@@ -1486,9 +1486,11 @@ async def move_message(request: Request, uid: int, body: dict):
     session = await require_session(request)
     folder = body.get("folder", "INBOX")
     destination = body.get("destination", "Trash")
+    role_value = body.get("role")
+    role = _canonical_mailbox_role(role_value if isinstance(role_value, str) else None)
 
     async def _do(client):
-        target = await _ensure_mailbox(client, destination)
+        target = await _ensure_mailbox(client, destination, role=role)
         select_resp = await client.select(_quote_imap_folder(folder))
         _require_imap_ok(select_resp, f"SELECT {folder}")
 
