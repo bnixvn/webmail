@@ -1171,6 +1171,25 @@ async def create_mailbox(request: Request, body: dict):
     return JSONResponse({"ok": True, "path": path}, status_code=201)
 
 
+@app.delete("/api/mailboxes/{path:path}")
+async def delete_mailbox(request: Request, path: str):
+    """Delete (subscribe + delete) a custom mailbox."""
+    session = await require_session(request)
+    # Protect main folders
+    protected = {"inbox", "trash", "spam", "drafts", "sent", "archive", "inbox/", "trash/", "spam/", "drafts/", "sent/", "archive/"}
+    if path.lower() in protected or any(path.lower().startswith(p + "/") for p in protected):
+        raise HTTPException(403, "Cannot delete system folder")
+
+    async def _do(client):
+        try:
+            await client.delete(_quote_imap_folder(path))
+        except Exception:
+            pass  # IMAP DELETE fails if folder doesn't exist or has messages — ignore
+
+    await with_imap_retry(session, _do)
+    return JSONResponse({"ok": True})
+
+
 # ── Messages ──────────────────────────────────────────────────────────────────
 
 @app.get("/api/messages")

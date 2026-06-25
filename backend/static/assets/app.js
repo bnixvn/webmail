@@ -116,7 +116,9 @@ const LOCALES = {
     editEvent: "Edit Event", noTitle: "(No title)",
     summary: "Summary", description: "Description", location: "Location",
     removeRecipient: "Remove recipient",
-    noSubject: "(No subject)",
+    noSubject: "(Không có tiêu đề)",
+    deleteFolder: "Delete folder",
+    deleteFolderConfirm: (name) => `Delete folder "${name}"?`,
     // Compose extra
     from: "From", recipients: "Recipients",
     ccRecipients: "Cc recipients", bccRecipients: "Bcc recipients",
@@ -219,6 +221,8 @@ const LOCALES = {
     summary: "Tiêu đề", description: "Mô tả", location: "Địa điểm",
     removeRecipient: "Xoá người nhận",
     noSubject: "(Không có tiêu đề)",
+    deleteFolder: "Xoá thư mục",
+    deleteFolderConfirm: (name) => `Xoá thư mục "${name}"?`,
     // Soạn thư (bổ sung)
     from: "Từ", recipients: "Người nhận",
     ccRecipients: "Người nhận CC", bccRecipients: "Người nhận BCC",
@@ -1078,7 +1082,7 @@ function renderSidebar() {
           placeholder: t("folderNamePh"),
           value: S.newFolder,
         });
-        input.addEventListener("input", e => set({ newFolder: e.target.value }));
+        input.addEventListener("input", e => { S.newFolder = e.target.value; });
         input.addEventListener("keydown", e => { if (e.key === "Enter") createFolder(); });
         folderForm.appendChild(input);
         folderForm.appendChild(h("button", {
@@ -1091,15 +1095,29 @@ function renderSidebar() {
       const custList = h("div", { className: "px-2 space-y-0.5 max-h-[30vh] overflow-y-auto" });
       for (const mb of customFolders) {
         const active = S.folder === mb.path;
-        custList.appendChild(h("button", {
-          className: `folder-item w-full ${active ? "active" : ""}`,
-          style: { paddingLeft: (20 + (mb.depth || 0) * 12) + "px" },
+        const folderItem = h("div", { className: `flex items-center gap-1 pr-1 py-0.5 rounded hover:bg-slate-50 cursor-pointer ${active ? "bg-blue-50" : ""}` });
+        folderItem.appendChild(h("button", {
+          className: "folder-item flex-1 flex items-center gap-2 text-left",
+          style: { paddingLeft: (8 + (mb.depth || 0) * 12) + "px" },
           onclick() { navigate({ folder: mb.path, uid: null }); set({ folder: mb.path, selectedUid: null, selectedMsg: null, threadMsgs: [] }); loadMessages(); },
         },
           icon("folder"),
-          h("span", { className: "flex-1 text-left truncate" }, mb.name || mb.path),
-          mb.unseen > 0 ? h("span", { className: "bg-blue-500 text-white text-[11px] font-medium px-1.5 py-0.5 rounded-full" }, String(mb.unseen)) : null,
+          h("span", { className: "flex-1 truncate text-sm" }, mb.name || mb.path),
+          mb.unseen > 0 ? h("span", { className: "bg-blue-500 text-white text-[11px] font-medium px-1.5 py-0.5 rounded-full shrink-0" }, String(mb.unseen)) : null,
         ));
+        folderItem.appendChild(h("button", {
+          className: "shrink-0 p-1 text-slate-300 hover:text-red-500 rounded",
+          title: t("deleteFolder") || "Delete folder",
+          onclick(e) {
+            e.stopPropagation();
+            if (!confirm(t("deleteFolderConfirm") || `Delete folder "${mb.name}"?`)) return;
+            api(`/api/mailboxes/${encodeURIComponent(mb.path)}`, { method: "DELETE" })
+              .then(() => { refreshMailboxes(); loadMessages(); })
+              .catch(err => set({ error: err.message }));
+          },
+          innerHTML: I.trash,
+        }));
+        custList.appendChild(folderItem);
       }
       items.push(custList);
     } else {
