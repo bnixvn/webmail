@@ -2136,6 +2136,7 @@ async def export_contacts(request: Request):
     import openpyxl
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
     from io import BytesIO
+    from starlette.responses import StreamingResponse
 
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -2172,7 +2173,6 @@ async def export_contacts(request: Request):
     wb.save(buf)
     buf.seek(0)
 
-    from starlette.responses import StreamingResponse
     filename = f"contacts_{datetime.utcnow().strftime('%Y%m%d')}.xlsx"
     return StreamingResponse(
         buf,
