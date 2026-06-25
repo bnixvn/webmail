@@ -113,7 +113,6 @@ const LOCALES = {
     uploadImage: "Insert image", signatureHtmlPlaceholder: "Signature HTML...",
     imageTooLarge: "Image is too large. Maximum size is 2 MB.",
     enableSig: "Add signature to outgoing email",
-    copyHtml: "Copy HTML", htmlCopied: "HTML copied to clipboard", copyFailed: "Could not copy HTML.",
     invalidImageType: "Only PNG, JPEG, GIF, or WEBP images are allowed.",
     imageUploadFailed: "Image upload failed. Please try again.",
     // Search
@@ -223,7 +222,6 @@ const LOCALES = {
     uploadImage: "Chèn ảnh", signatureHtmlPlaceholder: "HTML chữ ký...",
     imageTooLarge: "Ảnh quá lớn. Dung lượng tối đa là 2 MB.",
     enableSig: "Thêm chữ ký vào thư gửi đi",
-    copyHtml: "Sao chép HTML", htmlCopied: "Đã sao chép HTML vào bộ nhớ tạm", copyFailed: "Không thể sao chép HTML.",
     invalidImageType: "Chỉ chấp nhận ảnh PNG, JPEG, GIF hoặc WEBP.",
     imageUploadFailed: "Tải ảnh lên thất bại. Vui lòng thử lại.",
     // Tìm kiếm
@@ -3645,30 +3643,6 @@ function renderSignatureModal() {
   const editorHeader = h("div", { className: "flex items-center justify-between gap-3 mt-4 flex-wrap" });
   editorHeader.appendChild(h("h3", { className: "text-sm font-medium text-slate-700" }, t("signature")));
   const headerRight = h("div", { className: "flex items-center gap-2" });
-  if (S.sigMode === "html") {
-    headerRight.appendChild(h("button", {
-      type: "button",
-      className: "px-2.5 h-7 text-xs rounded border border-line text-slate-600 hover:bg-slate-100",
-      onclick() {
-        const html = currentSignatureEditorHtml();
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(html).then(
-            () => showToast(t("htmlCopied"), "success"),
-            () => showToast(t("copyFailed"), "error"),
-          );
-        } else {
-          // Fallback for very old browsers
-          const ta = document.createElement("textarea");
-          ta.value = html;
-          document.body.appendChild(ta);
-          ta.select();
-          try { document.execCommand("copy"); showToast(t("htmlCopied"), "success"); }
-          catch { showToast(t("copyFailed"), "error"); }
-          document.body.removeChild(ta);
-        }
-      },
-    }, t("copyHtml")));
-  }
   const modeToggle = h("div", { className: "signature-mode-toggle", role: "tablist" });
   for (const mode of [
     { key: "visual", label: t("visualMode") },
