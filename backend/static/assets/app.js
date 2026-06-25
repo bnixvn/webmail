@@ -2966,6 +2966,11 @@ async function loadContacts() {
 function renderContactsView() {
   const view = h("div", { className: "flex-1 flex flex-col h-full overflow-hidden" });
 
+  // Mobile: show edit panel OR list (not both), like mail view pattern
+  const isMobile = window.innerWidth < 769;
+  const showList = !isMobile || !S.contactEditing;
+  const showEdit = !isMobile || !!S.contactEditing;
+
   // Header
   const hdr = h("div", { className: "flex items-center justify-between px-4 py-3 border-b border-line shrink-0" });
   hdr.appendChild(h("button", {
@@ -2973,18 +2978,16 @@ function renderContactsView() {
     onclick() { set({ mobileSidebar: true }); },
     innerHTML: I.menu,
   }));
-  hdr.appendChild(h("h1", { className: "text-lg font-semibold" }, "Contacts"));
-  const actionBtns = h("div", { className: "flex items-center gap-2" });
+  hdr.appendChild(h("h1", { className: "text-base font-semibold truncate" }, "Contacts"));
+  const actionBtns = h("div", { className: "flex items-center gap-1.5" });
   actionBtns.appendChild(h("button", {
-    className: "px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-sm hover:bg-emerald-700 flex items-center gap-1.5",
-    onclick() {
-      window.location.href = "/api/contacts/export";
-    },
+    className: "px-2.5 py-1 rounded bg-emerald-600 text-white text-xs hover:bg-emerald-700 flex items-center gap-1",
+    onclick() { window.location.href = "/api/contacts/export"; },
   }, icon("download"), "Export"));
   actionBtns.appendChild(h("button", {
-    className: "px-3 py-1.5 rounded-lg bg-brand text-white text-sm hover:bg-brand-hover",
+    className: "px-2.5 py-1 rounded bg-brand text-white text-xs hover:bg-brand-hover flex items-center gap-1",
     onclick() { set({ contactEditing: { fn: "", email: "", phone: "", organization: "", title: "", note: "" } }); },
-  }, t("newContact")));
+  }, icon("plus"), t("newContact")));
   hdr.appendChild(actionBtns);
   view.appendChild(hdr);
 
@@ -2992,30 +2995,32 @@ function renderContactsView() {
   const body = h("div", { className: "flex-1 flex overflow-hidden" });
 
   // Contact list
-  const listWrap = h("div", { className: "w-full md:w-80 overflow-y-auto border-r border-line" });
-  if (S.contacts.length === 0) {
-    listWrap.appendChild(h("div", { className: "flex flex-col items-center justify-center py-12 text-slate-400" },
-      icon("contact"),
-      h("p", { className: "mt-2 text-sm" }, t("noContacts")),
-    ));
+  if (showList) {
+    const listWrap = h("div", { className: "w-full md:w-80 overflow-y-auto border-r border-line" });
+    if (S.contacts.length === 0) {
+      listWrap.appendChild(h("div", { className: "flex flex-col items-center justify-center py-12 text-slate-400" },
+        icon("contact"),
+        h("p", { className: "mt-2 text-sm" }, t("noContacts")),
+      ));
+    }
+    for (const c of S.contacts) {
+      const item = h("div", {
+        className: "flex items-center gap-3 px-4 py-3 hover:bg-slate-50 cursor-pointer border-b border-line",
+        onclick() { set({ contactEditing: { ...c, _editing: true } }); },
+      },
+        avatarBadge(36, c.email || c.fn),
+        h("div", { className: "min-w-0" },
+          h("div", { className: "text-sm font-medium truncate" }, c.fn || "Unknown"),
+          h("div", { className: "text-xs text-slate-500 truncate" }, c.email || ""),
+        ),
+      );
+      listWrap.appendChild(item);
+    }
+    body.appendChild(listWrap);
   }
-  for (const c of S.contacts) {
-    const item = h("div", {
-      className: "flex items-center gap-3 px-4 py-3 hover:bg-slate-50 cursor-pointer border-b border-line",
-      onclick() { set({ contactEditing: { ...c, _editing: true } }); },
-    },
-      avatarBadge(36, c.email || c.fn),
-      h("div", { className: "min-w-0" },
-        h("div", { className: "text-sm font-medium truncate" }, c.fn || "Unknown"),
-        h("div", { className: "text-xs text-slate-500 truncate" }, c.email || ""),
-      ),
-    );
-    listWrap.appendChild(item);
-  }
-  body.appendChild(listWrap);
 
   // Edit panel
-  if (S.contactEditing) {
+  if (showEdit) {
     body.appendChild(renderContactEditPanel());
   }
 
@@ -3028,13 +3033,38 @@ function renderContactEditPanel() {
   const c = S.contactEditing;
   const isNew = !c._editing;
 
-  const panel = h("div", { className: "flex-1 overflow-y-auto p-6 max-w-lg" });
+  const panel = h("div", { className: "flex-1 overflow-y-auto" });
 
-  panel.appendChild(h("h2", { className: "text-lg font-semibold mb-4" }, isNew ? t("newContact") : t("editContact")));
+  // Mobile header with Back button
+  const isMobile = window.innerWidth < 769;
+  if (isMobile) {
+    const mhdr = h("div", { className: "flex items-center gap-2 px-4 py-3 border-b border-line shrink-0" });
+    mhdr.appendChild(h("button", {
+      className: "p-1.5 rounded hover:bg-slate-100",
+      onclick() { set({ contactEditing: null }); },
+      innerHTML: I.chevL,
+    }));
+    mhdr.appendChild(h("h2", { className: "text-base font-semibold" }, isNew ? t("newContact") : t("editContact")));
+    panel.appendChild(mhdr);
+  } else {
+    panel.appendChild(h("h2", { className: "text-lg font-semibold mb-4 px-6 pt-6" }, isNew ? t("newContact") : t("editContact")));
+
+  actions.appendChild(h("div", { className: "flex-1" }));
+  // Hide Cancel on mobile — back button in header is enough
+  if (!isMobile) {
+    actions.appendChild(h("button", {
+      className: "px-4 py-2 rounded-lg border border-line text-sm hover:bg-slate-50",
+      type: "button",
+      onclick() { set({ contactEditing: null }); },
+    }, t("cancel")));
+  }
+  }
+
+  const inner = h("div", { className: "px-4 pb-6" });
 
   // Send email button (only when editing existing contact with email)
   if (!isNew && c.email) {
-    panel.appendChild(h("button", {
+    inner.appendChild(h("button", {
       className: "mb-4 flex items-center gap-2 px-4 py-2 rounded-lg bg-brand text-white text-sm hover:bg-brand-hover",
       type: "button",
       onclick() { openCompose({ composeTo: c.email }); set({ view: "mail" }); },
@@ -3075,11 +3105,6 @@ function renderContactEditPanel() {
   }
   actions.appendChild(h("div", { className: "flex-1" }));
   actions.appendChild(h("button", {
-    className: "px-4 py-2 rounded-lg border border-line text-sm hover:bg-slate-50",
-    type: "button",
-    onclick() { set({ contactEditing: null }); },
-  }, t("cancel")));
-  actions.appendChild(h("button", {
     className: "px-4 py-2 rounded-lg bg-brand text-white text-sm hover:bg-brand-hover",
     type: "button",
     async onclick() {
@@ -3095,8 +3120,8 @@ function renderContactEditPanel() {
     },
   }, isNew ? "Create" : t("save")));
   form.appendChild(actions);
-
-  panel.appendChild(form);
+  inner.appendChild(form);
+  panel.appendChild(inner);
   return panel;
 }
 
