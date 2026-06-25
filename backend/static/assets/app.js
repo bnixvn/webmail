@@ -2969,7 +2969,7 @@ function renderContactsView() {
   // Mobile: show edit panel OR list (not both), like mail view pattern
   const isMobile = window.innerWidth < 769;
   const showList = !isMobile || !S.contactEditing;
-  const showEdit = !isMobile || !!S.contactEditing;
+  const showEdit = !!S.contactEditing;
 
   // Header
   const hdr = h("div", { className: "flex items-center justify-between px-4 py-3 border-b border-line shrink-0" });
