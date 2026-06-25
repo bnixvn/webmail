@@ -1461,13 +1461,13 @@ function renderSidebar() {
     for (const label of S.labels) {
       const labelCount = S.messages.filter(m => (m.labels || []).some(l => l.labelUid === label.uid)).length;
       labelList.appendChild(h("button", {
-        className: `folder-item w-full ${S.msgFilter === "labeled" ? "" : ""}`,
+        className: `folder-item w-full`,
         onclick() {
           set({ msgFilter: "labeled" });
         },
       },
         h("span", {
-          className: "w-2.5 h-2.5 rounded-full shrink-0",
+          className: "w-3.5 h-3.5 rounded-full shrink-0 ring-1 ring-black/10 dark:ring-white/20 shadow-sm",
           style: { backgroundColor: label.color },
         }),
         h("span", { className: "flex-1 text-left truncate text-sm" }, label.name),
@@ -2036,16 +2036,17 @@ function renderMessageItem(msg, inThread, isReply) {
   fromRow.appendChild(starBtn);
   content.appendChild(fromRow);
   content.appendChild(h("div", { className: `text-sm truncate ${unread ? "font-medium text-ink" : "text-slate-700"}` }, msg.subject || t("noSubject")));
-  // Label chips
+  // Label dots (colored circles only, no text)
   if (msg.labels && msg.labels.length > 0) {
-    const labelRow = h("div", { className: "flex items-center gap-1 mt-1 flex-wrap" });
+    const dotRow = h("div", { className: "flex items-center gap-1.5 mt-1" });
     for (const lb of msg.labels) {
-      labelRow.appendChild(h("span", {
-        className: "inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold text-white shadow-sm",
+      dotRow.appendChild(h("span", {
+        className: "w-4 h-4 rounded-full shrink-0 ring-1 ring-black/10 dark:ring-white/20 shadow-sm",
         style: { backgroundColor: lb.color || "#6366f1" },
-      }, lb.name));
+        title: lb.name,
+      }));
     }
-    content.appendChild(labelRow);
+    content.appendChild(dotRow);
   }
   if (!inThread) {
     content.appendChild(h("div", { className: "text-xs text-slate-500 line-clamp-2 mt-0.5" }, msg.snippet || ""));
@@ -4186,11 +4187,12 @@ function renderLabelManagerModal() {
     S.labelEditing.name = e.target.value;
   });
 
-  const colorWrap = h("div", { className: "flex items-center gap-1.5 flex-wrap" });
+  const colorWrap = h("div", { className: "flex items-center gap-2 flex-wrap" });
   const currentColor = S.labelEditing?.color || LABEL_COLORS[0];
   for (const c of LABEL_COLORS) {
+    const selected = c === currentColor;
     const dot = h("button", {
-      className: `w-6 h-6 rounded-full border-2 transition-transform ${c === currentColor ? "border-slate-800 dark:border-white scale-125 shadow-md" : "border-slate-200 dark:border-slate-600 hover:scale-110"}`,
+      className: `relative w-7 h-7 rounded-full border-2 transition-all ${selected ? "border-slate-900 dark:border-white ring-2 ring-slate-900/30 dark:ring-white/30 scale-110" : "border-transparent hover:scale-110 hover:border-slate-300"}`,
       style: { backgroundColor: c },
       onclick() {
         // Capture name from live DOM before re-render destroys it
@@ -4204,6 +4206,13 @@ function renderLabelManagerModal() {
         });
       },
     });
+    // Checkmark on selected color
+    if (selected) {
+      dot.appendChild(h("span", {
+        className: "absolute inset-0 flex items-center justify-center",
+        innerHTML: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`,
+      }));
+    }
     colorWrap.appendChild(dot);
   }
 
