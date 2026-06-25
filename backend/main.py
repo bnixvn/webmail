@@ -2120,6 +2120,67 @@ async def list_contacts(request: Request):
     return JSONResponse({"contacts": [_contact_row(tuple(r)) for r in rows]})
 
 
+@app.get("/api/contacts/export")
+async def export_contacts(request: Request):
+    session = await require_session(request)
+    account = session["email"]
+
+    import sqlite3
+    with sqlite3.connect(CONTACTS_DB) as db:
+        db.row_factory = sqlite3.Row
+        rows = db.execute(
+            "SELECT fn, email, phone, organization, title, note FROM contacts WHERE account=? ORDER BY fn",
+            (account,),
+        ).fetchall()
+
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from io import BytesIO
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Contacts"
+
+    # Header style
+    hdr_font = Font(bold=True, color="FFFFFF")
+    hdr_fill = PatternFill("solid", fgColor="2563EB")
+    hdr_align = Alignment(horizontal="center", vertical="center")
+    thin = Side(style="thin", color="CBD5E1")
+    border = Border(bottom=thin)
+
+    headers = ["Name", "Email", "Phone", "Organization", "Title", "Note"]
+    ws.append(headers)
+    for col_idx, _ in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col_idx)
+        cell.font = hdr_font
+        cell.fill = hdr_fill
+        cell.alignment = hdr_align
+        cell.border = border
+
+    for row in rows:
+        ws.append([row["fn"] or "", row["email"] or "", row["phone"] or "",
+                   row["organization"] or "", row["title"] or "", row["note"] or ""])
+
+    ws.column_dimensions["A"].width = 25
+    ws.column_dimensions["B"].width = 35
+    ws.column_dimensions["C"].width = 20
+    ws.column_dimensions["D"].width = 30
+    ws.column_dimensions["E"].width = 20
+    ws.column_dimensions["F"].width = 40
+
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    from starlette.responses import StreamingResponse
+    filename = f"contacts_{datetime.utcnow().strftime('%Y%m%d')}.xlsx"
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @app.post("/api/contacts")
 async def create_contact(request: Request, body: dict):
     session = await require_session(request)

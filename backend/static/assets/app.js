@@ -2975,6 +2975,17 @@ function renderContactsView() {
   }));
   hdr.appendChild(h("h1", { className: "text-lg font-semibold" }, "Contacts"));
   hdr.appendChild(h("button", {
+    className: "px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-sm hover:bg-emerald-700 flex items-center gap-1.5",
+    onclick() {
+      const link = document.createElement("a");
+      link.href = "/api/contacts/export";
+      link.download = "";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    },
+  }, icon("download"), "Export"));
+  hdr.appendChild(h("button", {
     className: "px-3 py-1.5 rounded-lg bg-brand text-white text-sm hover:bg-brand-hover",
     onclick() { set({ contactEditing: { fn: "", email: "", phone: "", organization: "", title: "", note: "" } }); },
   }, t("newContact")));
