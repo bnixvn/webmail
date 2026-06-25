@@ -48,6 +48,34 @@ POOL_TTL = 4 * 60  # 4 minutes
 
 DATA_DIR = os.environ.get("DATA_DIR", "/opt/bnix-webmail/data")
 os.makedirs(f"{DATA_DIR}/signatures", exist_ok=True)
+os.makedirs(f"{DATA_DIR}/contacts", exist_ok=True)
+
+CONTACTS_DB = os.path.join(DATA_DIR, "contacts", "contacts.db")
+
+
+def _contacts_init():
+    """Init contacts SQLite DB schema once per process."""
+    import sqlite3
+    with sqlite3.connect(CONTACTS_DB) as db:
+        db.execute("""CREATE TABLE IF NOT EXISTS contacts (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            uid        TEXT    UNIQUE NOT NULL,
+            account    TEXT    NOT NULL,
+            fn         TEXT    NOT NULL DEFAULT '',
+            email      TEXT    NOT NULL DEFAULT '',
+            phone      TEXT    DEFAULT '',
+            organization TEXT  DEFAULT '',
+            title      TEXT    DEFAULT '',
+            note       TEXT    DEFAULT '',
+            photo      TEXT    DEFAULT '',
+            created_at TEXT    NOT NULL,
+            updated_at TEXT    NOT NULL
+        )""")
+        db.execute("CREATE TABLE IF NOT EXISTS contacts_migrated (account TEXT PRIMARY KEY)")
+        db.commit()
+
+
+_contacts_init()
 
 # Static files directory (served by FastAPI)
 STATIC_DIR = Path(__file__).parent / "static"
@@ -2061,186 +2089,111 @@ async def delete_calendar_event(request: Request, uid: str):
         raise HTTPException(502, f"CalDAV error: {e}")
 
 
-# ── Contacts (CardDAV) ───────────────────────────────────────────────────────
+# ── Contacts (SQLite) ────────────────────────────────────────────────────────
+
+def _contact_row(row: tuple) -> dict:
+    return {
+        "uid": row[1],
+        "fn": row[3] or "",
+        "email": row[4] or "",
+        "phone": row[5] or "",
+        "organization": row[6] or "",
+        "title": row[7] or "",
+        "note": row[8] or "",
+        "photo": row[9] or "",
+    }
+
 
 @app.get("/api/contacts")
 async def list_contacts(request: Request):
     session = await require_session(request)
-    config = _get_dav_config(session)
-    email = session["email"]
+    account = session["email"]
 
-    addressbook_url = f"{config['serverUrl']}/addressbooks/{email}/addressbook/"
+    import sqlite3
+    with sqlite3.connect(CONTACTS_DB) as db:
+        db.row_factory = sqlite3.Row
+        rows = db.execute(
+            "SELECT * FROM contacts WHERE account=? ORDER BY fn",
+            (account,),
+        ).fetchall()
 
-    propfind_body = """<?xml version="1.0" encoding="utf-8"?>
-<D:propfind xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:carddav">
-  <D:prop>
-    <D:getetag/>
-    <C:address-data/>
-  </D:prop>
-</D:propfind>"""
-
-    try:
-        resp = await _dav_request("PROPFIND", addressbook_url, session, propfind_body,
-                                  {"Depth": "1"})
-        if resp.status_code not in (207, 200):
-            alt_urls = [
-                f"{config['serverUrl']}/dav/addressbooks/{email}/addressbook/",
-                f"{config['serverUrl']}/.well-known/carddav",
-            ]
-            for alt_url in alt_urls:
-                resp = await _dav_request("PROPFIND", alt_url, session, propfind_body,
-                                          {"Depth": "1"})
-                if resp.status_code in (207, 200):
-                    addressbook_url = alt_url
-                    break
-            else:
-                return JSONResponse({"contacts": []})
-
-        xml_body = resp.text
-        contacts = []
-
-        responses = re.split(r"<D:response>|<d:response>|<response>", xml_body, flags=re.IGNORECASE)
-        for resp_block in responses[1:]:
-            href_match = re.search(r"<D:href>([^<]+)</D:href>|<d:href>([^<]+)</d:href>|<href>([^<]+)</href>",
-                                   resp_block, re.IGNORECASE)
-            if not href_match:
-                continue
-            href = next(g for g in href_match.groups() if g is not None)
-
-            vcard_match = re.search(
-                r"<C:address-data[^>]*>([\s\S]*?)</C:address-data>|"
-                r"<card:address-data[^>]*>([\s\S]*?)</card:address-data>|"
-                r"<address-data[^>]*>([\s\S]*?)</address-data>",
-                resp_block, re.IGNORECASE)
-            if not vcard_match:
-                continue
-            vcard_data = next(g for g in vcard_match.groups() if g is not None)
-            vcard_data = vcard_data.replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&").replace("&quot;", '"')
-
-            etag_match = re.search(r"<D:getetag>([^<]+)</D:getetag>|<getetag>([^<]+)</getetag>",
-                                   resp_block, re.IGNORECASE)
-            etag = None
-            if etag_match:
-                etag = next(g for g in etag_match.groups() if g is not None)
-
-            parsed = _parse_vcard(vcard_data)
-            uid_from_url = href.rstrip("/").split("/")[-1].replace(".vcf", "") if href else ""
-
-            contact = {
-                "uid": parsed.get("email") or uid_from_url or "",
-                "fn": parsed.get("fn") or "Unknown",
-                "email": parsed.get("email") or "",
-                "phone": parsed.get("phone"),
-                "organization": parsed.get("organization"),
-                "title": parsed.get("title"),
-                "note": parsed.get("note"),
-                "etag": etag,
-                "url": href,
-            }
-
-            if contact["email"] or contact["fn"] != "Unknown":
-                contacts.append(contact)
-
-        contacts.sort(key=lambda c: c["fn"])
-        return JSONResponse({"contacts": contacts})
-
-    except Exception as e:
-        return JSONResponse({"contacts": []})
+    return JSONResponse({"contacts": [_contact_row(tuple(r)) for r in rows]})
 
 
 @app.post("/api/contacts")
 async def create_contact(request: Request, body: dict):
     session = await require_session(request)
-    config = _get_dav_config(session)
-    email = session["email"]
+    account = session["email"]
 
-    uid = body.get("email") or str(uuid.uuid4())
-    vcard = _build_vcard(body, uid)
-    addressbook_url = f"{config['serverUrl']}/addressbooks/{email}/addressbook/"
-    put_url = f"{addressbook_url}{uid}.vcf"
+    uid = body.get("uid") or body.get("email") or str(uuid.uuid4())
+    now = datetime.utcnow().isoformat()
 
+    import sqlite3
     try:
-        resp = await _dav_request("PUT", put_url, session, vcard,
-                                  {"Content-Type": "text/vcard; charset=utf-8"})
-        if resp.status_code in (200, 201, 204):
-            return JSONResponse({
-                "uid": uid,
-                "fn": body.get("fn", ""),
-                "email": body.get("email", ""),
-                "phone": body.get("phone"),
-                "organization": body.get("organization"),
-                "title": body.get("title"),
-                "note": body.get("note"),
-            })
-        raise HTTPException(502, f"CardDAV create failed: {resp.status_code}")
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(502, f"CardDAV error: {e}")
+        with sqlite3.connect(CONTACTS_DB) as db:
+            db.execute(
+                """INSERT INTO contacts
+                   (uid, account, fn, email, phone, organization, title, note, photo, created_at, updated_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                (uid, account,
+                 body.get("fn", ""), body.get("email", ""),
+                 body.get("phone", ""), body.get("organization", ""),
+                 body.get("title", ""), body.get("note", ""),
+                 body.get("photo", ""),
+                 now, now),
+            )
+            db.commit()
+    except sqlite3.IntegrityError:
+        raise HTTPException(409, "Contact with this email already exists")
+
+    return JSONResponse({
+        "uid": uid,
+        "fn": body.get("fn", ""),
+        "email": body.get("email", ""),
+        "phone": body.get("phone", ""),
+        "organization": body.get("organization", ""),
+        "title": body.get("title", ""),
+        "note": body.get("note", ""),
+    })
 
 
 @app.put("/api/contacts/{uid}")
 async def update_contact(request: Request, uid: str, body: dict):
     session = await require_session(request)
-    config = _get_dav_config(session)
-    email = session["email"]
+    account = session["email"]
 
-    vcard = _build_vcard(body, uid)
-    addressbook_url = f"{config['serverUrl']}/addressbooks/{email}/addressbook/"
-    put_url = body.get("url") or f"{addressbook_url}{uid}.vcf"
+    now = datetime.utcnow().isoformat()
+    import sqlite3
+    with sqlite3.connect(CONTACTS_DB) as db:
+        cur = db.execute(
+            """UPDATE contacts
+               SET fn=?, email=?, phone=?, organization=?, title=?, note=?, photo=?, updated_at=?
+               WHERE uid=? AND account=?""",
+            (body.get("fn", ""), body.get("email", ""),
+             body.get("phone", ""), body.get("organization", ""),
+             body.get("title", ""), body.get("note", ""),
+             body.get("photo", ""), now, uid, account),
+        )
+        db.commit()
+        if cur.rowcount == 0:
+            raise HTTPException(404, "Contact not found")
 
-    try:
-        headers = {"Content-Type": "text/vcard; charset=utf-8"}
-        if body.get("etag"):
-            headers["If-Match"] = body["etag"]
-
-        resp = await _dav_request("PUT", put_url, session, vcard, headers)
-        if resp.status_code in (200, 201, 204):
-            return JSONResponse({"ok": True})
-        raise HTTPException(502, f"CardDAV update failed: {resp.status_code}")
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(502, f"CardDAV error: {e}")
+    return JSONResponse({"ok": True})
 
 
 @app.delete("/api/contacts/{uid}")
 async def delete_contact(request: Request, uid: str):
     session = await require_session(request)
-    config = _get_dav_config(session)
-    email = session["email"]
+    account = session["email"]
 
-    body = await request.body()
-    url = None
-    if body:
-        try:
-            data = json.loads(body)
-            url = data.get("url")
-        except Exception:
-            pass
+    import sqlite3
+    with sqlite3.connect(CONTACTS_DB) as db:
+        cur = db.execute("DELETE FROM contacts WHERE uid=? AND account=?", (uid, account))
+        db.commit()
+        if cur.rowcount == 0:
+            raise HTTPException(404, "Contact not found")
 
-    if not url:
-        addressbook_url = f"{config['serverUrl']}/addressbooks/{email}/addressbook/"
-        url = f"{addressbook_url}{uid}.vcf"
-
-    try:
-        headers = {}
-        if body:
-            try:
-                data = json.loads(body)
-                if data.get("etag"):
-                    headers["If-Match"] = data["etag"]
-            except Exception:
-                pass
-
-        resp = await _dav_request("DELETE", url, session, headers=headers)
-        if resp.status_code in (200, 204, 404):
-            return JSONResponse({"ok": True})
-        raise HTTPException(502, f"CardDAV delete failed: {resp.status_code}")
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(502, f"CardDAV error: {e}")
+    return JSONResponse({"ok": True})
 
 
 # ─── Static Files & SPA ──────────────────────────────────────────────────────
