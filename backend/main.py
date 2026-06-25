@@ -1699,7 +1699,7 @@ async def _dav_request(method: str, url: str, session: dict, body: str | None = 
                 resp = await client.request(method, url, auth=auth, headers=hdrs, content=body)
             return resp
         except (httpx.ConnectError, httpx.RemoteProtocolError,
-                httpx.PoolTimeoutError, OSError, ssl.SSLError) as e:
+                Exception) as e:
             last_err = e
             if attempt < retries:
                 await asyncio.sleep(0.5 * (attempt + 1))
