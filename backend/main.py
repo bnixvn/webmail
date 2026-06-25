@@ -7,8 +7,10 @@ import base64
 import binascii
 import hashlib
 import json
+import mimetypes
 import os
 import re
+import secrets
 import socket
 import ssl
 import time
@@ -29,7 +31,7 @@ from urllib.parse import quote
 import aioimaplib
 import httpx
 import uvicorn
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import FastAPI, File, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -48,6 +50,7 @@ POOL_TTL = 4 * 60  # 4 minutes
 
 DATA_DIR = os.environ.get("DATA_DIR", "/opt/bnix-webmail/data")
 os.makedirs(f"{DATA_DIR}/signatures", exist_ok=True)
+os.makedirs(f"{DATA_DIR}/signatures/img", exist_ok=True)
 os.makedirs(f"{DATA_DIR}/contacts", exist_ok=True)
 
 CONTACTS_DB = os.path.join(DATA_DIR, "contacts", "contacts.db")
@@ -1764,6 +1767,84 @@ def _write_signature(email: str, data: dict) -> dict:
     return defaults
 
 
+# ── Signature Image Upload ────────────────────────────────────────────────────
+
+# 2 MB hard limit on signature images. The client checks the same limit early,
+# and the server remains the source of truth.
+_SIG_IMAGE_MAX_BYTES = 2 * 1024 * 1024
+_SIG_IMAGE_EXT = {
+    "image/png": "png",
+    "image/jpeg": "jpg",
+    "image/gif": "gif",
+    "image/webp": "webp",
+}
+_SIG_IMAGE_MAGIC = (
+    (b"\x89PNG\r\n\x1a\n", {"image/png"}),
+    (b"\xff\xd8\xff", {"image/jpeg"}),
+    (b"GIF87a", {"image/gif"}),
+    (b"GIF89a", {"image/gif"}),
+)
+
+
+def _sig_image_magic_ok(content_type: str, data: bytes) -> bool:
+    """Sniff magic bytes so a renamed .exe can't masquerade as a PNG."""
+    if not data:
+        return False
+    if content_type == "image/webp":
+        # RIFF....WEBP — need to look 8 bytes in.
+        return data[:4] == b"RIFF" and data[8:12] == b"WEBP"
+    for prefix, allowed in _SIG_IMAGE_MAGIC:
+        if content_type in allowed and data.startswith(prefix):
+            return True
+    return False
+
+
+@app.post("/api/settings/signature/image")
+async def upload_signature_image(request: Request, file: UploadFile = File(...)):
+    """Accept an image for embedding in a signature, store it on disk
+    under a per-user directory, and return a same-origin URL the client
+    can use as an <img src>."""
+    session = await require_session(request)
+    content_type = (file.content_type or "").lower().split(";")[0].strip()
+    if content_type not in _SIG_IMAGE_EXT:
+        raise HTTPException(415, f"Unsupported content type: {content_type}")
+
+    data = await file.read()
+    if not data:
+        raise HTTPException(400, "Empty file.")
+    if len(data) > _SIG_IMAGE_MAX_BYTES:
+        raise HTTPException(413, f"File too large (max {_SIG_IMAGE_MAX_BYTES} bytes).")
+    if not _sig_image_magic_ok(content_type, data):
+        raise HTTPException(400, "File content does not match declared content type.")
+
+    user_key = hashlib.sha256(session["email"].lower().encode()).hexdigest()
+    file_id = secrets.token_hex(16)
+    ext = _SIG_IMAGE_EXT[content_type]
+    user_dir = f"{DATA_DIR}/signatures/img/{user_key}"
+    disk_path = f"{user_dir}/{file_id}.{ext}"
+
+    # Write off the event loop — small but unbounded I/O.
+    loop = asyncio.get_event_loop()
+    def _write() -> str:
+        os.makedirs(user_dir, exist_ok=True)
+        with open(disk_path, "wb") as f:
+            f.write(data)
+        return disk_path
+
+    await loop.run_in_executor(_executor, _write)
+
+    # Defense in depth: confirm we wrote inside the user dir.
+    safe = Path(user_dir).resolve()
+    if not Path(disk_path).resolve().is_relative_to(safe):
+        raise HTTPException(500, "Path resolution failed.")
+
+    url = f"/signature-images/img/{user_key}/{file_id}.{ext}"
+    return JSONResponse(
+        {"url": url, "contentType": content_type, "size": len(data)},
+        status_code=201,
+    )
+
+
 # ── DAV Config ────────────────────────────────────────────────────────────────
 
 def _get_dav_config(session: dict) -> dict:
@@ -2425,7 +2506,32 @@ async def delete_contact(request: Request, uid: str):
 
 # ─── Static Files & SPA ──────────────────────────────────────────────────────
 
-# Mount static assets (CSS, JS, images)
+# Per-user signature images live outside STATIC_DIR (under DATA_DIR), so we
+# serve them with a dedicated route that:
+#   1. Refuses path-traversal attempts (resolved target must stay inside the
+#      signatures directory).
+#   2. Sets `Cache-Control: private, immutable` — the URL embeds a random hex
+#      so `immutable` is honest, and `private` keeps shared proxies from
+#      caching user content.
+_SIG_SERVE_ROOT = Path(f"{DATA_DIR}/signatures").resolve()
+
+
+@app.get("/signature-images/{path:path}")
+@app.get("/assets/signatures/{path:path}")
+async def serve_signature_image(path: str):
+    target = (_SIG_SERVE_ROOT / path).resolve()
+    if _SIG_SERVE_ROOT not in target.parents or not target.is_file():
+        raise HTTPException(404, "Not found.")
+    media, _ = mimetypes.guess_type(str(target))
+    return FileResponse(
+        target,
+        media_type=media or "application/octet-stream",
+        headers={"Cache-Control": "private, max-age=86400, immutable"},
+    )
+
+
+# Mount static assets (CSS, JS, images). Keep this after the signature image
+# route so /assets/signatures/... is not swallowed by the generic /assets mount.
 if STATIC_DIR.exists():
     app.mount("/assets", StaticFiles(directory=str(STATIC_DIR / "assets")), name="static-assets")
     app.mount("/brand", StaticFiles(directory=str(STATIC_DIR / "brand")), name="static-brand")

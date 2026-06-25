@@ -84,7 +84,25 @@
 }
 
 /* ── Signature editor ── */
+.dark .signature-mode-toggle {
+  background: #0f172a;
+  border-color: #334155;
+}
+.dark .signature-mode-btn {
+  color: #cbd5e1;
+}
+.dark .signature-mode-btn:hover {
+  background: #334155;
+}
+.dark .signature-mode-btn.active {
+  background: #1e293b;
+  color: #60a5fa;
+}
 .dark .signature-editor {
+  background: #1e293b;
+  color: #e2e8f0;
+}
+.dark .signature-html-source {
   background: #1e293b;
   color: #e2e8f0;
 }

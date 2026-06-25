@@ -54,8 +54,40 @@ input, textarea, [contenteditable] {
   color: #94a3b8;
   pointer-events: none;
 }
+.compose-editor img {
+  max-width: 100%;
+  height: auto;
+}
 
 /* Signature editor */
+.signature-mode-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+.signature-mode-btn {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #475569;
+}
+.signature-mode-btn:hover {
+  background: #e2e8f0;
+}
+.signature-mode-btn.active {
+  background: #fff;
+  color: #1e40af;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12);
+}
+.signature-image-btn.is-uploading {
+  opacity: 0.6;
+  cursor: wait;
+}
 .signature-editor {
   outline: none;
   min-height: 200px;
@@ -63,10 +95,26 @@ input, textarea, [contenteditable] {
   line-height: 1.5;
   font-size: 14px;
 }
+.signature-editor img {
+  max-width: 100%;
+  height: auto;
+}
 .signature-editor:empty::before {
   content: attr(data-placeholder);
   color: #94a3b8;
   pointer-events: none;
+}
+.signature-html-source {
+  display: block;
+  width: 100%;
+  min-height: 220px;
+  padding: 12px;
+  border: 0;
+  outline: none;
+  resize: vertical;
+  font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  color: #0f172a;
+  background: #fff;
 }
 
 /* Scrollbar styling */
