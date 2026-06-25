@@ -295,7 +295,7 @@ input, textarea, [contenteditable] {
 /* Mobile FAB compose button */
 .fab-compose {
   position: fixed;
-  bottom: 24px;
+  bottom: 100px;
   right: 24px;
   z-index: 30;
   width: 56px;
@@ -310,6 +310,9 @@ input, textarea, [contenteditable] {
   justify-content: center;
   box-shadow: 0 4px 16px rgba(40, 79, 125, 0.4);
   transition: transform 0.15s ease, background 0.15s ease;
+}
+@media (min-width: 769px) {
+  .fab-compose { bottom: 24px; }
 }
 .fab-compose:hover {
   background: #3d83bd;
