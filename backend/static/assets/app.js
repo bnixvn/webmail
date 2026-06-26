@@ -4207,34 +4207,37 @@ function renderLabelManagerModal() {
   nameRow.appendChild(nameInput);
   body.appendChild(nameRow);
 
-  // Color picker section with label
-  body.appendChild(h("div", { className: "text-xs font-medium text-slate-500 dark:text-slate-400" }, t("labelColor") + ":"));
-  const colorWrap = h("div", { className: "flex items-center gap-2 flex-wrap" });
-  for (const c of LABEL_COLORS) {
+  // Color picker section
+  const labelColors = (typeof LABEL_COLORS !== "undefined" && LABEL_COLORS.length) ? LABEL_COLORS : [
+    "#6366f1", "#8b5cf6", "#a855f7", "#d946ef", "#ec4899",
+    "#f43f5e", "#ef4444", "#f97316", "#f59e0b", "#eab308",
+    "#84cc16", "#22c55e", "#10b981", "#14b8a6", "#06b6d4",
+    "#0ea5e9", "#3b82f6", "#64748b",
+  ];
+  const colorLabel = h("div", { className: "text-xs font-medium text-slate-500 dark:text-slate-400 mt-2 mb-1" });
+  colorLabel.textContent = (typeof t === "function" ? t("labelColor") : "Color") + ":";
+  body.appendChild(colorLabel);
+  const colorWrap = h("div", { className: "flex items-center gap-2 flex-wrap", style: { minHeight: "36px" } });
+  for (let i = 0; i < labelColors.length; i++) {
+    const c = labelColors[i];
     const selected = c === currentColor;
     const dot = h("button", {
       type: "button",
-      className: `relative w-8 h-8 rounded-full border-2 transition-all ${selected ? "border-slate-900 dark:border-white ring-2 ring-slate-900/30 dark:ring-white/30 scale-110" : "border-transparent hover:scale-110 hover:border-slate-300"}`,
-      style: { backgroundColor: c },
+      className: `w-8 h-8 rounded-full border-2 ${selected ? "border-slate-900 dark:border-white scale-110" : "border-transparent hover:border-slate-300"}`,
+      style: { backgroundColor: c, cursor: "pointer" },
       onclick(e) {
         e.preventDefault();
-        // Capture name from live DOM before re-render destroys it
         const val = nameInput.value;
         S.labelEditing = { ...(S.labelEditing || {}), name: val, color: c };
         set({ labelEditing: S.labelEditing });
-        // Restore focus & cursor after re-render
         requestAnimationFrame(() => {
-          const inp = document.querySelector('input[placeholder="' + t("labelName") + '"]');
+          const inp = document.querySelector('input[placeholder="' + (typeof t === "function" ? t("labelName") : "Label name") + '"]');
           if (inp) { inp.focus(); inp.setSelectionRange(val.length, val.length); }
         });
       },
     });
-    // Checkmark on selected color
     if (selected) {
-      dot.appendChild(h("span", {
-        className: "absolute inset-0 flex items-center justify-center",
-        innerHTML: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`,
-      }));
+      dot.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3.5" style="margin:auto;display:block"><polyline points="20 6 9 17 4 12"/></svg>`;
     }
     colorWrap.appendChild(dot);
   }
