@@ -1182,7 +1182,7 @@ function renderLogin() {
           ),
           h("div", { className: "login-field" },
             h("label", {}, t("passwordPlaceholder")),
-            h("input", { name: "password", type: "password", placeholder: "â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢", required: "required", autocomplete: "current-password" }),
+            h("input", { name: "password", type: "password", placeholder: "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022", required: "required", autocomplete: "current-password" }),
           ),
           h("label", { className: "login-remember" },
             h("input", { name: "remember", type: "checkbox", checked: "checked" }),

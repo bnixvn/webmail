@@ -673,5 +673,19 @@ input, textarea, [contenteditable] {
     flex: 1;
     width: 100%;
     max-width: 100%;
+    padding: 12px;
+  }
+  .login-topbar {
+    padding: 8px 12px;
+    max-width: 100%;
+  }
+  .login-form {
+    padding: 0 12px 24px;
+  }
+  .login-advanced-toggle {
+    font-size: 11px;
+  }
+  .login-advanced-grid {
+    grid-template-columns: 1fr;
   }
 }
