@@ -4207,60 +4207,53 @@ function renderLabelManagerModal() {
   nameRow.appendChild(nameInput);
   body.appendChild(nameRow);
 
-  // Color picker section
-  const labelColors = (typeof LABEL_COLORS !== "undefined" && LABEL_COLORS.length) ? LABEL_COLORS : [
-    "#6366f1", "#8b5cf6", "#a855f7", "#d946ef", "#ec4899",
-    "#f43f5e", "#ef4444", "#f97316", "#f59e0b", "#eab308",
-    "#84cc16", "#22c55e", "#10b981", "#14b8a6", "#06b6d4",
-    "#0ea5e9", "#3b82f6", "#64748b",
-  ];
+  // Color picker section — uses event delegation, no closure deps
   const colorLabel = h("div", { className: "text-xs font-medium text-slate-500 dark:text-slate-400 mt-2 mb-1" });
-  colorLabel.textContent = (typeof t === "function" ? t("labelColor") : "Color") + ":";
+  colorLabel.textContent = t("labelColor") + ":";
   body.appendChild(colorLabel);
-  const colorWrap = h("div", { className: "flex items-center gap-2 flex-wrap", style: { minHeight: "36px" } });
-  // Track selected color via local variable — NO set(), NO re-render
-  let selectedColor = currentColor;
-  const dots = [];
-  for (let i = 0; i < labelColors.length; i++) {
-    const c = labelColors[i];
-    const selected = c === selectedColor;
-    const dot = h("button", {
+  const colorWrap = h("div", {
+    className: "color-picker-wrap flex items-center gap-2 flex-wrap",
+    style: { minHeight: "36px" },
+  });
+  for (const c of LABEL_COLORS) {
+    const sel = c === currentColor;
+    colorWrap.appendChild(h("button", {
       type: "button",
-      className: `w-8 h-8 rounded-full border-2 ${selected ? "border-slate-900 dark:border-white scale-110" : "border-transparent hover:border-slate-300"}`,
+      dataset: { color: c },
+      className: `color-dot w-8 h-8 rounded-full border-2 ${sel ? "selected border-slate-900 dark:border-white scale-110" : "border-transparent hover:border-slate-300"}`,
       style: { backgroundColor: c, cursor: "pointer" },
-    });
-    if (selected) {
-      dot.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3.5" style="margin:auto;display:block"><polyline points="20 6 9 17 4 12"/></svg>`;
-    }
-    dot.addEventListener("click", function(e) {
-      e.preventDefault();
-      e.stopPropagation();
-      // Update local selection — swap classes directly on DOM
-      for (const d of dots) {
-        d.className = "w-8 h-8 rounded-full border-2 border-transparent hover:border-slate-300";
-        d.innerHTML = "";
-      }
-      this.className = "w-8 h-8 rounded-full border-2 border-slate-900 dark:border-white scale-110";
-      this.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3.5" style="margin:auto;display:block"><polyline points="20 6 9 17 4 12"/></svg>`;
-      // Update preview dot
-      colorPreview.style.backgroundColor = c;
-      // Store in state (no re-render)
-      selectedColor = c;
-      if (!S.labelEditing) S.labelEditing = {};
-      S.labelEditing.color = c;
-    });
-    dots.push(dot);
-    colorWrap.appendChild(dot);
+      innerHTML: sel ? `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3.5" style="margin:auto;display:block"><polyline points="20 6 9 17 4 12"/></svg>` : "",
+    }));
   }
+  // Single delegated click handler on container — survives any re-render
+  colorWrap.addEventListener("click", function(e) {
+    const dot = e.target.closest(".color-dot");
+    if (!dot) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const c = dot.dataset.color;
+    // Update all dots in container
+    for (const d of colorWrap.querySelectorAll(".color-dot")) {
+      d.className = "color-dot w-8 h-8 rounded-full border-2 border-transparent hover:border-slate-300";
+      d.innerHTML = "";
+    }
+    dot.className = "color-dot w-8 h-8 rounded-full border-2 selected border-slate-900 dark:border-white scale-110";
+    dot.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3.5" style="margin:auto;display:block"><polyline points="20 6 9 17 4 12"/></svg>`;
+    // Update preview & state
+    colorPreview.style.backgroundColor = c;
+    if (!S.labelEditing) S.labelEditing = {};
+    S.labelEditing.color = c;
+  });
   body.appendChild(colorWrap);
 
-  // Add/Save button
+  // Add/Save button — reads selected color from DOM (most reliable)
   const addBtn = h("button", {
     className: "w-full px-3 py-2.5 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand-hover",
     async onclick() {
       const name = (nameInput.value || "").trim();
       if (!name) { nameInput.focus(); return; }
-      const color = selectedColor || LABEL_COLORS[0];
+      const selDot = colorWrap.querySelector(".color-dot.selected");
+      const color = selDot ? selDot.dataset.color : LABEL_COLORS[0];
       if (S.labelEditing?.uid) {
         await updateLabel(S.labelEditing.uid, name, color);
       } else {
