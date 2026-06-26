@@ -187,7 +187,7 @@ def _reload_caddy():
 
 def _add_caddy_domain(alias_domain: str):
     """Add a domain alias to Caddyfile."""
-    import logging, tempfile, shutil
+    import logging, tempfile, shutil, subprocess
     log = logging.getLogger("caddy")
     try:
         log.info(f"[caddy] Adding domain '{alias_domain}' to {CADDYFILE_PATH}")
