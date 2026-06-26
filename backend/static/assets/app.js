@@ -175,7 +175,6 @@ const I = {
   star:      `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`,
   starFill:  `<svg width="16" height="16" viewBox="0 0 24 24" fill="#f59e0b" stroke="#f59e0b" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`,
   tag:       `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/></svg>`,
-  tagFill:   `<svg width="16" height="16" viewBox="0 0 24 24" fill="#6366f1" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5" fill="white"/></svg>`,
   label:     `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/></svg>`,
   mail:      `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>`,
   reply:     `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>`,
@@ -222,6 +221,41 @@ function icon(name, cls) {
   span.style.display = "inline-flex";
   span.style.alignItems = "center";
   return span;
+}
+
+const DEFAULT_LABEL_COLOR = "#6366f1";
+
+function labelColor(value) {
+  return (typeof value === "string" && value.trim()) ? value.trim() : DEFAULT_LABEL_COLOR;
+}
+
+function labelTagIcon(color, filled = false, size = 16, title = "") {
+  const attrs = {
+    className: "inline-flex items-center shrink-0",
+    innerHTML: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="${filled ? "currentColor" : "none"}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5" fill="${filled ? "white" : "currentColor"}"/></svg>`,
+  };
+  if (color) attrs.style = { color: labelColor(color) };
+  if (title) attrs.title = title;
+  return h("span", attrs);
+}
+
+function messageLabelsWithCurrentColors(labels, labelSource = S.labels) {
+  const labelMap = new Map((labelSource || []).map(label => [label.uid, label]));
+  return (labels || []).map(labelRef => {
+    const source = labelMap.get(labelRef.labelUid || labelRef.uid);
+    return {
+      ...labelRef,
+      name: source?.name || labelRef.name,
+      color: labelColor(source?.color || labelRef.color),
+    };
+  });
+}
+
+function syncMessageLabelsWithLabels(labels = S.labels, messages = S.messages) {
+  return (messages || []).map(message => ({
+    ...message,
+    labels: messageLabelsWithCurrentColors(message.labels, labels),
+  }));
 }
 
 // â”€â”€â”€ Utilities â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -697,10 +731,7 @@ function renderLabelDropdown(uid) {
         toggleMessageLabel(uid, label.uid, !assigned, msg.messageId);
       },
     },
-      h("span", {
-        className: "w-3 h-3 rounded-full shrink-0",
-        style: { backgroundColor: label.color },
-      }),
+      labelTagIcon(label.color, assigned, 15),
       h("span", { className: "flex-1 truncate" }, label.name),
       assigned ? h("span", { className: "text-brand", innerHTML: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>` }) : null,
     ));
@@ -1352,10 +1383,7 @@ function renderSidebar() {
             set({ msgFilter: "labeled" });
           },
         },
-          h("span", {
-            className: "w-3.5 h-3.5 rounded-full shrink-0 ring-1 ring-black/10 dark:ring-white/20 shadow-sm",
-            style: { backgroundColor: label.color },
-          }),
+          labelTagIcon(label.color, true, 16),
           h("span", { className: "flex-1 text-left truncate text-sm" }, label.name),
           labelCount > 0 ? h("span", { className: "text-[11px] text-slate-400" }, String(labelCount)) : null,
         ));
@@ -1870,6 +1898,7 @@ function renderMessageItem(msg, inThread, isReply) {
   const active = S.selectedUid === msg.uid;
   const selected = S.selectedUids.includes(msg.uid);
   const unread = !msg.seen;
+  const msgLabels = messageLabelsWithCurrentColors(msg.labels);
   const bg = active ? "bg-blue-100 dark:bg-blue-900/40" : unread ? "bg-emerald-50 dark:bg-emerald-900/20 hover:bg-emerald-100 dark:hover:bg-emerald-900/30" : "bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-blue-900/40";
   const indent = inThread ? "pl-8" : "px-3";
 
@@ -1930,15 +1959,11 @@ function renderMessageItem(msg, inThread, isReply) {
   fromRow.appendChild(starBtn);
   content.appendChild(fromRow);
   content.appendChild(h("div", { className: `text-sm truncate ${unread ? "font-medium text-ink" : "text-slate-700"}` }, msg.subject || t("noSubject")));
-  // Label dots (colored circles only, no text)
-  if (msg.labels && msg.labels.length > 0) {
+  // Label tags
+  if (msgLabels.length > 0) {
     const dotRow = h("div", { className: "flex items-center gap-1.5 mt-1" });
-    for (const lb of msg.labels) {
-      dotRow.appendChild(h("span", {
-        className: "w-4 h-4 rounded-full shrink-0 ring-1 ring-black/10 dark:ring-white/20 shadow-sm",
-        style: { backgroundColor: lb.color || "#6366f1" },
-        title: lb.name,
-      }));
+    for (const lb of msgLabels) {
+      dotRow.appendChild(labelTagIcon(lb.color, true, 16, lb.name));
     }
     content.appendChild(dotRow);
   }
@@ -1952,16 +1977,16 @@ function renderMessageItem(msg, inThread, isReply) {
   timeCol.appendChild(h("div", { className: "text-xs text-slate-400 whitespace-nowrap" }, formatTime(msg.date)));
   // Label assignment button
   if (!inThread) {
-    const hasLabels = msg.labels && msg.labels.length > 0;
+    const hasLabels = msgLabels.length > 0;
+    const primaryLabel = msgLabels[0];
     const labelBtn = h("button", {
-      className: `p-0.5 rounded ${hasLabels ? "text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/30" : "text-slate-300 hover:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700"}`,
+      className: `p-0.5 rounded ${hasLabels ? "hover:bg-indigo-50 dark:hover:bg-indigo-900/30" : "text-slate-300 hover:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700"}`,
       title: t("labels"),
-      innerHTML: hasLabels ? I.tagFill : I.tag,
       onclick(e) {
         e.stopPropagation();
         set({ labelMenu: S.labelMenu === msg.uid ? null : msg.uid });
       },
-    });
+    }, labelTagIcon(hasLabels ? primaryLabel.color : null, hasLabels, 16));
     timeCol.appendChild(labelBtn);
   }
   item.appendChild(timeCol);
@@ -2457,13 +2482,13 @@ function renderMessageView() {
   header.appendChild(senderRow);
 
   // Labels row in message view
-  const msgLabels = (S.messages.find(m => m.uid === msg.uid)?.labels) || [];
+  const msgLabels = messageLabelsWithCurrentColors((S.messages.find(m => m.uid === msg.uid)?.labels) || []);
   if (msgLabels.length > 0 || S.labels.length > 0) {
     const labelRow = h("div", { className: "flex items-center gap-1.5 mt-2 flex-wrap" });
     for (const lb of msgLabels) {
       labelRow.appendChild(h("span", {
         className: "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium text-white",
-        style: { backgroundColor: lb.color || "#6366f1" },
+        style: { backgroundColor: labelColor(lb.color) },
       },
         lb.name,
         h("button", {
@@ -2661,7 +2686,7 @@ async function toggleFlagFromList(uid, flag, enabled) {
 async function loadLabels() {
   try {
     const labels = await api("/api/labels");
-    set({ labels, labelsLoaded: true });
+    set({ labels, labelsLoaded: true, messages: syncMessageLabelsWithLabels(labels, S.messages) });
   } catch (err) {
     console.error("Failed to load labels:", err);
   }
@@ -2675,7 +2700,7 @@ async function loadMessageLabels() {
       const key1 = m.messageId || `${S.folder}:${m.uid}`;
       const key2 = `${S.folder}:${m.uid}`;
       const labels = map[key1] || map[key2] || [];
-      return { ...m, labels };
+      return { ...m, labels: messageLabelsWithCurrentColors(labels) };
     });
     set({ messages });
   } catch (err) {
@@ -2703,7 +2728,8 @@ async function updateLabel(uid, name, color) {
       method: "PUT",
       body: JSON.stringify({ name, color }),
     });
-    set({ labels: S.labels.map(l => l.uid === uid ? label : l) });
+    const labels = S.labels.map(l => l.uid === uid ? label : l);
+    set({ labels, messages: syncMessageLabelsWithLabels(labels, S.messages) });
     return label;
   } catch (err) {
     set({ error: err.message });
@@ -2743,7 +2769,7 @@ async function toggleMessageLabel(uid, labelUid, add, messageId) {
       if (m.uid !== uid) return m;
       const existing = m.labels || [];
       if (add && label) {
-        return { ...m, labels: [...existing, { labelUid, name: label.name, color: label.color }] };
+        return { ...m, labels: [...existing.filter(l => l.labelUid !== labelUid), { labelUid, name: label.name, color: labelColor(label.color) }] };
       } else {
         return { ...m, labels: existing.filter(l => l.labelUid !== labelUid) };
       }
@@ -4037,7 +4063,7 @@ function renderSignatureModal() {
 // â”€â”€â”€ Label Manager Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const LABEL_COLORS = [
-  "#6366f1", "#8b5cf6", "#a855f7", "#d946ef", "#ec4899",
+  DEFAULT_LABEL_COLOR, "#8b5cf6", "#a855f7", "#d946ef", "#ec4899",
   "#f43f5e", "#ef4444", "#f97316", "#f59e0b", "#eab308",
   "#84cc16", "#22c55e", "#10b981", "#14b8a6", "#06b6d4",
   "#0ea5e9", "#3b82f6", "#64748b",
@@ -4069,7 +4095,7 @@ function renderLabelManagerModal() {
   const body = h("div", { className: "flex-1 overflow-y-auto p-4 space-y-4" });
 
   // Add new label form
-  const currentColor = S.labelEditing?.color || LABEL_COLORS[0];
+  const currentColor = labelColor(S.labelEditing?.color || LABEL_COLORS[0]);
   const currentName = S.labelEditing?.name || "";
 
   // Name input with color preview dot
@@ -4162,10 +4188,7 @@ function renderLabelManagerModal() {
   } else {
     for (const label of S.labels) {
       const row = h("div", { className: "flex items-center gap-2 py-2" });
-      row.appendChild(h("span", {
-        className: "w-4 h-4 rounded-full shrink-0",
-        style: { backgroundColor: label.color },
-      }));
+      row.appendChild(labelTagIcon(label.color, true, 16));
       row.appendChild(h("span", { className: "flex-1 text-sm truncate" }, label.name));
       row.appendChild(h("button", {
         className: "p-1 rounded hover:bg-slate-100 text-slate-400 hover:text-slate-600",
