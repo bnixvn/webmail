@@ -392,6 +392,7 @@ STATIC_DIR = Path(__file__).parent / "static"
 
 _pool: dict[str, tuple[aioimaplib.IMAP4_SSL, float]] = {}
 _pool_lock = asyncio.Lock()
+_imap_op_locks: dict[str, asyncio.Lock] = {}
 _executor = ThreadPoolExecutor(4)
 
 
@@ -401,6 +402,15 @@ def _session_auth_type(session: dict) -> str:
 
 def _imap_pool_key(email: str, auth_type: str = "password") -> str:
     return f"{auth_type}:{email.lower()}"
+
+
+async def _imap_operation_lock(pool_key: str) -> asyncio.Lock:
+    async with _pool_lock:
+        lock = _imap_op_locks.get(pool_key)
+        if lock is None:
+            lock = asyncio.Lock()
+            _imap_op_locks[pool_key] = lock
+        return lock
 
 
 async def _imap_login(client: aioimaplib.IMAP4_SSL, session: dict):
@@ -479,16 +489,19 @@ async def with_imap_retry(session: dict, coro_factory):
     imap_host = session.get("imap_host") or os.environ.get("IMAP_HOST", "").strip() or await _discover_mail_host(domain, "imap")
     imap_port = int(session.get("imap_port") or os.environ.get("IMAP_PORT", "993"))
     auth_type = _session_auth_type(session)
+    pool_key = _imap_pool_key(email, auth_type)
+    op_lock = await _imap_operation_lock(pool_key)
 
-    for attempt in range(2):
-        try:
-            client = await _get_pooled_imap(session, imap_host, imap_port)
-            return await coro_factory(client)
-        except (aioimaplib.Abort, ConnectionError, OSError, asyncio.TimeoutError):
-            if attempt == 0:
-                await _evict_imap(email, auth_type)
-                continue
-            raise
+    async with op_lock:
+        for attempt in range(2):
+            try:
+                client = await _get_pooled_imap(session, imap_host, imap_port)
+                return await coro_factory(client)
+            except (aioimaplib.Abort, ConnectionError, OSError, asyncio.TimeoutError):
+                if attempt == 0:
+                    await _evict_imap(email, auth_type)
+                    continue
+                raise
 
 
 async def _get_imap_for_session(session: dict) -> aioimaplib.IMAP4_SSL:
