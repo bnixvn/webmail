@@ -194,16 +194,14 @@ def _add_caddy_domain(alias_domain: str):
         if alias_domain in content:
             return True  # Already exists
 
-        # Insert domain before the opening brace of the first site block
-        # Pattern: find "domain1,\ndomain2 {" and add new domain
         lines = content.split("\n")
         for i, line in enumerate(lines):
             stripped = line.rstrip()
             if stripped.endswith("{") and "reverse_proxy" not in stripped:
-                # This is a site block header line
-                header = stripped.rstrip(" {").rstrip()
+                # Found site block header — extract domains before "{"
+                header = stripped[:-1].rstrip()  # Remove trailing "{"
                 if header:
-                    lines[i] = f"{header},\n{alias_domain} {{"
+                    lines[i] = f"{header}, {alias_domain} {{"
                 break
 
         with open(CADDYFILE_PATH, "w") as f:
@@ -216,6 +214,7 @@ def _add_caddy_domain(alias_domain: str):
 
 def _remove_caddy_domain(alias_domain: str):
     """Remove a domain alias from Caddyfile."""
+    import re
     try:
         with open(CADDYFILE_PATH, "r") as f:
             content = f.read()
@@ -223,11 +222,13 @@ def _remove_caddy_domain(alias_domain: str):
         if alias_domain not in content:
             return True  # Already gone
 
-        # Remove the domain from comma-separated list
-        content = content.replace(f",\n{alias_domain}", "")
-        content = content.replace(f"{alias_domain},\n", "")
-        content = content.replace(f", {alias_domain}", "")
-        content = content.replace(f"{alias_domain}", "")
+        # Remove domain from comma-separated list (with surrounding comma/newline)
+        escaped = re.escape(alias_domain)
+        content = re.sub(rf",\s*\n?\s*{escaped}", "", content)
+        content = re.sub(rf"{escaped}\s*,?", "", content)
+        # Clean up leftover double commas or trailing commas before "{"
+        content = re.sub(r",\s*,", ",", content)
+        content = re.sub(r",\s*\{", " {", content)
 
         with open(CADDYFILE_PATH, "w") as f:
             f.write(content)
