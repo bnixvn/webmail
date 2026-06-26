@@ -198,11 +198,11 @@ def _add_caddy_domain(alias_domain: str):
         for i, line in enumerate(lines):
             stripped = line.rstrip()
             if stripped.endswith("{") and "reverse_proxy" not in stripped:
-                # Found site block header — extract domains before "{"
                 header = stripped[:-1].rstrip()  # Remove trailing "{"
-                if header:
+                # Skip non-domain blocks like ":80", ":443", "localhost"
+                if header and "." in header and not header.startswith(":"):
                     lines[i] = f"{header}, {alias_domain} {{"
-                break
+                    break
 
         with open(CADDYFILE_PATH, "w") as f:
             f.write("\n".join(lines))
