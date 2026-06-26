@@ -51,9 +51,9 @@ POOL_TTL = 4 * 60  # 4 minutes
 DATA_DIR = os.environ.get("DATA_DIR", "/opt/bnix-webmail/data")
 os.makedirs(f"{DATA_DIR}/signatures", exist_ok=True)
 os.makedirs(f"{DATA_DIR}/signatures/img", exist_ok=True)
-os.makedirs(f"{DATA_DIR}/contacts", exist_ok=True)
+os.makedirs(f"{DATA_DIR}/db", exist_ok=True)
 
-CONTACTS_DB = os.path.join(DATA_DIR, "contacts", "contacts.db")
+CONTACTS_DB = os.path.join(DATA_DIR, "db", "contacts.db")
 
 
 def _contacts_init():
@@ -78,7 +78,7 @@ def _contacts_init():
         db.commit()
 
 
-CALENDAR_DB = os.path.join(DATA_DIR, "contacts", "calendar.db")
+CALENDAR_DB = os.path.join(DATA_DIR, "db", "calendar.db")
 
 
 def _calendar_init():
@@ -123,7 +123,7 @@ _calendar_init()
 
 # ─── Labels Database ──────────────────────────────────────────────────────────
 
-LABELS_DB = os.path.join(DATA_DIR, "contacts", "labels.db")
+LABELS_DB = os.path.join(DATA_DIR, "db", "labels.db")
 
 
 def _labels_init():

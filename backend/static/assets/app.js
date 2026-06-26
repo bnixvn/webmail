@@ -1,4 +1,4 @@
-﻿/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
    BNIX Webmail â€” Vanilla JS Application
    â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 
@@ -37,7 +37,7 @@ const LOCALES = {
     emailPlaceholder: "Email address",
     passwordPlaceholder: "Password",
     staySignedIn: "Stay signed in",
-    serverSettings: "âš™ Mail server settings (optional)",
+    serverSettings: "Mail server settings (optional)",
     serverSettingsHint: "Auto-detected via DNS. Only fill in if auto-detection fails.",
     imapHostPh: "IMAP host", imapPortPh: "IMAP port (993)",
     smtpHostPh: "SMTP host", smtpPortPh: "SMTP port (465)",
@@ -127,7 +127,7 @@ const LOCALES = {
     editEvent: "Edit Event", noTitle: "(No title)",
     summary: "Summary", description: "Description", location: "Location",
     removeRecipient: "Remove recipient",
-    noSubject: "(KhÃ´ng cÃ³ tiÃªu Ä‘á»)",
+    noSubject: "(No subject)",
     deleteFolder: "Delete folder",
     deleteFolderConfirm: (name) => `Delete folder "${name}"?`,
     // Compose extra
@@ -147,125 +147,10 @@ const LOCALES = {
     couldNotLoad: (e) => `Could not load mailbox: ${e || "Unknown error"}`,
     threadCount: (n) => `${n} messages`,
   },
-  vi: {
-    // ÄÄƒng nháº­p
-    emailPlaceholder: "Äá»‹a chá»‰ email",
-    passwordPlaceholder: "Máº­t kháº©u",
-    staySignedIn: "Duy trÃ¬ Ä‘Äƒng nháº­p",
-    serverSettings: "âš™ CÃ i Ä‘áº·t mÃ¡y chá»§ mail (tuá»³ chá»n)",
-    serverSettingsHint: "Tá»± Ä‘á»™ng phÃ¡t hiá»‡n qua DNS. Chá»‰ Ä‘iá»n náº¿u tá»± Ä‘á»™ng tháº¥t báº¡i.",
-    imapHostPh: "MÃ¡y chá»§ IMAP", imapPortPh: "Cá»•ng IMAP (993)",
-    smtpHostPh: "MÃ¡y chá»§ SMTP", smtpPortPh: "Cá»•ng SMTP (465)",
-    signIn: "ÄÄƒng nháº­p",
-    loginFailed: "ÄÄƒng nháº­p tháº¥t báº¡i",
-    sessionExpired: "PhiÃªn Ä‘Ã£ háº¿t háº¡n. Vui lÃ²ng Ä‘Äƒng nháº­p láº¡i.",
-    // Sidebar
-    compose: "Soáº¡n thÆ°",
-    mail: "ThÆ°", contacts: "Danh báº¡", calendar: "Lá»‹ch",
-    mainSection: "ChÃ­nh", foldersSection: "ThÆ° má»¥c",
-    folderInbox: "Há»™p thÆ° Ä‘áº¿n", folderDrafts: "ThÆ° nhÃ¡p", folderSent: "ÄÃ£ gá»­i",
-    folderArchive: "LÆ°u trá»¯", folderSpam: "ThÆ° rÃ¡c", folderTrash: "ThÃ¹ng rÃ¡c",
-    folderNamePh: "TÃªn thÆ° má»¥c", addFolder: "ThÃªm",
-    signature: "Chá»¯ kÃ½", signOut: "ÄÄƒng xuáº¥t", darkMode: "Giao diá»‡n tá»‘i", lightMode: "Giao diá»‡n sÃ¡ng",
-    // Danh sÃ¡ch thÆ°
-    noConversations: "KhÃ´ng cÃ³ há»™i thoáº¡i nÃ o",
-    loadingMailbox: "Äang táº£i há»™p thÆ°...",
-    selected: (n) => `ÄÃ£ chá»n ${n}`,
-    messages: (n) => `${n} tin nháº¯n`,
-    filterAll: "Táº¥t cáº£", filterUnread: "ChÆ°a Ä‘á»c", filterStarred: "ÄÃ¡nh dáº¥u",
-    noFolders: "KhÃ´ng cÃ³ thÆ° má»¥c",
-    // Xem thÆ°
-    noConvSelected: "ChÆ°a chá»n há»™i thoáº¡i",
-    chooseMessage: "Chá»n má»™t thÆ° tá»« danh sÃ¡ch",
-    to: "Äáº¿n", cc: "CC",
-    reply: "Tráº£ lá»i", replyAll: "Tráº£ lá»i táº¥t cáº£", forward: "Chuyá»ƒn tiáº¿p",
-    archive: "LÆ°u trá»¯", reportSpam: "BÃ¡o spam", delete: "XoÃ¡", moveTo: "Chuyá»ƒn tá»›i",
-    star: "ÄÃ¡nh dáº¥u", unstar: "Bá» Ä‘Ã¡nh dáº¥u", markRead: "ÄÃ¡nh dáº¥u Ä‘Ã£ Ä‘á»c", markUnread: "ÄÃ¡nh dáº¥u chÆ°a Ä‘á»c",
-    // NhÃ£n
-    labels: "NhÃ£n", manageLabels: "Quáº£n lÃ½ nhÃ£n", newLabel: "NhÃ£n má»›i",
-    labelName: "TÃªn nhÃ£n", labelColor: "MÃ u sáº¯c", noLabels: "ChÆ°a cÃ³ nhÃ£n nÃ o",
-    addLabel: "ThÃªm nhÃ£n", removeLabel: "Gá»¡ nhÃ£n", deleteLabel: "XoÃ¡ nhÃ£n",
-    deleteLabelConfirm: (n) => `XoÃ¡ nhÃ£n "${n}"?`,
-    filterLabeled: "CÃ³ nhÃ£n",
-    attachments: (n) => `Tá»‡p Ä‘Ã­nh kÃ¨m (${n})`,
-    attachment: (n) => `${n} tá»‡p Ä‘Ã­nh kÃ¨m`,
-    quickReplyPh: "Tráº£ lá»i nhanh...",
-    replyThreadPh: "Tráº£ lá»i há»™i thoáº¡i...",
-    sentOk: "ÄÃ£ gá»­i email thÃ nh cÃ´ng!",
-    sentSavedWarn: "ÄÃ£ gá»­i email, nhÆ°ng chÆ°a lÆ°u Ä‘Æ°á»£c vÃ o ÄÃ£ gá»­i.",
-    movedOk: "ÄÃ£ chuyá»ƒn thÆ°",
-    // Soáº¡n thÆ°
-    newMessage: "ThÆ° má»›i",
-    toPh: "Äáº¿n", ccPh: "CC", bccPh: "BCC", subjectPh: "TiÃªu Ä‘á»",
-    sending: "Äang gá»­i...", send: "Gá»­i",
-    // Danh báº¡
-    newContact: "ThÃªm liÃªn há»‡",
-    noContacts: "ChÆ°a cÃ³ liÃªn há»‡",
-    sendEmail: "Gá»­i email",
-    contactAdded: "ÄÃ£ thÃªm liÃªn há»‡",
-    saving: "Äang lÆ°u...", save: "LÆ°u", cancel: "Huá»·",
-    firstName: "TÃªn", lastName: "Há»",
-    phone: "Äiá»‡n thoáº¡i", organization: "Tá»• chá»©c", title: "Chá»©c danh", notes: "Ghi chÃº",
-    editContact: "Sá»­a liÃªn há»‡", deleteContact: "XoÃ¡",
-    // Lá»‹ch
-    newEvent: "ThÃªm sá»± kiá»‡n", today: "HÃ´m nay",
-    eventTitle: "TiÃªu Ä‘á» sá»± kiá»‡n", startDate: "Báº¯t Ä‘áº§u", endDate: "Káº¿t thÃºc",
-    allDay: "Cáº£ ngÃ y",
-    noEvents: "KhÃ´ng cÃ³ sá»± kiá»‡n thÃ¡ng nÃ y",
-    deleteEvent: "XoÃ¡",
-    createEvent: "Táº¡o sá»± kiá»‡n",
-    addToCalendar: "ThÃªm vÃ o lá»‹ch",
-    sendInvite: "Gá»­i lá»i má»i",
-    attendees: "NgÆ°á»i tham gia",
-    importSuccess: "ÄÃ£ thÃªm vÃ o lá»‹ch",
-    inviteSent: "ÄÃ£ gá»­i lá»i má»i",
-    todayEvents: "Sá»° KIá»†N HÃ”M NAY",
-    noEventsToday: "KhÃ´ng cÃ³ sá»± kiá»‡n",
-    viewAll: "Xem táº¥t cáº£",
-    // Chá»¯ kÃ½
-    signatureTitle: "CÃ i Ä‘áº·t chá»¯ kÃ½",
-    displayName: "TÃªn hiá»ƒn thá»‹", emailAddress: "Äá»‹a chá»‰ email",
-    replyTo: "Reply-To", blindCopy: "Báº£n sao áº©n",
-    bcc: "BCC tá»± Ä‘á»™ng", orgLabel: "Tá»• chá»©c",
-    useByDefault: "DÃ¹ng máº·c Ä‘á»‹nh", enabled: "ÄÃ£ báº­t",
-    signatureSaved: "ÄÃ£ lÆ°u", signaturePlaceholder: "Táº¡o chá»¯ kÃ½ cá»§a báº¡n...",
-    enterUrl: "Nháº­p URL:",
-    visualMode: "Soáº¡n tháº£o", htmlMode: "HTML",
-    uploadImage: "ChÃ¨n áº£nh", signatureHtmlPlaceholder: "HTML chá»¯ kÃ½...",
-    imageTooLarge: "áº¢nh quÃ¡ lá»›n. Dung lÆ°á»£ng tá»‘i Ä‘a lÃ  2 MB.",
-    enableSig: "ThÃªm chá»¯ kÃ½ vÃ o thÆ° gá»­i Ä‘i",
-    invalidImageType: "Chá»‰ cháº¥p nháº­n áº£nh PNG, JPEG, GIF hoáº·c WEBP.",
-    imageUploadFailed: "Táº£i áº£nh lÃªn tháº¥t báº¡i. Vui lÃ²ng thá»­ láº¡i.",
-    // TÃ¬m kiáº¿m
-    searchPh: "TÃ¬m kiáº¿m...", searchMsgsPh: "TÃ¬m kiáº¿m thÆ°...",
-    // Lá»‹ch (bá»• sung)
-    editEvent: "Sá»­a sá»± kiá»‡n", noTitle: "(KhÃ´ng cÃ³ tiÃªu Ä‘á»)",
-    summary: "TiÃªu Ä‘á»", description: "MÃ´ táº£", location: "Äá»‹a Ä‘iá»ƒm",
-    removeRecipient: "XoÃ¡ ngÆ°á»i nháº­n",
-    noSubject: "(KhÃ´ng cÃ³ tiÃªu Ä‘á»)",
-    deleteFolder: "XoÃ¡ thÆ° má»¥c",
-    deleteFolderConfirm: (name) => `XoÃ¡ thÆ° má»¥c "${name}"?`,
-    // Soáº¡n thÆ° (bá»• sung)
-    from: "Tá»«", recipients: "NgÆ°á»i nháº­n",
-    ccRecipients: "NgÆ°á»i nháº­n CC", bccRecipients: "NgÆ°á»i nháº­n BCC",
-    subj: "TiÃªu Ä‘á»",
-    restore: "KhÃ´i phá»¥c", maximize: "PhÃ³ng to",
-    attachFiles: "ÄÃ­nh kÃ¨m tá»‡p",
-    // Danh báº¡ (bá»• sung)
-    name: "TÃªn",
-    // NgÃ y giá»
-    now: "vá»«a xong",
-    // Äá»‹nh dáº¡ng ngÃ y
-    dateLocale: "vi-VN",
-    // Misc
-    invalidRecipient: (e) => `NgÆ°á»i nháº­n khÃ´ng há»£p lá»‡: ${e}`,
-    couldNotLoad: (e) => `KhÃ´ng thá»ƒ táº£i há»™p thÆ°: ${e || "Lá»—i khÃ´ng xÃ¡c Ä‘á»‹nh"}`,
-    threadCount: (n) => `${n} tin nháº¯n`,
-  },
 };
 
 function getLang() {
-  return localStorage.getItem("webmail_lang") || "vi";
+  return localStorage.getItem("webmail_lang") || "en";
 }
 function setLang(lang) {
   localStorage.setItem("webmail_lang", lang);
@@ -1342,7 +1227,7 @@ function renderSidebar() {
       onclick() {
         navigate({ view: v.key, uid: null });
         set({ view: v.key, selectedUid: null, selectedMsg: null, threadMsgs: [] });
-        if (v.key === "contacts" && !S.contacts.length) loadContacts();
+        if (v.key === "contacts") loadContacts();
         if (v.key === "calendar" && !S.calendarEvents.length) loadCalendarEvents();
       },
     },
@@ -1618,7 +1503,7 @@ function renderMobileSidebar() {
       onclick() {
         navigate({ view: v.key, uid: null });
         set({ view: v.key, selectedUid: null, selectedMsg: null, threadMsgs: [], mobileSidebar: false });
-        if (v.key === "contacts" && !S.contacts.length) loadContacts();
+        if (v.key === "contacts") loadContacts();
         if (v.key === "calendar" && !S.calendarEvents.length) loadCalendarEvents();
       },
     }, icon(v.icon), h("span", {}, v.label)));
