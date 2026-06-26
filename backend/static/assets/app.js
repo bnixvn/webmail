@@ -1959,14 +1959,6 @@ function renderMessageItem(msg, inThread, isReply) {
   fromRow.appendChild(starBtn);
   content.appendChild(fromRow);
   content.appendChild(h("div", { className: `text-sm truncate ${unread ? "font-medium text-ink" : "text-slate-700"}` }, msg.subject || t("noSubject")));
-  // Label tags
-  if (msgLabels.length > 0) {
-    const dotRow = h("div", { className: "flex items-center gap-1.5 mt-1" });
-    for (const lb of msgLabels) {
-      dotRow.appendChild(labelTagIcon(lb.color, true, 16, lb.name));
-    }
-    content.appendChild(dotRow);
-  }
   if (!inThread) {
     content.appendChild(h("div", { className: "text-xs text-slate-500 line-clamp-2 mt-0.5" }, msg.snippet || ""));
   }
