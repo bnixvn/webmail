@@ -1,8 +1,8 @@
-/* ════════════════════════════════════════════════════════════════════════════
-   BNIX Webmail — Vanilla JS Application
-   ════════════════════════════════════════════════════════════════════════════ */
+﻿/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+   BNIX Webmail â€” Vanilla JS Application
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function h(tag, attrs, ...children) {
   const el = document.createElement(tag);
@@ -30,14 +30,14 @@ function $(sel, ctx) { return (ctx || document).querySelector(sel); }
 function $$(sel, ctx) { return [...(ctx || document).querySelectorAll(sel)]; }
 function esc(s) { const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
 
-// ─── i18n ────────────────────────────────────────────────────────────────────
+// â”€â”€â”€ i18n â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const LOCALES = {
   en: {
     // Login
     emailPlaceholder: "Email address",
     passwordPlaceholder: "Password",
     staySignedIn: "Stay signed in",
-    serverSettings: "⚙ Mail server settings (optional)",
+    serverSettings: "âš™ Mail server settings (optional)",
     serverSettingsHint: "Auto-detected via DNS. Only fill in if auto-detection fails.",
     imapHostPh: "IMAP host", imapPortPh: "IMAP port (993)",
     smtpHostPh: "SMTP host", smtpPortPh: "SMTP port (465)",
@@ -127,7 +127,7 @@ const LOCALES = {
     editEvent: "Edit Event", noTitle: "(No title)",
     summary: "Summary", description: "Description", location: "Location",
     removeRecipient: "Remove recipient",
-    noSubject: "(Không có tiêu đề)",
+    noSubject: "(KhÃ´ng cÃ³ tiÃªu Ä‘á»)",
     deleteFolder: "Delete folder",
     deleteFolderConfirm: (name) => `Delete folder "${name}"?`,
     // Compose extra
@@ -148,119 +148,119 @@ const LOCALES = {
     threadCount: (n) => `${n} messages`,
   },
   vi: {
-    // Đăng nhập
-    emailPlaceholder: "Địa chỉ email",
-    passwordPlaceholder: "Mật khẩu",
-    staySignedIn: "Duy trì đăng nhập",
-    serverSettings: "⚙ Cài đặt máy chủ mail (tuỳ chọn)",
-    serverSettingsHint: "Tự động phát hiện qua DNS. Chỉ điền nếu tự động thất bại.",
-    imapHostPh: "Máy chủ IMAP", imapPortPh: "Cổng IMAP (993)",
-    smtpHostPh: "Máy chủ SMTP", smtpPortPh: "Cổng SMTP (465)",
-    signIn: "Đăng nhập",
-    loginFailed: "Đăng nhập thất bại",
-    sessionExpired: "Phiên đã hết hạn. Vui lòng đăng nhập lại.",
+    // ÄÄƒng nháº­p
+    emailPlaceholder: "Äá»‹a chá»‰ email",
+    passwordPlaceholder: "Máº­t kháº©u",
+    staySignedIn: "Duy trÃ¬ Ä‘Äƒng nháº­p",
+    serverSettings: "âš™ CÃ i Ä‘áº·t mÃ¡y chá»§ mail (tuá»³ chá»n)",
+    serverSettingsHint: "Tá»± Ä‘á»™ng phÃ¡t hiá»‡n qua DNS. Chá»‰ Ä‘iá»n náº¿u tá»± Ä‘á»™ng tháº¥t báº¡i.",
+    imapHostPh: "MÃ¡y chá»§ IMAP", imapPortPh: "Cá»•ng IMAP (993)",
+    smtpHostPh: "MÃ¡y chá»§ SMTP", smtpPortPh: "Cá»•ng SMTP (465)",
+    signIn: "ÄÄƒng nháº­p",
+    loginFailed: "ÄÄƒng nháº­p tháº¥t báº¡i",
+    sessionExpired: "PhiÃªn Ä‘Ã£ háº¿t háº¡n. Vui lÃ²ng Ä‘Äƒng nháº­p láº¡i.",
     // Sidebar
-    compose: "Soạn thư",
-    mail: "Thư", contacts: "Danh bạ", calendar: "Lịch",
-    mainSection: "Chính", foldersSection: "Thư mục",
-    folderInbox: "Hộp thư đến", folderDrafts: "Thư nháp", folderSent: "Đã gửi",
-    folderArchive: "Lưu trữ", folderSpam: "Thư rác", folderTrash: "Thùng rác",
-    folderNamePh: "Tên thư mục", addFolder: "Thêm",
-    signature: "Chữ ký", signOut: "Đăng xuất", darkMode: "Giao diện tối", lightMode: "Giao diện sáng",
-    // Danh sách thư
-    noConversations: "Không có hội thoại nào",
-    loadingMailbox: "Đang tải hộp thư...",
-    selected: (n) => `Đã chọn ${n}`,
-    messages: (n) => `${n} tin nhắn`,
-    filterAll: "Tất cả", filterUnread: "Chưa đọc", filterStarred: "Đánh dấu",
-    noFolders: "Không có thư mục",
-    // Xem thư
-    noConvSelected: "Chưa chọn hội thoại",
-    chooseMessage: "Chọn một thư từ danh sách",
-    to: "Đến", cc: "CC",
-    reply: "Trả lời", replyAll: "Trả lời tất cả", forward: "Chuyển tiếp",
-    archive: "Lưu trữ", reportSpam: "Báo spam", delete: "Xoá", moveTo: "Chuyển tới",
-    star: "Đánh dấu", unstar: "Bỏ đánh dấu", markRead: "Đánh dấu đã đọc", markUnread: "Đánh dấu chưa đọc",
-    // Nhãn
-    labels: "Nhãn", manageLabels: "Quản lý nhãn", newLabel: "Nhãn mới",
-    labelName: "Tên nhãn", labelColor: "Màu sắc", noLabels: "Chưa có nhãn nào",
-    addLabel: "Thêm nhãn", removeLabel: "Gỡ nhãn", deleteLabel: "Xoá nhãn",
-    deleteLabelConfirm: (n) => `Xoá nhãn "${n}"?`,
-    filterLabeled: "Có nhãn",
-    attachments: (n) => `Tệp đính kèm (${n})`,
-    attachment: (n) => `${n} tệp đính kèm`,
-    quickReplyPh: "Trả lời nhanh...",
-    replyThreadPh: "Trả lời hội thoại...",
-    sentOk: "Đã gửi email thành công!",
-    sentSavedWarn: "Đã gửi email, nhưng chưa lưu được vào Đã gửi.",
-    movedOk: "Đã chuyển thư",
-    // Soạn thư
-    newMessage: "Thư mới",
-    toPh: "Đến", ccPh: "CC", bccPh: "BCC", subjectPh: "Tiêu đề",
-    sending: "Đang gửi...", send: "Gửi",
-    // Danh bạ
-    newContact: "Thêm liên hệ",
-    noContacts: "Chưa có liên hệ",
-    sendEmail: "Gửi email",
-    contactAdded: "Đã thêm liên hệ",
-    saving: "Đang lưu...", save: "Lưu", cancel: "Huỷ",
-    firstName: "Tên", lastName: "Họ",
-    phone: "Điện thoại", organization: "Tổ chức", title: "Chức danh", notes: "Ghi chú",
-    editContact: "Sửa liên hệ", deleteContact: "Xoá",
-    // Lịch
-    newEvent: "Thêm sự kiện", today: "Hôm nay",
-    eventTitle: "Tiêu đề sự kiện", startDate: "Bắt đầu", endDate: "Kết thúc",
-    allDay: "Cả ngày",
-    noEvents: "Không có sự kiện tháng này",
-    deleteEvent: "Xoá",
-    createEvent: "Tạo sự kiện",
-    addToCalendar: "Thêm vào lịch",
-    sendInvite: "Gửi lời mời",
-    attendees: "Người tham gia",
-    importSuccess: "Đã thêm vào lịch",
-    inviteSent: "Đã gửi lời mời",
-    todayEvents: "SỰ KIỆN HÔM NAY",
-    noEventsToday: "Không có sự kiện",
-    viewAll: "Xem tất cả",
-    // Chữ ký
-    signatureTitle: "Cài đặt chữ ký",
-    displayName: "Tên hiển thị", emailAddress: "Địa chỉ email",
-    replyTo: "Reply-To", blindCopy: "Bản sao ẩn",
-    bcc: "BCC tự động", orgLabel: "Tổ chức",
-    useByDefault: "Dùng mặc định", enabled: "Đã bật",
-    signatureSaved: "Đã lưu", signaturePlaceholder: "Tạo chữ ký của bạn...",
-    enterUrl: "Nhập URL:",
-    visualMode: "Soạn thảo", htmlMode: "HTML",
-    uploadImage: "Chèn ảnh", signatureHtmlPlaceholder: "HTML chữ ký...",
-    imageTooLarge: "Ảnh quá lớn. Dung lượng tối đa là 2 MB.",
-    enableSig: "Thêm chữ ký vào thư gửi đi",
-    invalidImageType: "Chỉ chấp nhận ảnh PNG, JPEG, GIF hoặc WEBP.",
-    imageUploadFailed: "Tải ảnh lên thất bại. Vui lòng thử lại.",
-    // Tìm kiếm
-    searchPh: "Tìm kiếm...", searchMsgsPh: "Tìm kiếm thư...",
-    // Lịch (bổ sung)
-    editEvent: "Sửa sự kiện", noTitle: "(Không có tiêu đề)",
-    summary: "Tiêu đề", description: "Mô tả", location: "Địa điểm",
-    removeRecipient: "Xoá người nhận",
-    noSubject: "(Không có tiêu đề)",
-    deleteFolder: "Xoá thư mục",
-    deleteFolderConfirm: (name) => `Xoá thư mục "${name}"?`,
-    // Soạn thư (bổ sung)
-    from: "Từ", recipients: "Người nhận",
-    ccRecipients: "Người nhận CC", bccRecipients: "Người nhận BCC",
-    subj: "Tiêu đề",
-    restore: "Khôi phục", maximize: "Phóng to",
-    attachFiles: "Đính kèm tệp",
-    // Danh bạ (bổ sung)
-    name: "Tên",
-    // Ngày giờ
-    now: "vừa xong",
-    // Định dạng ngày
+    compose: "Soáº¡n thÆ°",
+    mail: "ThÆ°", contacts: "Danh báº¡", calendar: "Lá»‹ch",
+    mainSection: "ChÃ­nh", foldersSection: "ThÆ° má»¥c",
+    folderInbox: "Há»™p thÆ° Ä‘áº¿n", folderDrafts: "ThÆ° nhÃ¡p", folderSent: "ÄÃ£ gá»­i",
+    folderArchive: "LÆ°u trá»¯", folderSpam: "ThÆ° rÃ¡c", folderTrash: "ThÃ¹ng rÃ¡c",
+    folderNamePh: "TÃªn thÆ° má»¥c", addFolder: "ThÃªm",
+    signature: "Chá»¯ kÃ½", signOut: "ÄÄƒng xuáº¥t", darkMode: "Giao diá»‡n tá»‘i", lightMode: "Giao diá»‡n sÃ¡ng",
+    // Danh sÃ¡ch thÆ°
+    noConversations: "KhÃ´ng cÃ³ há»™i thoáº¡i nÃ o",
+    loadingMailbox: "Äang táº£i há»™p thÆ°...",
+    selected: (n) => `ÄÃ£ chá»n ${n}`,
+    messages: (n) => `${n} tin nháº¯n`,
+    filterAll: "Táº¥t cáº£", filterUnread: "ChÆ°a Ä‘á»c", filterStarred: "ÄÃ¡nh dáº¥u",
+    noFolders: "KhÃ´ng cÃ³ thÆ° má»¥c",
+    // Xem thÆ°
+    noConvSelected: "ChÆ°a chá»n há»™i thoáº¡i",
+    chooseMessage: "Chá»n má»™t thÆ° tá»« danh sÃ¡ch",
+    to: "Äáº¿n", cc: "CC",
+    reply: "Tráº£ lá»i", replyAll: "Tráº£ lá»i táº¥t cáº£", forward: "Chuyá»ƒn tiáº¿p",
+    archive: "LÆ°u trá»¯", reportSpam: "BÃ¡o spam", delete: "XoÃ¡", moveTo: "Chuyá»ƒn tá»›i",
+    star: "ÄÃ¡nh dáº¥u", unstar: "Bá» Ä‘Ã¡nh dáº¥u", markRead: "ÄÃ¡nh dáº¥u Ä‘Ã£ Ä‘á»c", markUnread: "ÄÃ¡nh dáº¥u chÆ°a Ä‘á»c",
+    // NhÃ£n
+    labels: "NhÃ£n", manageLabels: "Quáº£n lÃ½ nhÃ£n", newLabel: "NhÃ£n má»›i",
+    labelName: "TÃªn nhÃ£n", labelColor: "MÃ u sáº¯c", noLabels: "ChÆ°a cÃ³ nhÃ£n nÃ o",
+    addLabel: "ThÃªm nhÃ£n", removeLabel: "Gá»¡ nhÃ£n", deleteLabel: "XoÃ¡ nhÃ£n",
+    deleteLabelConfirm: (n) => `XoÃ¡ nhÃ£n "${n}"?`,
+    filterLabeled: "CÃ³ nhÃ£n",
+    attachments: (n) => `Tá»‡p Ä‘Ã­nh kÃ¨m (${n})`,
+    attachment: (n) => `${n} tá»‡p Ä‘Ã­nh kÃ¨m`,
+    quickReplyPh: "Tráº£ lá»i nhanh...",
+    replyThreadPh: "Tráº£ lá»i há»™i thoáº¡i...",
+    sentOk: "ÄÃ£ gá»­i email thÃ nh cÃ´ng!",
+    sentSavedWarn: "ÄÃ£ gá»­i email, nhÆ°ng chÆ°a lÆ°u Ä‘Æ°á»£c vÃ o ÄÃ£ gá»­i.",
+    movedOk: "ÄÃ£ chuyá»ƒn thÆ°",
+    // Soáº¡n thÆ°
+    newMessage: "ThÆ° má»›i",
+    toPh: "Äáº¿n", ccPh: "CC", bccPh: "BCC", subjectPh: "TiÃªu Ä‘á»",
+    sending: "Äang gá»­i...", send: "Gá»­i",
+    // Danh báº¡
+    newContact: "ThÃªm liÃªn há»‡",
+    noContacts: "ChÆ°a cÃ³ liÃªn há»‡",
+    sendEmail: "Gá»­i email",
+    contactAdded: "ÄÃ£ thÃªm liÃªn há»‡",
+    saving: "Äang lÆ°u...", save: "LÆ°u", cancel: "Huá»·",
+    firstName: "TÃªn", lastName: "Há»",
+    phone: "Äiá»‡n thoáº¡i", organization: "Tá»• chá»©c", title: "Chá»©c danh", notes: "Ghi chÃº",
+    editContact: "Sá»­a liÃªn há»‡", deleteContact: "XoÃ¡",
+    // Lá»‹ch
+    newEvent: "ThÃªm sá»± kiá»‡n", today: "HÃ´m nay",
+    eventTitle: "TiÃªu Ä‘á» sá»± kiá»‡n", startDate: "Báº¯t Ä‘áº§u", endDate: "Káº¿t thÃºc",
+    allDay: "Cáº£ ngÃ y",
+    noEvents: "KhÃ´ng cÃ³ sá»± kiá»‡n thÃ¡ng nÃ y",
+    deleteEvent: "XoÃ¡",
+    createEvent: "Táº¡o sá»± kiá»‡n",
+    addToCalendar: "ThÃªm vÃ o lá»‹ch",
+    sendInvite: "Gá»­i lá»i má»i",
+    attendees: "NgÆ°á»i tham gia",
+    importSuccess: "ÄÃ£ thÃªm vÃ o lá»‹ch",
+    inviteSent: "ÄÃ£ gá»­i lá»i má»i",
+    todayEvents: "Sá»° KIá»†N HÃ”M NAY",
+    noEventsToday: "KhÃ´ng cÃ³ sá»± kiá»‡n",
+    viewAll: "Xem táº¥t cáº£",
+    // Chá»¯ kÃ½
+    signatureTitle: "CÃ i Ä‘áº·t chá»¯ kÃ½",
+    displayName: "TÃªn hiá»ƒn thá»‹", emailAddress: "Äá»‹a chá»‰ email",
+    replyTo: "Reply-To", blindCopy: "Báº£n sao áº©n",
+    bcc: "BCC tá»± Ä‘á»™ng", orgLabel: "Tá»• chá»©c",
+    useByDefault: "DÃ¹ng máº·c Ä‘á»‹nh", enabled: "ÄÃ£ báº­t",
+    signatureSaved: "ÄÃ£ lÆ°u", signaturePlaceholder: "Táº¡o chá»¯ kÃ½ cá»§a báº¡n...",
+    enterUrl: "Nháº­p URL:",
+    visualMode: "Soáº¡n tháº£o", htmlMode: "HTML",
+    uploadImage: "ChÃ¨n áº£nh", signatureHtmlPlaceholder: "HTML chá»¯ kÃ½...",
+    imageTooLarge: "áº¢nh quÃ¡ lá»›n. Dung lÆ°á»£ng tá»‘i Ä‘a lÃ  2 MB.",
+    enableSig: "ThÃªm chá»¯ kÃ½ vÃ o thÆ° gá»­i Ä‘i",
+    invalidImageType: "Chá»‰ cháº¥p nháº­n áº£nh PNG, JPEG, GIF hoáº·c WEBP.",
+    imageUploadFailed: "Táº£i áº£nh lÃªn tháº¥t báº¡i. Vui lÃ²ng thá»­ láº¡i.",
+    // TÃ¬m kiáº¿m
+    searchPh: "TÃ¬m kiáº¿m...", searchMsgsPh: "TÃ¬m kiáº¿m thÆ°...",
+    // Lá»‹ch (bá»• sung)
+    editEvent: "Sá»­a sá»± kiá»‡n", noTitle: "(KhÃ´ng cÃ³ tiÃªu Ä‘á»)",
+    summary: "TiÃªu Ä‘á»", description: "MÃ´ táº£", location: "Äá»‹a Ä‘iá»ƒm",
+    removeRecipient: "XoÃ¡ ngÆ°á»i nháº­n",
+    noSubject: "(KhÃ´ng cÃ³ tiÃªu Ä‘á»)",
+    deleteFolder: "XoÃ¡ thÆ° má»¥c",
+    deleteFolderConfirm: (name) => `XoÃ¡ thÆ° má»¥c "${name}"?`,
+    // Soáº¡n thÆ° (bá»• sung)
+    from: "Tá»«", recipients: "NgÆ°á»i nháº­n",
+    ccRecipients: "NgÆ°á»i nháº­n CC", bccRecipients: "NgÆ°á»i nháº­n BCC",
+    subj: "TiÃªu Ä‘á»",
+    restore: "KhÃ´i phá»¥c", maximize: "PhÃ³ng to",
+    attachFiles: "ÄÃ­nh kÃ¨m tá»‡p",
+    // Danh báº¡ (bá»• sung)
+    name: "TÃªn",
+    // NgÃ y giá»
+    now: "vá»«a xong",
+    // Äá»‹nh dáº¡ng ngÃ y
     dateLocale: "vi-VN",
     // Misc
-    invalidRecipient: (e) => `Người nhận không hợp lệ: ${e}`,
-    couldNotLoad: (e) => `Không thể tải hộp thư: ${e || "Lỗi không xác định"}`,
-    threadCount: (n) => `${n} tin nhắn`,
+    invalidRecipient: (e) => `NgÆ°á»i nháº­n khÃ´ng há»£p lá»‡: ${e}`,
+    couldNotLoad: (e) => `KhÃ´ng thá»ƒ táº£i há»™p thÆ°: ${e || "Lá»—i khÃ´ng xÃ¡c Ä‘á»‹nh"}`,
+    threadCount: (n) => `${n} tin nháº¯n`,
   },
 };
 
@@ -277,7 +277,7 @@ function t(key, ...args) {
   return typeof val === "function" ? val(...args) : val;
 }
 
-// ─── Icons (Lucide-style SVGs) ───────────────────────────────────────────────
+// â”€â”€â”€ Icons (Lucide-style SVGs) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const I = {
   inbox:     `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>`,
@@ -339,7 +339,7 @@ function icon(name, cls) {
   return span;
 }
 
-// ─── Utilities ───────────────────────────────────────────────────────────────
+// â”€â”€â”€ Utilities â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function displayName(addrs) {
   if (!addrs || !addrs.length) return "Unknown";
@@ -396,7 +396,7 @@ function fileSize(bytes) {
 // Prevent mobile browser from scrolling to top when input/contenteditable gets focus
 function preventMobileScroll(el) {
   // CSS handles zoom prevention (font-size: 16px) and overscroll-behavior.
-  // No JS scroll-locking needed — it causes flickering when the virtual
+  // No JS scroll-locking needed â€” it causes flickering when the virtual
   // keyboard opens on iOS/Android.
 }
 
@@ -439,7 +439,7 @@ function isSafeSignatureUrl(value, imageOnly = false) {
   if (/^https?:\/\//i.test(url)) return true;
   if (imageOnly) {
     if (/^data:image\/(png|jpe?g|gif|webp);base64,[a-z0-9+/=\s]+$/i.test(url)) return true;
-    // Server-uploaded signature images — same-origin only, exact path shape.
+    // Server-uploaded signature images â€” same-origin only, exact path shape.
     if (/^\/(?:signature-images|assets\/signatures)\/img\/[a-f0-9]{64}\/[a-f0-9]+\.(png|jpe?g|gif|webp)$/i.test(url)) return true;
     return false;
   }
@@ -618,12 +618,12 @@ function collectRecipientInputs() {
 
 // Smart folder matching (supports Vietnamese aliases)
 const MAIN_FOLDERS = [
-  { match: ["inbox", "hộp thư", "hop thu"], icon: "inbox", label: "Inbox", labelKey: "folderInbox", special: "inbox" },
-  { match: ["drafts", "draft", "thư nháp", "thu nhap"], icon: "file", label: "Drafts", labelKey: "folderDrafts", special: "drafts" },
-  { match: ["sent", "đã gửi", "da gui", "sent mail", "sent messages"], icon: "send", label: "Sent", labelKey: "folderSent", special: "sent" },
+  { match: ["inbox", "há»™p thÆ°", "hop thu"], icon: "inbox", label: "Inbox", labelKey: "folderInbox", special: "inbox" },
+  { match: ["drafts", "draft", "thÆ° nhÃ¡p", "thu nhap"], icon: "file", label: "Drafts", labelKey: "folderDrafts", special: "drafts" },
+  { match: ["sent", "Ä‘Ã£ gá»­i", "da gui", "sent mail", "sent messages"], icon: "send", label: "Sent", labelKey: "folderSent", special: "sent" },
   { match: ["archive", "archives"], icon: "archive", label: "Archive", labelKey: "folderArchive", special: "archive" },
-  { match: ["spam", "junk", "thư rác", "thu rac", "bulk"], icon: "spam", label: "Spam", labelKey: "folderSpam", special: "junk" },
-  { match: ["trash", "deleted", "thùng rác", "thung rac", "bin"], icon: "trash", label: "Trash", labelKey: "folderTrash", special: "trash" },
+  { match: ["spam", "junk", "thÆ° rÃ¡c", "thu rac", "bulk"], icon: "spam", label: "Spam", labelKey: "folderSpam", special: "junk" },
+  { match: ["trash", "deleted", "thÃ¹ng rÃ¡c", "thung rac", "bin"], icon: "trash", label: "Trash", labelKey: "folderTrash", special: "trash" },
 ];
 
 function classifyFolder(mailbox) {
@@ -874,13 +874,13 @@ function splitMailboxes() {
     return (a.name || a.path || "").localeCompare(b.name || b.path || "");
   });
 
-  // Sort custom folders: alphabetical (respect Unicode — tiếng Việt sorted correctly)
+  // Sort custom folders: alphabetical (respect Unicode â€” tiáº¿ng Viá»‡t sorted correctly)
   customFolders.sort((a, b) => (a.name || a.path || "").localeCompare(b.name || b.path || "", "vi"));
 
   return { mainFolders, customFolders };
 }
 
-// ─── Avatar Cache ────────────────────────────────────────────────────────────
+// â”€â”€â”€ Avatar Cache â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const avatarCache = new Map();
 const avatarPending = new Map();
@@ -945,7 +945,7 @@ function avatarBadge(size, email, sources) {
   return el;
 }
 
-// ─── API ─────────────────────────────────────────────────────────────────────
+// â”€â”€â”€ API â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async function api(path, opts = {}) {
   const res = await fetch(path, {
@@ -1010,7 +1010,7 @@ function readFileAsDataUrl(file) {
   });
 }
 
-// ─── State ───────────────────────────────────────────────────────────────────
+// â”€â”€â”€ State â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const S = {
   ready: false,
@@ -1100,7 +1100,7 @@ function showToast(msg, type = "success", duration = 3000) {
   setTimeout(() => toast.remove(), duration);
 }
 
-// ─── Login ───────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Login â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function renderLogin() {
   const isDark = document.documentElement.classList.contains("dark");
@@ -1121,7 +1121,7 @@ function renderLogin() {
             type: "button",
             className: `login-lang-btn ${lang === "vi" ? "active" : ""}`,
             onclick() { setLang("vi"); },
-          }, h("img", { src: "/brand/vietnam.png", alt: "Tiếng Việt", className: "login-flag-img" })),
+          }, h("img", { src: "/brand/vietnam.png", alt: "Tiáº¿ng Viá»‡t", className: "login-flag-img" })),
           h("button", {
             type: "button",
             className: `login-lang-btn ${lang === "en" ? "active" : ""}`,
@@ -1151,7 +1151,7 @@ function renderLogin() {
           ),
           h("div", { className: "login-field" },
             h("label", {}, t("passwordPlaceholder")),
-            h("input", { name: "password", type: "password", placeholder: "••••••••", required: "required", autocomplete: "current-password" }),
+            h("input", { name: "password", type: "password", placeholder: "â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢", required: "required", autocomplete: "current-password" }),
           ),
           h("label", { className: "login-remember" },
             h("input", { name: "remember", type: "checkbox", checked: "checked" }),
@@ -1218,7 +1218,7 @@ async function onLogin(e) {
   }
 }
 
-// ─── Bootstrap ───────────────────────────────────────────────────────────────
+// â”€â”€â”€ Bootstrap â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async function bootstrap() {
   try {
@@ -1238,7 +1238,7 @@ async function bootstrap() {
       await doLogout();
       set({ loginError: t("sessionExpired") });
     } else {
-      // IMAP/other error — stay logged in, show error
+      // IMAP/other error â€” stay logged in, show error
       set({ ready: true, error: t("couldNotLoad", err.message) });
       await loadMessages();
     }
@@ -1305,7 +1305,7 @@ async function doLogout() {
   window.location.href = "https://webmail.bnix.asia/";
 }
 
-// ─── Sidebar ─────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Sidebar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function renderSidebar() {
   const { mainFolders, customFolders } = splitMailboxes();
@@ -1443,7 +1443,7 @@ function renderSidebar() {
     }
   }
 
-  // Labels section (mail view only, when expanded) — always show header so user can manage labels
+  // Labels section (mail view only, when expanded) â€” always show header so user can manage labels
   if (!collapsed && S.view === "mail") {
     items.push(h("div", { className: "px-3 pt-4 pb-1 flex items-center justify-between" },
       h("div", { className: "text-[11px] font-semibold uppercase text-slate-400 tracking-wider flex items-center gap-1" },
@@ -1528,7 +1528,7 @@ function renderSidebar() {
     langGroup.appendChild(h("button", {
       className: "login-lang-btn",
       onclick() { setLang("vi"); },
-    }, h("img", { src: "/brand/vietnam.png", alt: "Tiếng Việt", className: "login-flag-img" })));
+    }, h("img", { src: "/brand/vietnam.png", alt: "Tiáº¿ng Viá»‡t", className: "login-flag-img" })));
     langGroup.appendChild(h("button", {
       className: "login-lang-btn",
       onclick() { setLang("en"); },
@@ -1537,9 +1537,9 @@ function renderSidebar() {
   } else {
     footer.appendChild(h("button", {
       className: "login-lang-btn",
-      title: "Tiếng Việt",
+      title: "Tiáº¿ng Viá»‡t",
       onclick() { setLang("vi"); },
-    }, h("img", { src: "/brand/vietnam.png", alt: "Tiếng Việt", className: "login-flag-img" })));
+    }, h("img", { src: "/brand/vietnam.png", alt: "Tiáº¿ng Viá»‡t", className: "login-flag-img" })));
     footer.appendChild(h("button", {
       className: "login-lang-btn",
       title: "English",
@@ -1553,7 +1553,7 @@ function renderSidebar() {
       localStorage.setItem("theme", isDark ? "dark" : "light");
       render();
     },
-  }, h("span", { style: { fontSize: "14px" } }, document.documentElement.classList.contains("dark") ? "☀️" : "🌙"), !collapsed ? h("span", {}, document.documentElement.classList.contains("dark") ? t("lightMode") : t("darkMode")) : null));
+  }, h("span", { style: { fontSize: "14px" } }, document.documentElement.classList.contains("dark") ? "â˜€ï¸" : "ðŸŒ™"), !collapsed ? h("span", {}, document.documentElement.classList.contains("dark") ? t("lightMode") : t("darkMode")) : null));
   footer.appendChild(h("button", {
     className: `folder-item w-full ${collapsed ? "justify-center" : ""} text-slate-500`,
     onclick() { set({ sigOpen: true }); },
@@ -1651,7 +1651,7 @@ function renderMobileSidebar() {
   footer.appendChild(h("button", {
     className: "folder-item w-full text-slate-400 text-xs gap-1.5",
     onclick() { setLang(getLang() === "en" ? "vi" : "en"); set({ mobileSidebar: false }); },
-  }, h("img", { src: "/brand/vietnam.png", alt: "Tiếng Việt", className: "login-flag-img" }),
+  }, h("img", { src: "/brand/vietnam.png", alt: "Tiáº¿ng Viá»‡t", className: "login-flag-img" }),
      h("img", { src: "/brand/united-states.png", alt: "English", className: "login-flag-img" })));
   footer.appendChild(h("button", {
     className: "folder-item w-full text-slate-500",
@@ -1661,7 +1661,7 @@ function renderMobileSidebar() {
       set({ mobileSidebar: false });
       render();
     },
-  }, h("span", { style: { fontSize: "14px" } }, document.documentElement.classList.contains("dark") ? "☀️" : "🌙"),
+  }, h("span", { style: { fontSize: "14px" } }, document.documentElement.classList.contains("dark") ? "â˜€ï¸" : "ðŸŒ™"),
      h("span", {}, document.documentElement.classList.contains("dark") ? t("lightMode") : t("darkMode"))));
   footer.appendChild(h("button", {
     className: "folder-item w-full text-slate-500",
@@ -1688,7 +1688,7 @@ async function createFolder() {
   }
 }
 
-// ─── Message List ────────────────────────────────────────────────────────────
+// â”€â”€â”€ Message List â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function renderMessageList() {
   const q = S.query.trim().toLowerCase();
@@ -2091,9 +2091,9 @@ function renderMessageItem(msg, inThread, isReply) {
   return item;
 }
 
-// ─── Thread Panel (Roundcube-style vertical list) ───────────────────────────
-// Panel giữa hiển thị tất cả mail trong thread.
-// Click chọn mail → hiển thị nội dung ở reading pane bên phải.
+// â”€â”€â”€ Thread Panel (Roundcube-style vertical list) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Panel giá»¯a hiá»ƒn thá»‹ táº¥t cáº£ mail trong thread.
+// Click chá»n mail â†’ hiá»ƒn thá»‹ ná»™i dung á»Ÿ reading pane bÃªn pháº£i.
 
 function renderThreadPanel() {
   const section = h("section", {
@@ -2148,7 +2148,7 @@ function renderThreadPanel() {
   return section;
 }
 
-// ─── Thread View ────────────────────────────────────────────────────────────
+// â”€â”€â”€ Thread View â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 // Reusable quick-reply builder (textarea + attachments)
 function renderQuickReply(placeholder) {
@@ -2170,7 +2170,7 @@ function renderQuickReply(placeholder) {
   toolbar.appendChild(fileInput);
   wrap.appendChild(toolbar);
 
-  // Editor — textarea so Enter = newline, Shift+Enter = send
+  // Editor â€” textarea so Enter = newline, Shift+Enter = send
   const editor = h("textarea", {
     className: "qr-editor border border-line rounded-b-lg px-3 py-2 text-sm outline-none resize-none w-full",
     placeholder,
@@ -2262,7 +2262,7 @@ function renderThreadMsgBubble(m, isLast) {
   const isCollapsed = S.collapsedMsgs.has(msgKey);
   const wrap = h("div", { className: "thread-bubble bg-white dark:bg-slate-800 rounded-lg border border-line shadow-sm mb-3 overflow-hidden" });
 
-  // Header row — always visible, click to toggle
+  // Header row â€” always visible, click to toggle
   const hdr = h("div", {
     className: `flex items-center gap-3 px-4 py-3 cursor-pointer select-none hover:bg-slate-50 ${isCollapsed ? "" : "border-b border-line"}`,
     onclick() {
@@ -2417,7 +2417,7 @@ function renderThreadView(section, threadMsgs) {
   return section;
 }
 
-// ─── Message View ────────────────────────────────────────────────────────────
+// â”€â”€â”€ Message View â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function renderMessageView() {
   const section = h("section", { className: "flex-1 flex flex-col h-full bg-slate-50 min-w-0" });
@@ -2441,7 +2441,7 @@ function renderMessageView() {
   const msg = S.selectedMsg;
   if (!msg) return section;
 
-  // ── Single message view ────────────────────────────────────────────────
+  // â”€â”€ Single message view â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   // Header
   const header = h("header", { className: "bg-white dark:bg-slate-800 border-b border-line px-4 py-3 shrink-0" });
@@ -2771,7 +2771,7 @@ async function toggleFlagFromList(uid, flag, enabled) {
   }
 }
 
-// ─── Labels ──────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Labels â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async function loadLabels() {
   try {
@@ -3031,7 +3031,7 @@ async function sendQuickReply() {
   }
 }
 
-// ─── Compose ─────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Compose â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function openCompose(opts = {}) {
   const orig = opts.replyTo || opts.replyAll || opts.forward || null;
@@ -3304,7 +3304,7 @@ function renderRecipientInput(field, placeholder) {
       });
       row.appendChild(avatarBadge(24, c.email || c.fn));
       const info = h("div", { className: "min-w-0" });
-      info.appendChild(h("div", { className: "truncate" }, c.fn || "—"));
+      info.appendChild(h("div", { className: "truncate" }, c.fn || "â€”"));
       info.appendChild(h("div", { className: "text-xs text-slate-400 truncate" }, c.email || ""));
       row.appendChild(info);
       dd.appendChild(row);
@@ -3442,7 +3442,7 @@ function toolbarBtn(iconName, fn, title) {
   });
 }
 
-// ─── Calendar View ───────────────────────────────────────────────────────────
+// â”€â”€â”€ Calendar View â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async function loadCalendarEvents() {
   try {
@@ -3580,7 +3580,7 @@ function renderCalendarGrid() {
 
     // Event dots
     for (const evt of dayEvents.slice(0, 3)) {
-      cell.appendChild(h("div", { className: "text-[10px] text-blue-700 truncate mt-0.5 px-0.5" }, evt.summary || "•"));
+      cell.appendChild(h("div", { className: "text-[10px] text-blue-700 truncate mt-0.5 px-0.5" }, evt.summary || "â€¢"));
     }
     if (dayEvents.length > 3) {
       cell.appendChild(h("div", { className: "text-[10px] text-slate-400" }, `+${dayEvents.length - 3} more`));
@@ -3709,7 +3709,7 @@ function renderCalendarEditModal() {
   return overlay;
 }
 
-// ─── Contacts View ───────────────────────────────────────────────────────────
+// â”€â”€â”€ Contacts View â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async function loadContacts() {
   try {
@@ -3895,7 +3895,7 @@ function formField(label, type, value, onChange) {
   return wrap;
 }
 
-// ─── Signature Settings ──────────────────────────────────────────────────────
+// â”€â”€â”€ Signature Settings â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function currentSignatureEditorHtml() {
   const htmlSource = $(".signature-html-source");
@@ -4052,8 +4052,8 @@ function renderSignatureModal() {
     toolbar.appendChild(toolbarBtn("italic", () => document.execCommand("italic")));
     toolbar.appendChild(toolbarBtn("underline", () => document.execCommand("underline")));
     toolbar.appendChild(h("div", { className: "w-px h-5 bg-slate-300 mx-1" }));
-    toolbar.appendChild(h("button", { className: "toolbar-btn", type: "button", innerHTML: "≡", onmousedown(e) { e.preventDefault(); document.execCommand("justifyLeft"); } }));
-    toolbar.appendChild(h("button", { className: "toolbar-btn", type: "button", innerHTML: "≡", onmousedown(e) { e.preventDefault(); document.execCommand("justifyCenter"); } }));
+    toolbar.appendChild(h("button", { className: "toolbar-btn", type: "button", innerHTML: "â‰¡", onmousedown(e) { e.preventDefault(); document.execCommand("justifyLeft"); } }));
+    toolbar.appendChild(h("button", { className: "toolbar-btn", type: "button", innerHTML: "â‰¡", onmousedown(e) { e.preventDefault(); document.execCommand("justifyCenter"); } }));
     toolbar.appendChild(h("div", { className: "w-px h-5 bg-slate-300 mx-1" }));
     toolbar.appendChild(toolbarBtn("link", () => {
       const url = prompt(t("enterUrl"));
@@ -4149,7 +4149,7 @@ function renderSignatureModal() {
   return overlay;
 }
 
-// ─── Label Manager Modal ─────────────────────────────────────────────────────
+// â”€â”€â”€ Label Manager Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const LABEL_COLORS = [
   "#6366f1", "#8b5cf6", "#a855f7", "#d946ef", "#ec4899",
@@ -4198,7 +4198,7 @@ function renderLabelManagerModal() {
     placeholder: t("labelName"),
     value: currentName,
   });
-  // Don't call set() on input — just update state to avoid re-render losing focus
+  // Don't call set() on input â€” just update state to avoid re-render losing focus
   nameInput.addEventListener("input", e => {
     if (!S.labelEditing) S.labelEditing = {};
     S.labelEditing.name = e.target.value;
@@ -4207,7 +4207,7 @@ function renderLabelManagerModal() {
   nameRow.appendChild(nameInput);
   body.appendChild(nameRow);
 
-  // Color picker section — uses event delegation, no closure deps
+  // Color picker section â€” uses event delegation, no closure deps
   const colorLabel = h("div", { className: "text-xs font-medium text-slate-500 dark:text-slate-400 mt-2 mb-1" });
   colorLabel.textContent = t("labelColor") + ":";
   body.appendChild(colorLabel);
@@ -4220,12 +4220,14 @@ function renderLabelManagerModal() {
     colorWrap.appendChild(h("button", {
       type: "button",
       dataset: { color: c },
-      className: `color-dot w-8 h-8 rounded-full border-2 ${sel ? "selected border-slate-900 dark:border-white scale-110" : "border-transparent hover:border-slate-300"}`,
-      style: { backgroundColor: c, cursor: "pointer" },
+      className: `color-dot rounded-full ${sel ? "selected" : ""}`,
+      style: { backgroundColor: c, cursor: "pointer", width: "32px", height: "32px", border: sel ? "3px solid #1e293b" : "3px solid transparent", transform: sel ? "scale(1.15)" : "scale(1)", boxSizing: "border-box", flexShrink: "0", transition: "transform 0.1s, border-color 0.1s" },
       innerHTML: sel ? `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3.5" style="margin:auto;display:block"><polyline points="20 6 9 17 4 12"/></svg>` : "",
+      onmouseenter(e) { if (!e.currentTarget.classList.contains("selected")) e.currentTarget.style.borderColor = "#94a3b8"; },
+      onmouseleave(e) { if (!e.currentTarget.classList.contains("selected")) e.currentTarget.style.borderColor = "transparent"; },
     }));
   }
-  // Single delegated click handler on container — survives any re-render
+  // Single delegated click handler on container â€” survives any re-render
   colorWrap.addEventListener("click", function(e) {
     const dot = e.target.closest(".color-dot");
     if (!dot) return;
@@ -4234,10 +4236,14 @@ function renderLabelManagerModal() {
     const c = dot.dataset.color;
     // Update all dots in container
     for (const d of colorWrap.querySelectorAll(".color-dot")) {
-      d.className = "color-dot w-8 h-8 rounded-full border-2 border-transparent hover:border-slate-300";
+      d.className = "color-dot rounded-full";
+      d.style.borderColor = "transparent";
+      d.style.transform = "scale(1)";
       d.innerHTML = "";
     }
-    dot.className = "color-dot w-8 h-8 rounded-full border-2 selected border-slate-900 dark:border-white scale-110";
+    dot.className = "color-dot rounded-full selected";
+    dot.style.border = "3px solid #1e293b";
+    dot.style.transform = "scale(1.15)";
     dot.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3.5" style="margin:auto;display:block"><polyline points="20 6 9 17 4 12"/></svg>`;
     // Update preview & state
     colorPreview.style.backgroundColor = c;
@@ -4246,7 +4252,7 @@ function renderLabelManagerModal() {
   });
   body.appendChild(colorWrap);
 
-  // Add/Save button — reads selected color from DOM (most reliable)
+  // Add/Save button â€” reads selected color from DOM (most reliable)
   const addBtn = h("button", {
     className: "w-full px-3 py-2.5 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand-hover",
     async onclick() {
@@ -4312,7 +4318,7 @@ function renderLabelManagerModal() {
   return overlay;
 }
 
-// ─── Main Render ─────────────────────────────────────────────────────────────
+// â”€â”€â”€ Main Render â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function render() {
   _rendering = true;
@@ -4349,7 +4355,7 @@ function render() {
       if (S.view === "mail") {
         const mailView = h("div", { className: "flex-1 flex overflow-hidden relative" });
 
-        // ── Desktop (≥768px): 3-panel layout ─────────────────────────────────
+        // â”€â”€ Desktop (â‰¥768px): 3-panel layout â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         if (window.innerWidth >= 769) {
           mailView.appendChild(renderMessageList());
           // Compose takes the reading-pane slot; message view shows when not composing
@@ -4358,7 +4364,7 @@ function render() {
           } else {
             mailView.appendChild(renderMessageView());
           }
-        // ── Mobile (<768px): list OR detail OR compose ──────────────────────
+        // â”€â”€ Mobile (<768px): list OR detail OR compose â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         } else if (S.compose) {
           mailView.appendChild(renderComposePage());
         } else if (S.selectedUid) {
@@ -4403,9 +4409,9 @@ function render() {
   }
 }
 
-// ─── URL Router (hash-based: #/mail/Sent or #/contacts) ───────────────────────
+// â”€â”€â”€ URL Router (hash-based: #/mail/Sent or #/contacts) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Preserves browser back/forward, deep-links, and mobile swipe gestures.
-// No backend changes needed — hash changes are client-side only.
+// No backend changes needed â€” hash changes are client-side only.
 
 function parseHash() {
   const hash = (window.location.hash || "#").slice(1); // strip leading #
@@ -4414,7 +4420,7 @@ function parseHash() {
   if (parts[0] === "contacts") return { view: "contacts", folder: null };
   if (parts[0] === "calendar") return { view: "calendar", folder: null };
   if (parts[0] === "compose") return { view: "compose", folder: null };
-  // Default: mail — /mail, /mail/INBOX, /mail/Sent/uid123
+  // Default: mail â€” /mail, /mail/INBOX, /mail/Sent/uid123
   return {
     view: "mail",
     folder: parts[1] ? decodeURIComponent(parts[1]) : "INBOX",
@@ -4460,9 +4466,9 @@ function goCompose() {
 }
 
 function onPopState() {
-  // Browser back/forward — sync state from URL
+  // Browser back/forward â€” sync state from URL
   const { view, folder, uid } = parseHash();
-  // Compose is an in-panel overlay, not a separate view — always keep S.view = "mail"
+  // Compose is an in-panel overlay, not a separate view â€” always keep S.view = "mail"
   const effectiveView = view === "compose" ? "mail" : view;
   const needsLoad =
     effectiveView !== S.view ||
@@ -4488,12 +4494,12 @@ function onPopState() {
   }
 }
 
-// ─── Init ────────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Init â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 (async function init() {
   // Restore state from URL before first render
   const { view, folder, uid } = parseHash();
-  // Compose is an in-panel overlay, not a separate view — always keep S.view = "mail"
+  // Compose is an in-panel overlay, not a separate view â€” always keep S.view = "mail"
   S.view = view === "compose" ? "mail" : view;
   S.folder = folder || "INBOX";
   S.selectedUid = uid || null;
@@ -4512,12 +4518,12 @@ function onPopState() {
       return;
     }
   } catch {}
-  // Not authenticated — show login
+  // Not authenticated â€” show login
   S.ready = true;
   render();
 })();
 
-// Handle window resize — only re-render when width changes (not keyboard open/close)
+// Handle window resize â€” only re-render when width changes (not keyboard open/close)
 let resizeTimer;
 let _lastWidth = window.innerWidth;
 window.addEventListener("resize", () => {
