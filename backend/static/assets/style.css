@@ -629,13 +629,14 @@ input, textarea, [contenteditable] {
 .login-advanced-toggle svg { transition: transform 0.2s ease; }
 
 .login-advanced-fields {
-  max-height: 0;
+  height: 0;
   overflow: hidden;
-  transition: max-height 0.25s ease, opacity 0.2s ease;
+  transition: height 0.25s ease, opacity 0.2s ease, margin 0.25s ease;
   opacity: 0;
+  margin-top: 0;
 }
 .login-advanced-fields.open {
-  max-height: 400px;
+  height: auto;
   opacity: 1;
   margin-top: 10px;
 }
