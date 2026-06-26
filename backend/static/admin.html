@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BNIX Webmail - Admin</title>
+  <link rel="icon" href="/brand/mail.png">
+  <style>
+    :root {
+      --primary: #284f7d;
+      --primary-light: #3d83bd;
+      --bg: #f8fafc;
+      --card: #fff;
+      --border: #e2e8f0;
+      --text: #1e293b;
+      --text-muted: #64748b;
+      --danger: #dc2626;
+      --danger-bg: #fef2f2;
+      --success: #16a34a;
+      --success-bg: #f0fdf4;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ─── Header ─────────────────────────────────────────────────────────── */
+    .header {
+      background: linear-gradient(135deg, var(--primary), var(--primary-light));
+      color: #fff;
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    .header h1 { font-size: 18px; font-weight: 600; letter-spacing: 0.5px; }
+    .header-right { display: flex; align-items: center; gap: 12px; }
+    .header-user { font-size: 13px; opacity: 0.9; }
+    .btn-logout {
+      background: rgba(255,255,255,0.15);
+      border: 1px solid rgba(255,255,255,0.3);
+      color: #fff;
+      padding: 6px 14px;
+      border-radius: 6px;
+      font-size: 13px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn-logout:hover { background: rgba(255,255,255,0.25); }
+
+    /* ─── Layout ─────────────────────────────────────────────────────────── */
+    .container {
+      max-width: 800px;
+      margin: 24px auto;
+      padding: 0 16px;
+    }
+
+    /* ─── Login ──────────────────────────────────────────────────────────── */
+    .login-wrapper {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      background: var(--bg);
+    }
+    .login-card {
+      background: var(--card);
+      border-radius: 12px;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+      padding: 32px;
+      width: 100%;
+      max-width: 380px;
+    }
+    .login-card h2 {
+      font-size: 20px;
+      margin-bottom: 4px;
+      color: var(--primary);
+    }
+    .login-card p {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-bottom: 24px;
+    }
+
+    /* ─── Forms ──────────────────────────────────────────────────────────── */
+    .form-group { margin-bottom: 14px; }
+    .form-group label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 5px;
+    }
+    .form-group input, .form-group select {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1.5px solid var(--border);
+      border-radius: 8px;
+      font-size: 14px;
+      color: var(--text);
+      background: #fff;
+      outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .form-group input:focus, .form-group select:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(40,79,125,0.1);
+    }
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    /* ─── Buttons ────────────────────────────────────────────────────────── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 10px 18px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s, transform 0.1s;
+    }
+    .btn:hover { opacity: 0.9; }
+    .btn:active { transform: scale(0.98); }
+    .btn-primary {
+      background: linear-gradient(135deg, var(--primary), var(--primary-light));
+      color: #fff;
+      box-shadow: 0 2px 8px rgba(40,79,125,0.3);
+    }
+    .btn-danger {
+      background: var(--danger);
+      color: #fff;
+    }
+    .btn-sm { padding: 6px 12px; font-size: 13px; }
+    .btn-block { width: 100%; }
+    .btn-icon {
+      width: 32px;
+      height: 32px;
+      padding: 0;
+      border-radius: 6px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* ─── Cards ──────────────────────────────────────────────────────────── */
+    .card {
+      background: var(--card);
+      border-radius: 12px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+      border: 1px solid var(--border);
+      margin-bottom: 20px;
+    }
+    .card-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .card-header h3 {
+      font-size: 15px;
+      font-weight: 600;
+    }
+    .card-body { padding: 20px; }
+
+    /* ─── Alerts ─────────────────────────────────────────────────────────── */
+    .alert {
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      margin-bottom: 14px;
+      display: none;
+    }
+    .alert.show { display: block; }
+    .alert-error { background: var(--danger-bg); color: var(--danger); border: 1px solid #fecaca; }
+    .alert-success { background: var(--success-bg); color: var(--success); border: 1px solid #bbf7d0; }
+
+    /* ─── Domain Table ───────────────────────────────────────────────────── */
+    .domain-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .domain-table th, .domain-table td {
+      padding: 10px 12px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+      font-size: 14px;
+    }
+    .domain-table th {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .domain-table tr:last-child td { border-bottom: none; }
+    .domain-table .actions { text-align: right; white-space: nowrap; }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .badge-on { background: #dcfce7; color: #16a34a; }
+    .badge-off { background: #f1f5f9; color: #94a3b8; }
+    .empty-state {
+      text-align: center;
+      padding: 32px 16px;
+      color: var(--text-muted);
+      font-size: 14px;
+    }
+
+    /* ─── Add Domain Form ────────────────────────────────────────────────── */
+    .add-domain-form {
+      display: grid;
+      grid-template-columns: 1fr 1fr auto;
+      gap: 10px;
+      align-items: end;
+    }
+    .add-domain-form .form-group { margin-bottom: 0; }
+
+    /* ─── Responsive ─────────────────────────────────────────────────────── */
+    @media (max-width: 640px) {
+      .header { padding: 12px 16px; }
+      .header h1 { font-size: 16px; }
+      .container { padding: 0 12px; }
+      .form-row { grid-template-columns: 1fr; }
+      .add-domain-form { grid-template-columns: 1fr; }
+      .domain-table { font-size: 13px; }
+      .domain-table th, .domain-table td { padding: 8px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Login Page -->
+  <div id="loginPage" class="login-wrapper">
+    <div class="login-card">
+      <h2>🔐 Admin</h2>
+      <p>BNIX Webmail Administration</p>
+      <div id="loginAlert" class="alert alert-error"></div>
+      <form id="loginForm">
+        <div class="form-group">
+          <label>Username</label>
+          <input type="text" name="username" placeholder="admin" required autocomplete="username">
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <input type="password" name="password" placeholder="••••••••" required autocomplete="current-password">
+        </div>
+        <button type="submit" class="btn btn-primary btn-block">Sign in</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Admin Dashboard -->
+  <div id="adminDashboard" style="display:none;">
+    <div class="header">
+      <h1>⚙️ BNIX Webmail Admin</h1>
+      <div class="header-right">
+        <span class="header-user" id="adminUser"></span>
+        <button class="btn-logout" onclick="adminLogout()">Đăng xuất</button>
+      </div>
+    </div>
+
+    <div class="container">
+      <!-- Alerts -->
+      <div id="dashAlert" class="alert"></div>
+
+      <!-- Domain Aliases -->
+      <div class="card">
+        <div class="card-header">
+          <h3>🌐 Domain Aliases</h3>
+        </div>
+        <div class="card-body">
+          <div class="add-domain-form" style="margin-bottom: 16px;">
+            <div class="form-group">
+              <label>Alias Domain</label>
+              <input type="text" id="newAliasDomain" placeholder="mail.example.com">
+            </div>
+            <div class="form-group">
+              <label>Target Domain</label>
+              <input type="text" id="newTargetDomain" placeholder="example.com">
+            </div>
+            <button class="btn btn-primary btn-sm" onclick="addDomain()" style="margin-bottom: 0;">+ Thêm</button>
+          </div>
+          <table class="domain-table">
+            <thead>
+              <tr>
+                <th>Alias Domain</th>
+                <th>Target Domain</th>
+                <th>Status</th>
+                <th class="actions">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="domainTableBody">
+              <tr><td colspan="4" class="empty-state">Đang tải...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Change Password -->
+      <div class="card">
+        <div class="card-header">
+          <h3>🔑 Đổi mật khẩu</h3>
+        </div>
+        <div class="card-body">
+          <div id="pwAlert" class="alert"></div>
+          <form id="passwordForm" onsubmit="changePassword(event)">
+            <div class="form-row">
+              <div class="form-group">
+                <label>Mật khẩu hiện tại</label>
+                <input type="password" name="oldPassword" required>
+              </div>
+              <div class="form-group">
+                <label>Mật khẩu mới</label>
+                <input type="password" name="newPassword" required minlength="6">
+              </div>
+            </div>
+            <button type="submit" class="btn btn-primary btn-sm">Cập nhật mật khẩu</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+// ─── State ──────────────────────────────────────────────────────────────────
+let adminUser = null;
+
+// ─── API Helper ─────────────────────────────────────────────────────────────
+async function api(url, opts = {}) {
+  const res = await fetch(url, {
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'same-origin',
+    ...opts,
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || 'Request failed');
+  return data;
+}
+
+// ─── Alerts ─────────────────────────────────────────────────────────────────
+function showAlert(id, msg, type = 'error') {
+  const el = document.getElementById(id);
+  el.className = `alert alert-${type} show`;
+  el.textContent = msg;
+  setTimeout(() => el.classList.remove('show'), 4000);
+}
+
+// ─── Auth ───────────────────────────────────────────────────────────────────
+async function checkAuth() {
+  try {
+    const data = await api('/api/admin/me');
+    if (data.authenticated) {
+      adminUser = data.username;
+      showDashboard();
+    } else {
+      showLogin();
+    }
+  } catch {
+    showLogin();
+  }
+}
+
+function showLogin() {
+  document.getElementById('loginPage').style.display = 'flex';
+  document.getElementById('adminDashboard').style.display = 'none';
+}
+
+function showDashboard() {
+  document.getElementById('loginPage').style.display = 'none';
+  document.getElementById('adminDashboard').style.display = 'block';
+  document.getElementById('adminUser').textContent = adminUser;
+  loadDomains();
+}
+
+document.getElementById('loginForm').onsubmit = async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  try {
+    const data = await api('/api/admin/login', {
+      method: 'POST',
+      body: JSON.stringify({
+        username: form.username.value.trim(),
+        password: form.password.value,
+      }),
+    });
+    adminUser = data.username;
+    showDashboard();
+  } catch (err) {
+    showAlert('loginAlert', err.message);
+  }
+};
+
+async function adminLogout() {
+  await api('/api/admin/logout', { method: 'POST' });
+  adminUser = null;
+  showLogin();
+}
+
+// ─── Domains ────────────────────────────────────────────────────────────────
+async function loadDomains() {
+  try {
+    const data = await api('/api/admin/domains');
+    const tbody = document.getElementById('domainTableBody');
+    if (!data.domains.length) {
+      tbody.innerHTML = '<tr><td colspan="4" class="empty-state">Chưa có domain alias nào</td></tr>';
+      return;
+    }
+    tbody.innerHTML = data.domains.map(d => `
+      <tr>
+        <td><strong>${escHtml(d.aliasDomain)}</strong></td>
+        <td>${escHtml(d.targetDomain)}</td>
+        <td><span class="badge ${d.enabled ? 'badge-on' : 'badge-off'}">${d.enabled ? 'Active' : 'Disabled'}</span></td>
+        <td class="actions">
+          <button class="btn btn-danger btn-icon btn-sm" onclick="deleteDomain(${d.id})" title="Xóa">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+          </button>
+        </td>
+      </tr>
+    `).join('');
+  } catch (err) {
+    showAlert('dashAlert', 'Không thể tải domains: ' + err.message);
+  }
+}
+
+async function addDomain() {
+  const aliasDomain = document.getElementById('newAliasDomain').value.trim();
+  const targetDomain = document.getElementById('newTargetDomain').value.trim();
+  if (!aliasDomain || !targetDomain) {
+    showAlert('dashAlert', 'Vui lòng nhập đầy đủ alias và target domain');
+    return;
+  }
+  try {
+    await api('/api/admin/domains', {
+      method: 'POST',
+      body: JSON.stringify({ aliasDomain, targetDomain }),
+    });
+    document.getElementById('newAliasDomain').value = '';
+    document.getElementById('newTargetDomain').value = '';
+    showAlert('dashAlert', 'Đã thêm domain alias!', 'success');
+    loadDomains();
+  } catch (err) {
+    showAlert('dashAlert', err.message);
+  }
+}
+
+async function deleteDomain(id) {
+  if (!confirm('Xóa domain alias này?')) return;
+  try {
+    await api(`/api/admin/domains/${id}`, { method: 'DELETE' });
+    showAlert('dashAlert', 'Đã xóa domain alias', 'success');
+    loadDomains();
+  } catch (err) {
+    showAlert('dashAlert', err.message);
+  }
+}
+
+// ─── Password ───────────────────────────────────────────────────────────────
+async function changePassword(e) {
+  e.preventDefault();
+  const form = e.target;
+  try {
+    await api('/api/admin/password', {
+      method: 'PUT',
+      body: JSON.stringify({
+        oldPassword: form.oldPassword.value,
+        newPassword: form.newPassword.value,
+      }),
+    });
+    form.reset();
+    showAlert('pwAlert', 'Đã cập nhật mật khẩu!', 'success');
+  } catch (err) {
+    showAlert('pwAlert', err.message);
+  }
+}
+
+// ─── Utils ──────────────────────────────────────────────────────────────────
+function escHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+// ─── Init ───────────────────────────────────────────────────────────────────
+checkAuth();
+</script>
+</body>
+</html>

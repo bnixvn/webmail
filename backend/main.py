@@ -164,6 +164,85 @@ def _label_row(row: tuple) -> dict:
 
 _labels_init()
 
+# ─── Admin Database ──────────────────────────────────────────────────────────
+
+ADMIN_DB = os.path.join(DATA_DIR, "db", "admin.db")
+ADMIN_SESSION_COOKIE = "webmail_admin_session"
+ADMIN_SESSION_MAX_AGE = 60 * 60 * 8  # 8 hours
+
+
+def _admin_init():
+    """Init admin SQLite DB schema."""
+    import sqlite3
+    with sqlite3.connect(ADMIN_DB) as db:
+        db.execute("""CREATE TABLE IF NOT EXISTS admin_users (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            username   TEXT    UNIQUE NOT NULL,
+            password   TEXT    NOT NULL,
+            created_at TEXT    NOT NULL,
+            updated_at TEXT    NOT NULL
+        )""")
+        db.execute("""CREATE TABLE IF NOT EXISTS domain_aliases (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            alias_domain  TEXT UNIQUE NOT NULL,
+            target_domain TEXT NOT NULL DEFAULT '',
+            enabled    INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT    NOT NULL,
+            updated_at TEXT    NOT NULL
+        )""")
+        # Seed default admin if none exists
+        cur = db.execute("SELECT COUNT(*) FROM admin_users")
+        if cur.fetchone()[0] == 0:
+            import hashlib
+            now = datetime.utcnow().isoformat()
+            pwd_hash = hashlib.sha256("admin123".encode()).hexdigest()
+            db.execute(
+                "INSERT INTO admin_users (username, password, created_at, updated_at) VALUES (?,?,?,?)",
+                ("admin", pwd_hash, now, now),
+            )
+        db.commit()
+
+
+_admin_init()
+
+
+def _admin_encrypt_session(data: dict) -> str:
+    """Encrypt admin session data (reuses main session encryption)."""
+    return encrypt_session(data)
+
+
+def _admin_decrypt_session(token: str | None) -> dict | None:
+    """Decrypt admin session data."""
+    if not token:
+        return None
+    try:
+        iv_b64, tag_b64, data_b64 = token.split(".")
+        from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+        aesgcm = AESGCM(_session_key())
+        decrypted = aesgcm.decrypt(
+            _b64_decode(iv_b64),
+            _b64_decode(tag_b64) + _b64_decode(data_b64),
+            None,
+        )
+        data = json.loads(decrypted.decode())
+        if not data.get("admin") or not data.get("username"):
+            return None
+        if time.time() - data.get("createdAt", 0) / 1000.0 > ADMIN_SESSION_MAX_AGE:
+            return None
+        return data
+    except Exception:
+        return None
+
+
+async def require_admin(request: Request) -> dict:
+    """Require a valid admin session."""
+    token = request.cookies.get(ADMIN_SESSION_COOKIE)
+    session = _admin_decrypt_session(token)
+    if not session:
+        raise HTTPException(401, "Admin authentication required.")
+    return session
+
+
 # Static files directory (served by FastAPI)
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -1125,6 +1204,20 @@ async def login(request: Request, body: dict):
 
     # Resolve IMAP server
     domain = email.split("@")[1].lower()
+
+    # Check domain alias
+    import sqlite3 as _sqlite3
+    try:
+        with _sqlite3.connect(ADMIN_DB) as _adb:
+            _alias_row = _adb.execute(
+                "SELECT target_domain FROM domain_aliases WHERE alias_domain=? AND enabled=1",
+                (domain,),
+            ).fetchone()
+        if _alias_row and _alias_row[0]:
+            domain = _alias_row[0].lower()
+    except Exception:
+        pass
+
     imap_host = imap_host_override or os.environ.get("IMAP_HOST", "").strip() or await _discover_mail_host(domain, "imap")
     imap_port = int(imap_port_override or os.environ.get("IMAP_PORT", "993"))
 
@@ -2587,6 +2680,184 @@ async def delete_contact(request: Request, uid: str):
     return JSONResponse({"ok": True})
 
 
+# ─── Admin API ────────────────────────────────────────────────────────────────
+
+@app.post("/api/admin/login")
+async def admin_login(request: Request, body: dict):
+    username = (body.get("username") or "").strip()
+    password = body.get("password") or ""
+    if not username or not password:
+        raise HTTPException(400, "Username and password required.")
+
+    import hashlib
+    pwd_hash = hashlib.sha256(password.encode()).hexdigest()
+
+    import sqlite3
+    with sqlite3.connect(ADMIN_DB) as db:
+        row = db.execute(
+            "SELECT id, username FROM admin_users WHERE username=? AND password=?",
+            (username, pwd_hash),
+        ).fetchone()
+
+    if not row:
+        raise HTTPException(401, "Invalid credentials.")
+
+    session_data = {
+        "admin": True,
+        "username": row[1],
+        "createdAt": int(time.time() * 1000),
+    }
+    response = JSONResponse({"ok": True, "username": row[1]})
+    response.set_cookie(
+        key=ADMIN_SESSION_COOKIE,
+        value=_admin_encrypt_session(session_data),
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        path="/",
+        max_age=ADMIN_SESSION_MAX_AGE,
+    )
+    return response
+
+
+@app.post("/api/admin/logout")
+async def admin_logout():
+    response = JSONResponse({"ok": True})
+    response.delete_cookie(ADMIN_SESSION_COOKIE, path="/")
+    return response
+
+
+@app.get("/api/admin/me")
+async def admin_me(request: Request):
+    token = request.cookies.get(ADMIN_SESSION_COOKIE)
+    session = _admin_decrypt_session(token)
+    if not session:
+        return {"authenticated": False}
+    return {"authenticated": True, "username": session["username"]}
+
+
+@app.put("/api/admin/password")
+async def admin_change_password(request: Request, body: dict):
+    admin = await require_admin(request)
+    old_password = body.get("oldPassword") or ""
+    new_password = body.get("newPassword") or ""
+    if not old_password or not new_password:
+        raise HTTPException(400, "Old and new passwords required.")
+    if len(new_password) < 6:
+        raise HTTPException(400, "Password must be at least 6 characters.")
+
+    import hashlib
+    old_hash = hashlib.sha256(old_password.encode()).hexdigest()
+    new_hash = hashlib.sha256(new_password.encode()).hexdigest()
+
+    import sqlite3
+    with sqlite3.connect(ADMIN_DB) as db:
+        row = db.execute(
+            "SELECT id FROM admin_users WHERE username=? AND password=?",
+            (admin["username"], old_hash),
+        ).fetchone()
+        if not row:
+            raise HTTPException(401, "Current password is incorrect.")
+        now = datetime.utcnow().isoformat()
+        db.execute(
+            "UPDATE admin_users SET password=?, updated_at=? WHERE username=?",
+            (new_hash, now, admin["username"]),
+        )
+        db.commit()
+
+    return JSONResponse({"ok": True})
+
+
+@app.get("/api/admin/domains")
+async def admin_list_domains(request: Request):
+    await require_admin(request)
+    import sqlite3
+    with sqlite3.connect(ADMIN_DB) as db:
+        db.row_factory = sqlite3.Row
+        rows = db.execute("SELECT * FROM domain_aliases ORDER BY alias_domain").fetchall()
+    return JSONResponse({
+        "domains": [
+            {
+                "id": r["id"],
+                "aliasDomain": r["alias_domain"],
+                "targetDomain": r["target_domain"],
+                "enabled": bool(r["enabled"]),
+                "createdAt": r["created_at"],
+            }
+            for r in rows
+        ]
+    })
+
+
+@app.post("/api/admin/domains")
+async def admin_add_domain(request: Request, body: dict):
+    await require_admin(request)
+    alias_domain = (body.get("aliasDomain") or "").lower().strip()
+    target_domain = (body.get("targetDomain") or "").lower().strip()
+    if not alias_domain or not target_domain:
+        raise HTTPException(400, "Alias domain and target domain required.")
+
+    now = datetime.utcnow().isoformat()
+    import sqlite3
+    try:
+        with sqlite3.connect(ADMIN_DB) as db:
+            db.execute(
+                """INSERT INTO domain_aliases (alias_domain, target_domain, enabled, created_at, updated_at)
+                   VALUES (?, ?, 1, ?, ?)""",
+                (alias_domain, target_domain, now, now),
+            )
+            db.commit()
+    except sqlite3.IntegrityError:
+        raise HTTPException(409, "Domain alias already exists.")
+
+    return JSONResponse({"ok": True, "aliasDomain": alias_domain, "targetDomain": target_domain})
+
+
+@app.put("/api/admin/domains/{domain_id}")
+async def admin_update_domain(request: Request, domain_id: int, body: dict):
+    await require_admin(request)
+    import sqlite3
+    now = datetime.utcnow().isoformat()
+    with sqlite3.connect(ADMIN_DB) as db:
+        cur = db.execute(
+            """UPDATE domain_aliases
+               SET target_domain=?, enabled=?, updated_at=?
+               WHERE id=?""",
+            (body.get("targetDomain", ""), 1 if body.get("enabled", True) else 0, now, domain_id),
+        )
+        db.commit()
+        if cur.rowcount == 0:
+            raise HTTPException(404, "Domain alias not found.")
+    return JSONResponse({"ok": True})
+
+
+@app.delete("/api/admin/domains/{domain_id}")
+async def admin_delete_domain(request: Request, domain_id: int):
+    await require_admin(request)
+    import sqlite3
+    with sqlite3.connect(ADMIN_DB) as db:
+        cur = db.execute("DELETE FROM domain_aliases WHERE id=?", (domain_id,))
+        db.commit()
+        if cur.rowcount == 0:
+            raise HTTPException(404, "Domain alias not found.")
+    return JSONResponse({"ok": True})
+
+
+@app.get("/api/admin/domains/lookup/{domain}")
+async def admin_lookup_domain(domain: str):
+    """Public endpoint: lookup domain alias for login redirect."""
+    domain = domain.lower().strip()
+    import sqlite3
+    with sqlite3.connect(ADMIN_DB) as db:
+        row = db.execute(
+            "SELECT target_domain FROM domain_aliases WHERE alias_domain=? AND enabled=1",
+            (domain,),
+        ).fetchone()
+    if row and row[0]:
+        return JSONResponse({"alias": True, "targetDomain": row[0]})
+    return JSONResponse({"alias": False})
+
+
 # ─── Static Files & SPA ──────────────────────────────────────────────────────
 
 # Per-user signature images live outside STATIC_DIR (under DATA_DIR), so we
@@ -2618,6 +2889,15 @@ async def serve_signature_image(path: str):
 if STATIC_DIR.exists():
     app.mount("/assets", StaticFiles(directory=str(STATIC_DIR / "assets")), name="static-assets")
     app.mount("/brand", StaticFiles(directory=str(STATIC_DIR / "brand")), name="static-brand")
+
+
+@app.get("/admin")
+async def serve_admin():
+    """Serve the admin page."""
+    admin_path = STATIC_DIR / "admin.html"
+    if admin_path.exists():
+        return FileResponse(str(admin_path))
+    raise HTTPException(404, "Admin page not found.")
 
 
 @app.get("/")
