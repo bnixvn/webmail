@@ -4218,27 +4218,38 @@ function renderLabelManagerModal() {
   colorLabel.textContent = (typeof t === "function" ? t("labelColor") : "Color") + ":";
   body.appendChild(colorLabel);
   const colorWrap = h("div", { className: "flex items-center gap-2 flex-wrap", style: { minHeight: "36px" } });
+  // Track selected color via local variable — NO set(), NO re-render
+  let selectedColor = currentColor;
+  const dots = [];
   for (let i = 0; i < labelColors.length; i++) {
     const c = labelColors[i];
-    const selected = c === currentColor;
+    const selected = c === selectedColor;
     const dot = h("button", {
       type: "button",
       className: `w-8 h-8 rounded-full border-2 ${selected ? "border-slate-900 dark:border-white scale-110" : "border-transparent hover:border-slate-300"}`,
       style: { backgroundColor: c, cursor: "pointer" },
-      onclick(e) {
-        e.preventDefault();
-        const val = nameInput.value;
-        S.labelEditing = { ...(S.labelEditing || {}), name: val, color: c };
-        set({ labelEditing: S.labelEditing });
-        requestAnimationFrame(() => {
-          const inp = document.querySelector('input[placeholder="' + (typeof t === "function" ? t("labelName") : "Label name") + '"]');
-          if (inp) { inp.focus(); inp.setSelectionRange(val.length, val.length); }
-        });
-      },
     });
     if (selected) {
       dot.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3.5" style="margin:auto;display:block"><polyline points="20 6 9 17 4 12"/></svg>`;
     }
+    dot.addEventListener("click", function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      // Update local selection — swap classes directly on DOM
+      for (const d of dots) {
+        d.className = "w-8 h-8 rounded-full border-2 border-transparent hover:border-slate-300";
+        d.innerHTML = "";
+      }
+      this.className = "w-8 h-8 rounded-full border-2 border-slate-900 dark:border-white scale-110";
+      this.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3.5" style="margin:auto;display:block"><polyline points="20 6 9 17 4 12"/></svg>`;
+      // Update preview dot
+      colorPreview.style.backgroundColor = c;
+      // Store in state (no re-render)
+      selectedColor = c;
+      if (!S.labelEditing) S.labelEditing = {};
+      S.labelEditing.color = c;
+    });
+    dots.push(dot);
     colorWrap.appendChild(dot);
   }
   body.appendChild(colorWrap);
@@ -4249,7 +4260,7 @@ function renderLabelManagerModal() {
     async onclick() {
       const name = (nameInput.value || "").trim();
       if (!name) { nameInput.focus(); return; }
-      const color = S.labelEditing?.color || LABEL_COLORS[0];
+      const color = selectedColor || LABEL_COLORS[0];
       if (S.labelEditing?.uid) {
         await updateLabel(S.labelEditing.uid, name, color);
       } else {
