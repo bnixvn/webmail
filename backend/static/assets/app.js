@@ -1443,8 +1443,8 @@ function renderSidebar() {
     }
   }
 
-  // Labels section (mail view only, when expanded)
-  if (!collapsed && S.view === "mail" && S.labels.length > 0) {
+  // Labels section (mail view only, when expanded) — always show header so user can manage labels
+  if (!collapsed && S.view === "mail") {
     items.push(h("div", { className: "px-3 pt-4 pb-1 flex items-center justify-between" },
       h("div", { className: "text-[11px] font-semibold uppercase text-slate-400 tracking-wider flex items-center gap-1" },
         h("span", { innerHTML: I.tag, className: "text-slate-400" }),
@@ -1453,28 +1453,37 @@ function renderSidebar() {
       h("button", {
         className: "text-slate-400 hover:text-slate-600 p-0.5",
         title: t("manageLabels"),
-        onclick() { set({ labelManagerOpen: true }); },
+        onclick() { set({ labelManagerOpen: true, labelEditing: null }); },
         innerHTML: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z\"/><circle cx=\"12\" cy=\"12\" r=\"3\"/></svg>`,
       }),
     ));
-    const labelList = h("div", { className: "px-2 space-y-0.5" });
-    for (const label of S.labels) {
-      const labelCount = S.messages.filter(m => (m.labels || []).some(l => l.labelUid === label.uid)).length;
-      labelList.appendChild(h("button", {
-        className: `folder-item w-full`,
-        onclick() {
-          set({ msgFilter: "labeled" });
+    if (S.labels.length > 0) {
+      const labelList = h("div", { className: "px-2 space-y-0.5" });
+      for (const label of S.labels) {
+        const labelCount = S.messages.filter(m => (m.labels || []).some(l => l.labelUid === label.uid)).length;
+        labelList.appendChild(h("button", {
+          className: `folder-item w-full`,
+          onclick() {
+            set({ msgFilter: "labeled" });
+          },
         },
-      },
-        h("span", {
-          className: "w-3.5 h-3.5 rounded-full shrink-0 ring-1 ring-black/10 dark:ring-white/20 shadow-sm",
-          style: { backgroundColor: label.color },
-        }),
-        h("span", { className: "flex-1 text-left truncate text-sm" }, label.name),
-        labelCount > 0 ? h("span", { className: "text-[11px] text-slate-400" }, String(labelCount)) : null,
+          h("span", {
+            className: "w-3.5 h-3.5 rounded-full shrink-0 ring-1 ring-black/10 dark:ring-white/20 shadow-sm",
+            style: { backgroundColor: label.color },
+          }),
+          h("span", { className: "flex-1 text-left truncate text-sm" }, label.name),
+          labelCount > 0 ? h("span", { className: "text-[11px] text-slate-400" }, String(labelCount)) : null,
+        ));
+      }
+      items.push(labelList);
+    } else {
+      items.push(h("div", { className: "px-3 py-1" },
+        h("button", {
+          className: "text-xs text-brand hover:underline",
+          onclick() { set({ labelManagerOpen: true, labelEditing: null }); },
+        }, t("newLabel")),
       ));
     }
-    items.push(labelList);
   }
 
   // Today's events widget (only when expanded + in mail view)
