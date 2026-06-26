@@ -1204,20 +1204,6 @@ async def login(request: Request, body: dict):
 
     # Resolve IMAP server
     domain = email.split("@")[1].lower()
-
-    # Check domain alias
-    import sqlite3 as _sqlite3
-    try:
-        with _sqlite3.connect(ADMIN_DB) as _adb:
-            _alias_row = _adb.execute(
-                "SELECT target_domain FROM domain_aliases WHERE alias_domain=? AND enabled=1",
-                (domain,),
-            ).fetchone()
-        if _alias_row and _alias_row[0]:
-            domain = _alias_row[0].lower()
-    except Exception:
-        pass
-
     imap_host = imap_host_override or os.environ.get("IMAP_HOST", "").strip() or await _discover_mail_host(domain, "imap")
     imap_port = int(imap_port_override or os.environ.get("IMAP_PORT", "993"))
 
@@ -2841,21 +2827,6 @@ async def admin_delete_domain(request: Request, domain_id: int):
         if cur.rowcount == 0:
             raise HTTPException(404, "Domain alias not found.")
     return JSONResponse({"ok": True})
-
-
-@app.get("/api/admin/domains/lookup/{domain}")
-async def admin_lookup_domain(domain: str):
-    """Public endpoint: lookup domain alias for login redirect."""
-    domain = domain.lower().strip()
-    import sqlite3
-    with sqlite3.connect(ADMIN_DB) as db:
-        row = db.execute(
-            "SELECT target_domain FROM domain_aliases WHERE alias_domain=? AND enabled=1",
-            (domain,),
-        ).fetchone()
-    if row and row[0]:
-        return JSONResponse({"alias": True, "targetDomain": row[0]})
-    return JSONResponse({"alias": False})
 
 
 # ─── Static Files & SPA ──────────────────────────────────────────────────────
