@@ -2504,24 +2504,36 @@ async def create_contact(request: Request, body: dict):
     session = await require_session(request)
     account = session["email"]
 
-    uid = body.get("uid") or body.get("email") or str(uuid.uuid4())
+    uid = body.get("uid") or str(uuid.uuid4())
     now = datetime.utcnow().isoformat()
 
     import sqlite3
     try:
         with sqlite3.connect(CONTACTS_DB) as db:
+            # Check if this account already has a contact with the same email
+            email = body.get("email", "").strip()
+            if email:
+                existing = db.execute(
+                    "SELECT uid FROM contacts WHERE account=? AND LOWER(email)=LOWER(?)",
+                    (account, email),
+                ).fetchone()
+                if existing:
+                    raise HTTPException(409, "Contact with this email already exists")
+
             db.execute(
                 """INSERT INTO contacts
                    (uid, account, fn, email, phone, organization, title, note, photo, created_at, updated_at)
                    VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
                 (uid, account,
-                 body.get("fn", ""), body.get("email", ""),
+                 body.get("fn", ""), email,
                  body.get("phone", ""), body.get("organization", ""),
                  body.get("title", ""), body.get("note", ""),
                  body.get("photo", ""),
                  now, now),
             )
             db.commit()
+    except HTTPException:
+        raise
     except sqlite3.IntegrityError:
         raise HTTPException(409, "Contact with this email already exists")
 
