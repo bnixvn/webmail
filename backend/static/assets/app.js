@@ -867,7 +867,11 @@ function renderLabelDropdown(uid) {
 function messageMatchesFilter(msg) {
   if (S.msgFilter === "unread") return !msg.seen;
   if (S.msgFilter === "starred") return !!msg.flagged;
-  if (S.msgFilter === "labeled") return msg.labels && msg.labels.length > 0;
+  if (S.msgFilter === "labeled") {
+    const labels = msg.labels || [];
+    if (S.labelFilter) return labels.some(label => label.labelUid === S.labelFilter);
+    return labels.length > 0;
+  }
   return true;
 }
 
@@ -1054,6 +1058,7 @@ const S = {
   selectedMsg: null,
   query: "",
   msgFilter: "all",
+  labelFilter: null,
   loginError: "",
   error: "",
   loadingMsgs: false,
@@ -1492,10 +1497,11 @@ function renderSidebar() {
       const labelList = h("div", { className: "px-2 space-y-0.5" });
       for (const label of S.labels) {
         const labelCount = S.messages.filter(m => (m.labels || []).some(l => l.labelUid === label.uid)).length;
+        const active = S.msgFilter === "labeled" && S.labelFilter === label.uid;
         labelList.appendChild(h("button", {
-          className: `folder-item w-full`,
+          className: `folder-item w-full ${active ? "active" : ""}`,
           onclick() {
-            set({ msgFilter: "labeled" });
+            set({ msgFilter: "labeled", labelFilter: label.uid, selectedUids: [] });
           },
         },
           labelTagIcon(label.color, true, 16),
@@ -1810,10 +1816,10 @@ function renderMessageList() {
     { key: "labeled", label: t("filterLabeled") },
   ];
   for (const f of filterDefs) {
-    const active = S.msgFilter === f.key;
+    const active = S.msgFilter === f.key && (f.key !== "labeled" || !S.labelFilter);
     filters.appendChild(h("button", {
       className: `px-2.5 py-1 rounded-md border text-xs ${active ? "border-brand bg-blue-50 text-brand font-medium" : "border-line text-slate-500 hover:bg-slate-50"}`,
-      onclick() { set({ msgFilter: f.key, selectedUids: [] }); },
+      onclick() { set({ msgFilter: f.key, labelFilter: null, selectedUids: [] }); },
     }, f.label));
   }
   tools.appendChild(filters);
@@ -2846,7 +2852,12 @@ async function updateLabel(uid, name, color) {
 async function deleteLabelFn(uid) {
   try {
     await api(`/api/labels/${uid}`, { method: "DELETE" });
-    set({ labels: S.labels.filter(l => l.uid !== uid) });
+    const patch = { labels: S.labels.filter(l => l.uid !== uid) };
+    if (S.labelFilter === uid) {
+      patch.labelFilter = null;
+      if (S.msgFilter === "labeled") patch.msgFilter = "all";
+    }
+    set(patch);
     // Remove from messages
     const messages = S.messages.map(m => ({
       ...m,
