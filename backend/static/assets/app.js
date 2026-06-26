@@ -4172,37 +4172,51 @@ function renderLabelManagerModal() {
     }),
   ));
 
-  const body = h("div", { className: "flex-1 overflow-y-auto p-4 space-y-3" });
+  const body = h("div", { className: "flex-1 overflow-y-auto p-4 space-y-4" });
 
   // Add new label form
-  const addForm = h("div", { className: "flex items-center gap-2" });
+  const currentColor = S.labelEditing?.color || LABEL_COLORS[0];
+  const currentName = S.labelEditing?.name || "";
+
+  // Name input with color preview dot
+  const nameRow = h("div", { className: "flex items-center gap-2" });
+  const colorPreview = h("span", {
+    className: "w-5 h-5 rounded-full shrink-0 ring-1 ring-black/10",
+    style: { backgroundColor: currentColor },
+  });
   const nameInput = h("input", {
     className: "flex-1 px-3 py-2 text-sm border border-line rounded-lg bg-white dark:bg-slate-700",
     placeholder: t("labelName"),
-    value: S.labelEditing?.name || "",
+    value: currentName,
   });
   // Don't call set() on input — just update state to avoid re-render losing focus
   nameInput.addEventListener("input", e => {
     if (!S.labelEditing) S.labelEditing = {};
     S.labelEditing.name = e.target.value;
   });
+  nameRow.appendChild(colorPreview);
+  nameRow.appendChild(nameInput);
+  body.appendChild(nameRow);
 
+  // Color picker section with label
+  body.appendChild(h("div", { className: "text-xs font-medium text-slate-500 dark:text-slate-400" }, t("labelColor") + ":"));
   const colorWrap = h("div", { className: "flex items-center gap-2 flex-wrap" });
-  const currentColor = S.labelEditing?.color || LABEL_COLORS[0];
   for (const c of LABEL_COLORS) {
     const selected = c === currentColor;
     const dot = h("button", {
-      className: `relative w-7 h-7 rounded-full border-2 transition-all ${selected ? "border-slate-900 dark:border-white ring-2 ring-slate-900/30 dark:ring-white/30 scale-110" : "border-transparent hover:scale-110 hover:border-slate-300"}`,
+      type: "button",
+      className: `relative w-8 h-8 rounded-full border-2 transition-all ${selected ? "border-slate-900 dark:border-white ring-2 ring-slate-900/30 dark:ring-white/30 scale-110" : "border-transparent hover:scale-110 hover:border-slate-300"}`,
       style: { backgroundColor: c },
-      onclick() {
+      onclick(e) {
+        e.preventDefault();
         // Capture name from live DOM before re-render destroys it
-        const currentName = nameInput.value;
-        S.labelEditing = { ...(S.labelEditing || {}), name: currentName, color: c };
+        const val = nameInput.value;
+        S.labelEditing = { ...(S.labelEditing || {}), name: val, color: c };
         set({ labelEditing: S.labelEditing });
         // Restore focus & cursor after re-render
         requestAnimationFrame(() => {
           const inp = document.querySelector('input[placeholder="' + t("labelName") + '"]');
-          if (inp) { inp.focus(); inp.setSelectionRange(currentName.length, currentName.length); }
+          if (inp) { inp.focus(); inp.setSelectionRange(val.length, val.length); }
         });
       },
     });
@@ -4210,30 +4224,29 @@ function renderLabelManagerModal() {
     if (selected) {
       dot.appendChild(h("span", {
         className: "absolute inset-0 flex items-center justify-center",
-        innerHTML: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`,
+        innerHTML: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`,
       }));
     }
     colorWrap.appendChild(dot);
   }
+  body.appendChild(colorWrap);
 
+  // Add/Save button
   const addBtn = h("button", {
-    className: "px-3 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand-hover shrink-0",
+    className: "w-full px-3 py-2.5 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand-hover",
     async onclick() {
-      const name = (S.labelEditing?.name || "").trim();
-      if (!name) return;
+      const name = (nameInput.value || "").trim();
+      if (!name) { nameInput.focus(); return; }
+      const color = S.labelEditing?.color || LABEL_COLORS[0];
       if (S.labelEditing?.uid) {
-        await updateLabel(S.labelEditing.uid, name, S.labelEditing.color);
+        await updateLabel(S.labelEditing.uid, name, color);
       } else {
-        await createLabel(name, S.labelEditing?.color || LABEL_COLORS[0]);
+        await createLabel(name, color);
       }
       set({ labelEditing: null });
     },
   }, S.labelEditing?.uid ? t("save") : t("addLabel"));
-
-  addForm.appendChild(nameInput);
-  addForm.appendChild(addBtn);
-  body.appendChild(addForm);
-  body.appendChild(colorWrap);
+  body.appendChild(addBtn);
 
   // Existing labels list
   body.appendChild(h("div", { className: "border-t border-line pt-3 mt-3" }));
