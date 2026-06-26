@@ -1438,7 +1438,7 @@ function renderSidebar() {
       localStorage.setItem("theme", isDark ? "dark" : "light");
       render();
     },
-  }, h("span", { style: { fontSize: "14px" } }, document.documentElement.classList.contains("dark") ? "â˜€ï¸" : "ðŸŒ™"), !collapsed ? h("span", {}, document.documentElement.classList.contains("dark") ? t("lightMode") : t("darkMode")) : null));
+  }, h("span", { style: { fontSize: "14px" } }, document.documentElement.classList.contains("dark") ? "☀️" : "🌙"), !collapsed ? h("span", {}, document.documentElement.classList.contains("dark") ? t("lightMode") : t("darkMode")) : null));
   footer.appendChild(h("button", {
     className: `folder-item w-full ${collapsed ? "justify-center" : ""} text-slate-500`,
     onclick() { set({ sigOpen: true }); },
@@ -1546,7 +1546,7 @@ function renderMobileSidebar() {
       set({ mobileSidebar: false });
       render();
     },
-  }, h("span", { style: { fontSize: "14px" } }, document.documentElement.classList.contains("dark") ? "â˜€ï¸" : "ðŸŒ™"),
+  }, h("span", { style: { fontSize: "14px" } }, document.documentElement.classList.contains("dark") ? "☀️" : "🌙"),
      h("span", {}, document.documentElement.classList.contains("dark") ? t("lightMode") : t("darkMode"))));
   footer.appendChild(h("button", {
     className: "folder-item w-full text-slate-500",
