@@ -22,6 +22,7 @@ Thumbs.db
 .idea/
 .agents/
 .claude/
+.codex/
 
 # Build
 release/
