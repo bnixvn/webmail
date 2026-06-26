@@ -177,7 +177,7 @@ def _reload_caddy():
     import subprocess
     try:
         result = subprocess.run(
-            ["sudo", "caddy", "reload", "--config", CADDYFILE_PATH, "--adapter", "caddyfile"],
+            ["caddy", "reload", "--config", CADDYFILE_PATH, "--adapter", "caddyfile"],
             capture_output=True, text=True, timeout=10,
         )
         return result.returncode == 0
@@ -187,7 +187,7 @@ def _reload_caddy():
 
 def _add_caddy_domain(alias_domain: str):
     """Add a domain alias to Caddyfile."""
-    import logging, tempfile, shutil, subprocess
+    import logging
     log = logging.getLogger("caddy")
     try:
         log.info(f"[caddy] Adding domain '{alias_domain}' to {CADDYFILE_PATH}")
@@ -214,20 +214,8 @@ def _add_caddy_domain(alias_domain: str):
             log.error(f"[caddy] No valid site block found in Caddyfile!")
             return False
 
-        new_content = "\n".join(lines)
-        # Write via temp file + sudo cp to bypass permission issues
-        tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".caddy", delete=False)
-        tmp.write(new_content)
-        tmp.close()
-        result = subprocess.run(
-            ["sudo", "cp", tmp.name, CADDYFILE_PATH],
-            capture_output=True, text=True, timeout=5,
-        )
-        os.unlink(tmp.name)
-        if result.returncode != 0:
-            log.error(f"[caddy] Failed to write Caddyfile: {result.stderr}")
-            return False
-
+        with open(CADDYFILE_PATH, "w") as f:
+            f.write("\n".join(lines))
         log.info(f"[caddy] Caddyfile updated, reloading...")
         return _reload_caddy()
     except Exception as e:
@@ -237,7 +225,7 @@ def _add_caddy_domain(alias_domain: str):
 
 def _remove_caddy_domain(alias_domain: str):
     """Remove a domain alias from Caddyfile."""
-    import re, logging, tempfile, subprocess
+    import re, logging
     log = logging.getLogger("caddy")
     try:
         with open(CADDYFILE_PATH, "r") as f:
@@ -252,12 +240,8 @@ def _remove_caddy_domain(alias_domain: str):
         content = re.sub(r",\s*,", ",", content)
         content = re.sub(r",\s*\{", " {", content)
 
-        # Write via temp file + sudo cp
-        tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".caddy", delete=False)
-        tmp.write(content)
-        tmp.close()
-        subprocess.run(["sudo", "cp", tmp.name, CADDYFILE_PATH], capture_output=True, timeout=5)
-        os.unlink(tmp.name)
+        with open(CADDYFILE_PATH, "w") as f:
+            f.write(content)
 
         return _reload_caddy()
     except Exception as e:
