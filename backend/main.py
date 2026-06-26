@@ -187,28 +187,41 @@ def _reload_caddy():
 
 def _add_caddy_domain(alias_domain: str):
     """Add a domain alias to Caddyfile."""
+    import logging
+    log = logging.getLogger("caddy")
     try:
+        log.info(f"[caddy] Adding domain '{alias_domain}' to {CADDYFILE_PATH}")
         with open(CADDYFILE_PATH, "r") as f:
             content = f.read()
 
         if alias_domain in content:
+            log.info(f"[caddy] Domain '{alias_domain}' already in Caddyfile")
             return True  # Already exists
 
         lines = content.split("\n")
+        found = False
         for i, line in enumerate(lines):
             stripped = line.rstrip()
             if stripped.endswith("{") and "reverse_proxy" not in stripped:
                 header = stripped[:-1].rstrip()  # Remove trailing "{"
                 # Skip non-domain blocks like ":80", ":443", "localhost"
                 if header and "." in header and not header.startswith(":"):
+                    log.info(f"[caddy] Found site block at line {i}: '{header}'")
                     lines[i] = f"{header}, {alias_domain} {{"
+                    found = True
                     break
 
-        with open(CADDYFILE_PATH, "w") as f:
-            f.write("\n".join(lines))
+        if not found:
+            log.error(f"[caddy] No valid site block found in Caddyfile!")
+            return False
 
+        new_content = "\n".join(lines)
+        with open(CADDYFILE_PATH, "w") as f:
+            f.write(new_content)
+        log.info(f"[caddy] Caddyfile updated, reloading...")
         return _reload_caddy()
-    except Exception:
+    except Exception as e:
+        log.error(f"[caddy] Error adding domain: {e}")
         return False
 
 
@@ -2863,7 +2876,10 @@ async def admin_add_domain(request: Request, body: dict):
         raise HTTPException(409, "Domain alias already exists.")
 
     # Auto-reload Caddy with new domain
+    import logging
+    log = logging.getLogger("caddy")
     caddy_ok = _add_caddy_domain(alias_domain)
+    log.info(f"[admin] add domain '{alias_domain}' — caddy_ok={caddy_ok}")
 
     return JSONResponse({"ok": True, "aliasDomain": alias_domain, "caddyReloaded": caddy_ok})
 
