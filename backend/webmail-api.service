@@ -5,8 +5,9 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=bnix-webmail
-Group=bnix-webmail
+# Run as root to allow Caddyfile writes and caddy reload
+# User=bnix-webmail
+# Group=bnix-webmail
 WorkingDirectory=/opt/bnix-webmail/src/backend
 EnvironmentFile=-/etc/bnix-webmail.env
 Environment=DATA_DIR=/opt/bnix-webmail/data
