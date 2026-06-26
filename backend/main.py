@@ -169,6 +169,72 @@ _labels_init()
 ADMIN_DB = os.path.join(DATA_DIR, "db", "admin.db")
 ADMIN_SESSION_COOKIE = "webmail_admin_session"
 ADMIN_SESSION_MAX_AGE = 60 * 60 * 8  # 8 hours
+CADDYFILE_PATH = os.environ.get("CADDYFILE_PATH", "/etc/caddy/Caddyfile")
+
+
+def _reload_caddy():
+    """Reload Caddy config after domain changes."""
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["caddy", "reload", "--config", CADDYFILE_PATH],
+            capture_output=True, text=True, timeout=10,
+        )
+        return result.returncode == 0
+    except Exception:
+        return False
+
+
+def _add_caddy_domain(alias_domain: str):
+    """Add a domain alias to Caddyfile."""
+    try:
+        with open(CADDYFILE_PATH, "r") as f:
+            content = f.read()
+
+        if alias_domain in content:
+            return True  # Already exists
+
+        # Insert domain before the opening brace of the first site block
+        # Pattern: find "domain1,\ndomain2 {" and add new domain
+        lines = content.split("\n")
+        for i, line in enumerate(lines):
+            stripped = line.rstrip()
+            if stripped.endswith("{") and "reverse_proxy" not in stripped:
+                # This is a site block header line
+                header = stripped.rstrip(" {").rstrip()
+                if header:
+                    lines[i] = f"{header},\n{alias_domain} {{"
+                break
+
+        with open(CADDYFILE_PATH, "w") as f:
+            f.write("\n".join(lines))
+
+        return _reload_caddy()
+    except Exception:
+        return False
+
+
+def _remove_caddy_domain(alias_domain: str):
+    """Remove a domain alias from Caddyfile."""
+    try:
+        with open(CADDYFILE_PATH, "r") as f:
+            content = f.read()
+
+        if alias_domain not in content:
+            return True  # Already gone
+
+        # Remove the domain from comma-separated list
+        content = content.replace(f",\n{alias_domain}", "")
+        content = content.replace(f"{alias_domain},\n", "")
+        content = content.replace(f", {alias_domain}", "")
+        content = content.replace(f"{alias_domain}", "")
+
+        with open(CADDYFILE_PATH, "w") as f:
+            f.write(content)
+
+        return _reload_caddy()
+    except Exception:
+        return False
 
 
 def _admin_init():
@@ -2779,9 +2845,8 @@ async def admin_list_domains(request: Request):
 async def admin_add_domain(request: Request, body: dict):
     await require_admin(request)
     alias_domain = (body.get("aliasDomain") or "").lower().strip()
-    target_domain = (body.get("targetDomain") or "").lower().strip()
-    if not alias_domain or not target_domain:
-        raise HTTPException(400, "Alias domain and target domain required.")
+    if not alias_domain:
+        raise HTTPException(400, "Domain name required.")
 
     now = datetime.utcnow().isoformat()
     import sqlite3
@@ -2789,14 +2854,17 @@ async def admin_add_domain(request: Request, body: dict):
         with sqlite3.connect(ADMIN_DB) as db:
             db.execute(
                 """INSERT INTO domain_aliases (alias_domain, target_domain, enabled, created_at, updated_at)
-                   VALUES (?, ?, 1, ?, ?)""",
-                (alias_domain, target_domain, now, now),
+                   VALUES (?, '', 1, ?, ?)""",
+                (alias_domain, now, now),
             )
             db.commit()
     except sqlite3.IntegrityError:
         raise HTTPException(409, "Domain alias already exists.")
 
-    return JSONResponse({"ok": True, "aliasDomain": alias_domain, "targetDomain": target_domain})
+    # Auto-reload Caddy with new domain
+    caddy_ok = _add_caddy_domain(alias_domain)
+
+    return JSONResponse({"ok": True, "aliasDomain": alias_domain, "caddyReloaded": caddy_ok})
 
 
 @app.put("/api/admin/domains/{domain_id}")
@@ -2822,10 +2890,17 @@ async def admin_delete_domain(request: Request, domain_id: int):
     await require_admin(request)
     import sqlite3
     with sqlite3.connect(ADMIN_DB) as db:
-        cur = db.execute("DELETE FROM domain_aliases WHERE id=?", (domain_id,))
-        db.commit()
-        if cur.rowcount == 0:
+        # Get domain name before deleting
+        row = db.execute("SELECT alias_domain FROM domain_aliases WHERE id=?", (domain_id,)).fetchone()
+        if not row:
             raise HTTPException(404, "Domain alias not found.")
+        alias_domain = row[0]
+        db.execute("DELETE FROM domain_aliases WHERE id=?", (domain_id,))
+        db.commit()
+
+    # Auto-reload Caddy after removing domain
+    _remove_caddy_domain(alias_domain)
+
     return JSONResponse({"ok": True})
 
 

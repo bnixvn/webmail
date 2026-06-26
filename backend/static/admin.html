@@ -227,7 +227,7 @@
     /* ─── Add Domain Form ────────────────────────────────────────────────── */
     .add-domain-form {
       display: grid;
-      grid-template-columns: 1fr 1fr auto;
+      grid-template-columns: 1fr auto;
       gap: 10px;
       align-items: end;
     }
@@ -289,26 +289,21 @@
         <div class="card-body">
           <div class="add-domain-form" style="margin-bottom: 16px;">
             <div class="form-group">
-              <label>Alias Domain</label>
-              <input type="text" id="newAliasDomain" placeholder="mail.example.com">
-            </div>
-            <div class="form-group">
-              <label>Target Domain</label>
-              <input type="text" id="newTargetDomain" placeholder="example.com">
+              <label>Domain / Subdomain</label>
+              <input type="text" id="newAliasDomain" placeholder="webmail.domain.com">
             </div>
             <button class="btn btn-primary btn-sm" onclick="addDomain()" style="margin-bottom: 0;">+ Thêm</button>
           </div>
           <table class="domain-table">
             <thead>
               <tr>
-                <th>Alias Domain</th>
-                <th>Target Domain</th>
+                <th>Domain</th>
                 <th>Status</th>
                 <th class="actions">Actions</th>
               </tr>
             </thead>
             <tbody id="domainTableBody">
-              <tr><td colspan="4" class="empty-state">Đang tải...</td></tr>
+              <tr><td colspan="3" class="empty-state">Đang tải...</td></tr>
             </tbody>
           </table>
         </div>
@@ -420,13 +415,12 @@ async function loadDomains() {
     const data = await api('/api/admin/domains');
     const tbody = document.getElementById('domainTableBody');
     if (!data.domains.length) {
-      tbody.innerHTML = '<tr><td colspan="4" class="empty-state">Chưa có domain alias nào</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="3" class="empty-state">Chưa có domain nào</td></tr>';
       return;
     }
     tbody.innerHTML = data.domains.map(d => `
       <tr>
         <td><strong>${escHtml(d.aliasDomain)}</strong></td>
-        <td>${escHtml(d.targetDomain)}</td>
         <td><span class="badge ${d.enabled ? 'badge-on' : 'badge-off'}">${d.enabled ? 'Active' : 'Disabled'}</span></td>
         <td class="actions">
           <button class="btn btn-danger btn-icon btn-sm" onclick="deleteDomain(${d.id})" title="Xóa">
@@ -442,19 +436,17 @@ async function loadDomains() {
 
 async function addDomain() {
   const aliasDomain = document.getElementById('newAliasDomain').value.trim();
-  const targetDomain = document.getElementById('newTargetDomain').value.trim();
-  if (!aliasDomain || !targetDomain) {
-    showAlert('dashAlert', 'Vui lòng nhập đầy đủ alias và target domain');
+  if (!aliasDomain) {
+    showAlert('dashAlert', 'Vui lòng nhập domain');
     return;
   }
   try {
     await api('/api/admin/domains', {
       method: 'POST',
-      body: JSON.stringify({ aliasDomain, targetDomain }),
+      body: JSON.stringify({ aliasDomain }),
     });
     document.getElementById('newAliasDomain').value = '';
-    document.getElementById('newTargetDomain').value = '';
-    showAlert('dashAlert', 'Đã thêm domain alias!', 'success');
+    showAlert('dashAlert', 'Đã thêm domain!', 'success');
     loadDomains();
   } catch (err) {
     showAlert('dashAlert', err.message);
