@@ -177,7 +177,7 @@ def _reload_caddy():
     import subprocess
     try:
         result = subprocess.run(
-            ["caddy", "reload", "--config", CADDYFILE_PATH],
+            ["sudo", "caddy", "reload", "--config", CADDYFILE_PATH, "--adapter", "caddyfile"],
             capture_output=True, text=True, timeout=10,
         )
         return result.returncode == 0
@@ -187,7 +187,7 @@ def _reload_caddy():
 
 def _add_caddy_domain(alias_domain: str):
     """Add a domain alias to Caddyfile."""
-    import logging
+    import logging, tempfile, shutil
     log = logging.getLogger("caddy")
     try:
         log.info(f"[caddy] Adding domain '{alias_domain}' to {CADDYFILE_PATH}")
@@ -196,15 +196,14 @@ def _add_caddy_domain(alias_domain: str):
 
         if alias_domain in content:
             log.info(f"[caddy] Domain '{alias_domain}' already in Caddyfile")
-            return True  # Already exists
+            return True
 
         lines = content.split("\n")
         found = False
         for i, line in enumerate(lines):
             stripped = line.rstrip()
             if stripped.endswith("{") and "reverse_proxy" not in stripped:
-                header = stripped[:-1].rstrip()  # Remove trailing "{"
-                # Skip non-domain blocks like ":80", ":443", "localhost"
+                header = stripped[:-1].rstrip()
                 if header and "." in header and not header.startswith(":"):
                     log.info(f"[caddy] Found site block at line {i}: '{header}'")
                     lines[i] = f"{header}, {alias_domain} {{"
@@ -216,8 +215,19 @@ def _add_caddy_domain(alias_domain: str):
             return False
 
         new_content = "\n".join(lines)
-        with open(CADDYFILE_PATH, "w") as f:
-            f.write(new_content)
+        # Write via temp file + sudo cp to bypass permission issues
+        tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".caddy", delete=False)
+        tmp.write(new_content)
+        tmp.close()
+        result = subprocess.run(
+            ["sudo", "cp", tmp.name, CADDYFILE_PATH],
+            capture_output=True, text=True, timeout=5,
+        )
+        os.unlink(tmp.name)
+        if result.returncode != 0:
+            log.error(f"[caddy] Failed to write Caddyfile: {result.stderr}")
+            return False
+
         log.info(f"[caddy] Caddyfile updated, reloading...")
         return _reload_caddy()
     except Exception as e:
@@ -227,27 +237,31 @@ def _add_caddy_domain(alias_domain: str):
 
 def _remove_caddy_domain(alias_domain: str):
     """Remove a domain alias from Caddyfile."""
-    import re
+    import re, logging, tempfile, subprocess
+    log = logging.getLogger("caddy")
     try:
         with open(CADDYFILE_PATH, "r") as f:
             content = f.read()
 
         if alias_domain not in content:
-            return True  # Already gone
+            return True
 
-        # Remove domain from comma-separated list (with surrounding comma/newline)
         escaped = re.escape(alias_domain)
         content = re.sub(rf",\s*\n?\s*{escaped}", "", content)
         content = re.sub(rf"{escaped}\s*,?", "", content)
-        # Clean up leftover double commas or trailing commas before "{"
         content = re.sub(r",\s*,", ",", content)
         content = re.sub(r",\s*\{", " {", content)
 
-        with open(CADDYFILE_PATH, "w") as f:
-            f.write(content)
+        # Write via temp file + sudo cp
+        tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".caddy", delete=False)
+        tmp.write(content)
+        tmp.close()
+        subprocess.run(["sudo", "cp", tmp.name, CADDYFILE_PATH], capture_output=True, timeout=5)
+        os.unlink(tmp.name)
 
         return _reload_caddy()
-    except Exception:
+    except Exception as e:
+        log.error(f"[caddy] Error removing domain: {e}")
         return False
 
 
