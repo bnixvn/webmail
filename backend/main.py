@@ -3190,6 +3190,15 @@ async def serve_admin():
     raise HTTPException(404, "Admin page not found.")
 
 
+@app.get("/oauth-home")
+async def serve_oauth_home():
+    """Serve the public OAuth verification home page."""
+    home_path = STATIC_DIR / "oauth-home.html"
+    if home_path.exists():
+        return FileResponse(str(home_path))
+    raise HTTPException(404, "OAuth home page not found.")
+
+
 @app.get("/")
 async def serve_index():
     """Serve the main SPA page."""
