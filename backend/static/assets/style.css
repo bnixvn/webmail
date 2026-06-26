@@ -635,7 +635,7 @@ input, textarea, [contenteditable] {
   opacity: 0;
 }
 .login-advanced-fields.open {
-  max-height: 200px;
+  max-height: 400px;
   opacity: 1;
   margin-top: 10px;
 }
