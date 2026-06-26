@@ -25,6 +25,23 @@ If `/etc/bnix-webmail.env` does not exist, the installer asks for local port, di
 
 Mail server selection is automatic. For `user@example.com`, the app checks the MX record of `example.com` and uses the best MX host. If no MX record exists, it falls back to `mail.example.com`.
 
+Gmail sign-in uses Google OAuth, not Gmail passwords. Create a Google OAuth web client and add this redirect URI in Google Cloud:
+
+```txt
+https://your-domain.example/api/auth/google/callback
+```
+
+Then put the credentials in `/etc/bnix-webmail.env`:
+
+```txt
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+```
+
+The app auto-detects the public hostname from the request/proxy headers. If your proxy reports the wrong host or scheme, override it with `PUBLIC_BASE_URL=https://your-domain.example` or `GOOGLE_REDIRECT_URI=https://your-domain.example/api/auth/google/callback`.
+
+The OAuth app must request the Gmail IMAP/SMTP scope `https://mail.google.com/`.
+
 The service is intentionally bound to loopback only:
 
 ```txt

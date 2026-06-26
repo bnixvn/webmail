@@ -42,6 +42,7 @@ const LOCALES = {
     imapHostPh: "IMAP host", imapPortPh: "IMAP port (993)",
     smtpHostPh: "SMTP host", smtpPortPh: "SMTP port (465)",
     signIn: "Sign in",
+    googleSignIn: "Continue with Google",
     loginFailed: "Login failed",
     sessionExpired: "Session expired. Please sign in again.",
     // Sidebar
@@ -157,6 +158,7 @@ const LOCALES = {
     imapHostPh: "Máy chủ IMAP", imapPortPh: "Cổng IMAP (993)",
     smtpHostPh: "Máy chủ SMTP", smtpPortPh: "Cổng SMTP (465)",
     signIn: "Đăng nhập",
+    googleSignIn: "Đăng nhập bằng Google",
     loginFailed: "Đăng nhập thất bại",
     sessionExpired: "Phiên đã hết hạn. Vui lòng đăng nhập lại.",
     // Sidebar
@@ -1195,6 +1197,11 @@ function renderLogin() {
           ),
           S.loginError ? h("div", { className: "login-error" }, S.loginError) : null,
           h("button", { type: "submit", className: "login-submit" }, t("signIn")),
+          h("button", {
+            type: "button",
+            className: "login-google",
+            onclick: onGoogleLogin,
+          }, h("span", { className: "login-google-icon" }, "G"), h("span", {}, t("googleSignIn"))),
           h("div", { className: "login-advanced" },
             h("button", {
               type: "button",
@@ -1238,6 +1245,11 @@ async function onLogin(e) {
   const smtpPort = form.smtpPort?.value.trim() || "";
   set({ loginError: "" });
 
+  if (isGoogleMailAddress(email) && !imapHost && !smtpHost) {
+    startGoogleOAuth(form);
+    return;
+  }
+
   try {
     const data = await api("/api/auth/login", {
       method: "POST",
@@ -1255,6 +1267,24 @@ async function onLogin(e) {
 }
 
 // â”€â”€â”€ Bootstrap â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+function isGoogleMailAddress(email) {
+  const domain = (email.split("@")[1] || "").toLowerCase();
+  return domain === "gmail.com" || domain === "googlemail.com";
+}
+
+function startGoogleOAuth(form) {
+  const email = form?.email?.value.trim() || "";
+  const remember = form?.remember?.checked ? "1" : "0";
+  const params = new URLSearchParams({ remember });
+  if (email) params.set("email", email);
+  set({ loginError: "" });
+  window.location.href = `/api/auth/google/start?${params.toString()}`;
+}
+
+function onGoogleLogin(e) {
+  startGoogleOAuth(e.target.closest("form"));
+}
 
 async function bootstrap() {
   try {

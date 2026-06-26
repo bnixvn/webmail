@@ -26,14 +26,15 @@ from email.utils import formataddr, getaddresses
 from functools import partial
 from pathlib import Path
 from typing import Any, AsyncIterator
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 import aioimaplib
+import aiosmtplib
 import httpx
 import uvicorn
 from fastapi import FastAPI, File, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, FileResponse, HTMLResponse
+from fastapi.responses import JSONResponse, FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, EmailStr, Field
 
@@ -43,10 +44,18 @@ AUTH_SECRET = os.environ.get(
     "AUTH_SECRET", "An_elNMjOgQouJJCOgPFcChGXNEnXgbDv3E0cQQ6WQM"
 )
 SESSION_COOKIE = "webmail_session"
+GOOGLE_OAUTH_STATE_COOKIE = "webmail_google_oauth_state"
 SESSION_MAX_AGE = 60 * 60 * 12  # 12 hours
 IMAP_TIMEOUT = 60  # seconds
 SMTP_TIMEOUT = 30
 POOL_TTL = 4 * 60  # 4 minutes
+
+GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
+GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
+GOOGLE_USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo"
+GOOGLE_GMAIL_SCOPE = "openid email https://mail.google.com/"
+GOOGLE_IMAP_HOST = "imap.gmail.com"
+GOOGLE_SMTP_HOST = "smtp.gmail.com"
 
 DATA_DIR = os.environ.get("DATA_DIR", "/opt/bnix-webmail/data")
 os.makedirs(f"{DATA_DIR}/signatures", exist_ok=True)
@@ -331,19 +340,42 @@ _pool_lock = asyncio.Lock()
 _executor = ThreadPoolExecutor(4)
 
 
-async def _get_pooled_imap(email: str, password: str, imap_host: str, imap_port: int) -> aioimaplib.IMAP4_SSL:
+def _session_auth_type(session: dict) -> str:
+    return session.get("auth_type") or "password"
+
+
+def _imap_pool_key(email: str, auth_type: str = "password") -> str:
+    return f"{auth_type}:{email.lower()}"
+
+
+async def _imap_login(client: aioimaplib.IMAP4_SSL, session: dict):
+    email = session["email"]
+    if _session_auth_type(session) == "google_oauth":
+        access_token = await _get_google_access_token(session)
+        xoauth2 = getattr(client, "xoauth2", None)
+        if not xoauth2:
+            raise HTTPException(500, "This aioimaplib version does not support XOAUTH2.")
+        auth_resp = await xoauth2(email, access_token)
+        _require_imap_ok(auth_resp, "XOAUTH2 login")
+        return
+    await client.login(email, session["password"])
+
+
+async def _get_pooled_imap(session: dict, imap_host: str, imap_port: int) -> aioimaplib.IMAP4_SSL:
     """Get or create a pooled IMAP connection."""
+    email = session["email"]
+    pool_key = _imap_pool_key(email, _session_auth_type(session))
     async with _pool_lock:
-        entry = _pool.get(email)
+        entry = _pool.get(pool_key)
         now = time.time()
         if entry:
             client, last_used = entry
             if now - last_used < POOL_TTL:
                 # Trust connection is alive — NOOP can corrupt protocol state
-                _pool[email] = (client, now)
+                _pool[pool_key] = (client, now)
                 return client
             # Stale — evict
-            del _pool[email]
+            del _pool[pool_key]
             try:
                 await client.logout()
             except Exception:
@@ -356,15 +388,15 @@ async def _get_pooled_imap(email: str, password: str, imap_host: str, imap_port:
         )
         # aioimaplib requires waiting for server greeting before any command
         await client.wait_hello_from_server()
-        await client.login(email, password)
-        _pool[email] = (client, now)
+        await _imap_login(client, session)
+        _pool[pool_key] = (client, now)
         return client
 
 
-async def _evict_imap(email: str):
+async def _evict_imap(email: str, auth_type: str = "password"):
     """Remove a broken connection from the pool."""
     async with _pool_lock:
-        entry = _pool.pop(email, None)
+        entry = _pool.pop(_imap_pool_key(email, auth_type), None)
         if entry:
             try:
                 await entry[0].logout()
@@ -391,14 +423,15 @@ async def with_imap_retry(session: dict, coro_factory):
     domain = email.split("@")[1].lower()
     imap_host = session.get("imap_host") or os.environ.get("IMAP_HOST", "").strip() or await _discover_mail_host(domain, "imap")
     imap_port = int(session.get("imap_port") or os.environ.get("IMAP_PORT", "993"))
+    auth_type = _session_auth_type(session)
 
     for attempt in range(2):
         try:
-            client = await _get_pooled_imap(email, session["password"], imap_host, imap_port)
+            client = await _get_pooled_imap(session, imap_host, imap_port)
             return await coro_factory(client)
         except (aioimaplib.Abort, ConnectionError, OSError, asyncio.TimeoutError):
             if attempt == 0:
-                await _evict_imap(email)
+                await _evict_imap(email, auth_type)
                 continue
             raise
 
@@ -409,7 +442,7 @@ async def _get_imap_for_session(session: dict) -> aioimaplib.IMAP4_SSL:
     domain = email.split("@")[1].lower()
     imap_host = session.get("imap_host") or os.environ.get("IMAP_HOST", "").strip() or await _discover_mail_host(domain, "imap")
     imap_port = int(session.get("imap_port") or os.environ.get("IMAP_PORT", "993"))
-    return await _get_pooled_imap(email, session["password"], imap_host, imap_port)
+    return await _get_pooled_imap(session, imap_host, imap_port)
 
 
 async def _discover_mail_host(domain: str, service: str = "imap") -> str:
@@ -486,7 +519,9 @@ def decrypt_session(token: str | None) -> dict | None:
             None,
         )
         session = json.loads(decrypted.decode())
-        if not session.get("email") or not session.get("password") or not session.get("createdAt"):
+        if not session.get("email") or not session.get("createdAt"):
+            return None
+        if _session_auth_type(session) == "password" and not session.get("password"):
             return None
         if time.time() - session["createdAt"] / 1000.0 > SESSION_MAX_AGE:
             return None
@@ -506,6 +541,106 @@ def encrypt_session(session: dict) -> str:
     tag = encrypted[:16]
     data = encrypted[16:]
     return f"{_b64_encode(iv)}.{_b64_encode(tag)}.{_b64_encode(data)}"
+
+
+def _google_oauth_config() -> tuple[str, str]:
+    client_id = os.environ.get("GOOGLE_CLIENT_ID", "").strip()
+    client_secret = os.environ.get("GOOGLE_CLIENT_SECRET", "").strip()
+    if not client_id or not client_secret:
+        raise HTTPException(503, "Google OAuth is not configured.")
+    return client_id, client_secret
+
+
+def _google_redirect_uri(request: Request) -> str:
+    configured = os.environ.get("GOOGLE_REDIRECT_URI", "").strip()
+    if configured:
+        return configured
+    public_base = (
+        os.environ.get("PUBLIC_BASE_URL", "").strip()
+        or os.environ.get("APP_BASE_URL", "").strip()
+        or os.environ.get("BASE_URL", "").strip()
+    )
+    if public_base:
+        return public_base.rstrip("/") + "/api/auth/google/callback"
+
+    forwarded_host = (request.headers.get("x-forwarded-host") or "").split(",", 1)[0].strip()
+    forwarded_proto = (request.headers.get("x-forwarded-proto") or "").split(",", 1)[0].strip()
+    host = forwarded_host or request.headers.get("host", "").strip()
+    proto = forwarded_proto or request.url.scheme
+    if host:
+        return f"{proto}://{host}/api/auth/google/callback"
+
+    return str(request.url_for("google_oauth_callback"))
+
+
+async def _request_google_token(data: dict) -> dict:
+    async with httpx.AsyncClient(timeout=20) as client:
+        resp = await client.post(GOOGLE_TOKEN_URL, data=data, headers={"Accept": "application/json"})
+    if resp.status_code >= 400:
+        try:
+            error_body = resp.json()
+            detail = error_body.get("error_description") or error_body.get("error")
+        except Exception:
+            detail = resp.text[:200]
+        raise HTTPException(401, f"Google OAuth error: {detail}")
+    return resp.json()
+
+
+async def _get_google_userinfo(access_token: str) -> dict:
+    async with httpx.AsyncClient(timeout=20) as client:
+        resp = await client.get(
+            GOOGLE_USERINFO_URL,
+            headers={"Authorization": f"Bearer {access_token}", "Accept": "application/json"},
+        )
+    if resp.status_code >= 400:
+        raise HTTPException(401, "Could not read Google account profile.")
+    return resp.json()
+
+
+async def _get_google_access_token(session: dict) -> str:
+    access_token = session.get("access_token") or ""
+    expires_at = int(session.get("oauth_expires_at") or 0)
+    if access_token and expires_at > int(time.time()) + 60:
+        return access_token
+
+    refresh_token = session.get("refresh_token") or ""
+    if not refresh_token:
+        raise HTTPException(401, "Google session expired. Please sign in again.")
+
+    client_id, client_secret = _google_oauth_config()
+    token_data = await _request_google_token({
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "refresh_token": refresh_token,
+        "grant_type": "refresh_token",
+    })
+    access_token = token_data.get("access_token") or ""
+    if not access_token:
+        raise HTTPException(401, "Google did not return an access token.")
+    session["access_token"] = access_token
+    session["oauth_expires_at"] = int(time.time()) + int(token_data.get("expires_in") or 3600)
+    return access_token
+
+
+def _smtp_xoauth2_initial_response(email: str, access_token: str) -> str:
+    payload = f"user={email}\x01auth=Bearer {access_token}\x01\x01"
+    return base64.b64encode(payload.encode()).decode()
+
+
+async def _smtp_login_for_session(smtp: aiosmtplib.SMTP, session: dict, email: str):
+    if _session_auth_type(session) == "google_oauth":
+        access_token = await _get_google_access_token(session)
+        auth_xoauth2 = getattr(smtp, "auth_xoauth2", None)
+        if auth_xoauth2:
+            await auth_xoauth2(email, access_token)
+            return
+        await smtp.execute_command(
+            b"AUTH",
+            b"XOAUTH2",
+            _smtp_xoauth2_initial_response(email, access_token).encode(),
+        )
+        return
+    await smtp.login(email, session["password"])
 
 
 # ─── Middleware: session ──────────────────────────────────────────────────────
@@ -1267,6 +1402,98 @@ async def health():
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
 
+@app.get("/api/auth/google/start")
+async def google_oauth_start(request: Request):
+    client_id, _ = _google_oauth_config()
+    state = secrets.token_urlsafe(24)
+    remember = request.query_params.get("remember", "1") != "0"
+    email_hint = (request.query_params.get("email") or "").strip().lower()
+    params = {
+        "client_id": client_id,
+        "redirect_uri": _google_redirect_uri(request),
+        "response_type": "code",
+        "scope": GOOGLE_GMAIL_SCOPE,
+        "access_type": "offline",
+        "prompt": "consent",
+        "include_granted_scopes": "true",
+        "state": state,
+    }
+    if email_hint and "@" in email_hint:
+        params["login_hint"] = email_hint
+
+    response = RedirectResponse(GOOGLE_AUTH_URL + "?" + urlencode(params))
+    response.set_cookie(
+        key=GOOGLE_OAUTH_STATE_COOKIE,
+        value=f"{state}|{'1' if remember else '0'}",
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        path="/api/auth/google",
+        max_age=10 * 60,
+    )
+    return response
+
+
+@app.get("/api/auth/google/callback")
+async def google_oauth_callback(request: Request):
+    if request.query_params.get("error"):
+        return HTMLResponse("Google sign-in was cancelled or denied.", status_code=401)
+
+    state_value = request.cookies.get(GOOGLE_OAUTH_STATE_COOKIE, "")
+    expected_state, _, remember_flag = state_value.partition("|")
+    if not expected_state or request.query_params.get("state") != expected_state:
+        return HTMLResponse("Invalid Google sign-in state. Please try again.", status_code=401)
+
+    code = request.query_params.get("code") or ""
+    if not code:
+        return HTMLResponse("Google did not return an authorization code.", status_code=401)
+
+    client_id, client_secret = _google_oauth_config()
+    token_data = await _request_google_token({
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "code": code,
+        "grant_type": "authorization_code",
+        "redirect_uri": _google_redirect_uri(request),
+    })
+
+    access_token = token_data.get("access_token") or ""
+    if not access_token:
+        return HTMLResponse("Google did not return an access token.", status_code=401)
+
+    profile = await _get_google_userinfo(access_token)
+    email = (profile.get("email") or "").strip().lower()
+    if not email or not profile.get("email_verified", True):
+        return HTMLResponse("Google account email could not be verified.", status_code=401)
+
+    session = {
+        "email": email,
+        "createdAt": int(time.time() * 1000),
+        "auth_type": "google_oauth",
+        "access_token": access_token,
+        "refresh_token": token_data.get("refresh_token") or "",
+        "oauth_expires_at": int(time.time()) + int(token_data.get("expires_in") or 3600),
+        "imap_host": GOOGLE_IMAP_HOST,
+        "imap_port": 993,
+        "smtp_host": GOOGLE_SMTP_HOST,
+        "smtp_port": 465,
+    }
+
+    remember = remember_flag != "0"
+    response = RedirectResponse("/#/mail/INBOX")
+    response.set_cookie(
+        key=SESSION_COOKIE,
+        value=encrypt_session(session),
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        path="/",
+        max_age=SESSION_MAX_AGE if remember else None,
+    )
+    response.delete_cookie(GOOGLE_OAUTH_STATE_COOKIE, path="/api/auth/google")
+    return response
+
+
 @app.post("/api/auth/login")
 async def login(request: Request, body: dict):
     email = (body.get("email") or "").lower().strip()
@@ -1776,7 +2003,6 @@ async def delete_message(request: Request, uid: int):
 async def send_message(request: Request, body: dict):
     session = await require_session(request)
     email = session["email"]
-    password = session["password"]
 
     # Parse recipients
     def parse_recipients(value: str) -> list[str]:
@@ -1857,8 +2083,6 @@ async def send_message(request: Request, body: dict):
         smtp_port = int(session.get("smtp_port") or os.environ.get("SMTP_PORT", "465"))
     smtp_secure = os.environ.get("SMTP_SECURE", "true").lower() != "false"
 
-    import aiosmtplib
-
     smtp = aiosmtplib.SMTP(
         hostname=smtp_host,
         port=smtp_port,
@@ -1868,7 +2092,7 @@ async def send_message(request: Request, body: dict):
     )
     try:
         await smtp.connect()
-        await smtp.login(email, password)
+        await _smtp_login_for_session(smtp, session, email)
         all_recipients = to_recipients + cc_recipients + bcc_recipients
         print(f"[SMTP] Sending from {email} to {all_recipients} via {smtp_host}:{smtp_port}")
         await smtp.send_message(
@@ -2078,7 +2302,9 @@ async def upload_signature_image(request: Request, file: UploadFile = File(...))
 def _get_dav_config(session: dict) -> dict:
     """Build CalDAV/CardDAV server config from session + env vars."""
     email = session["email"]
-    password = session["password"]
+    password = session.get("password") or ""
+    if _session_auth_type(session) == "google_oauth" and not password:
+        raise HTTPException(400, "Contacts and calendar DAV sync are not available for Google OAuth mail sessions.")
     domain = email.split("@")[1].lower()
 
     use_https = os.environ.get("DAV_SECURE", "true").lower() != "false"
@@ -2462,7 +2688,6 @@ async def send_calendar_invite(request: Request, body: dict):
     """Build .ics METHOD:REQUEST and send as email invite via SMTP."""
     session = await require_session(request)
     account = session["email"]
-    password = session["password"]
 
     event = body.get("event", {})
     attendee_list = body.get("attendees", [])
@@ -2548,12 +2773,16 @@ async def send_calendar_invite(request: Request, body: dict):
         smtp_port = int(session.get("smtp_port") or os.environ.get("SMTP_PORT", "465"))
 
     use_tls = os.environ.get("SMTP_SECURE", "true").lower() != "false"
-    smtp = aiosmtplib.SMTP(timeout=SMTP_TIMEOUT)
+    smtp = aiosmtplib.SMTP(
+        hostname=smtp_host,
+        port=smtp_port,
+        use_tls=use_tls and smtp_port == 465,
+        start_tls=use_tls and smtp_port != 465,
+        timeout=SMTP_TIMEOUT,
+    )
     try:
         await smtp.connect()
-        if use_tls and smtp.can_starttls:
-            await smtp.starttls()
-        await smtp.login(account, password)
+        await _smtp_login_for_session(smtp, session, account)
         await smtp.send_message(mime_msg)
     finally:
         await smtp.quit()
