@@ -31,13 +31,24 @@ Gmail sign-in uses Google OAuth, not Gmail passwords. Create a Google OAuth web 
 https://your-domain.example/api/auth/google/callback
 ```
 
+Google Cloud setup path:
+
+1. Open `https://console.cloud.google.com/apis/credentials`.
+2. Configure OAuth consent screen with app name `BNIX Webmail`.
+3. Create `Credentials` -> `OAuth client ID`.
+4. Choose `Web application`.
+5. Add the redirect URI above.
+6. Copy the generated Client ID and Client Secret.
+
 Use the public OAuth verification home page as the application home page:
 
 ```txt
 https://your-domain.example/oauth-home
 ```
 
-Then put the credentials in `/etc/bnix-webmail.env`:
+Then open `/admin`, enable Google login, and paste the generated Client ID and Client Secret into the Google OAuth Login section.
+
+Alternatively, put the credentials in `/etc/bnix-webmail.env`:
 
 ```txt
 GOOGLE_CLIENT_ID=...

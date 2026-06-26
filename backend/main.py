@@ -277,6 +277,11 @@ def _admin_init():
             created_at TEXT    NOT NULL,
             updated_at TEXT    NOT NULL
         )""")
+        db.execute("""CREATE TABLE IF NOT EXISTS admin_settings (
+            key        TEXT PRIMARY KEY,
+            value      TEXT NOT NULL DEFAULT '',
+            updated_at TEXT NOT NULL
+        )""")
         # Seed default admin if none exists
         cur = db.execute("SELECT COUNT(*) FROM admin_users")
         if cur.fetchone()[0] == 0:
@@ -291,6 +296,56 @@ def _admin_init():
 
 
 _admin_init()
+
+
+def _admin_setting_get(key: str, default: str = "") -> str:
+    import sqlite3
+    with sqlite3.connect(ADMIN_DB) as db:
+        row = db.execute("SELECT value FROM admin_settings WHERE key=?", (key,)).fetchone()
+    return row[0] if row else default
+
+
+def _admin_setting_set_many(settings: dict[str, str]):
+    import sqlite3
+    now = datetime.utcnow().isoformat()
+    with sqlite3.connect(ADMIN_DB) as db:
+        for key, value in settings.items():
+            db.execute(
+                """INSERT INTO admin_settings (key, value, updated_at)
+                   VALUES (?, ?, ?)
+                   ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at""",
+                (key, value or "", now),
+            )
+        db.commit()
+
+
+def _encrypt_config_secret(value: str) -> str:
+    if not value:
+        return ""
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    aesgcm = AESGCM(_session_key())
+    iv = secrets.token_bytes(12)
+    encrypted = aesgcm.encrypt(iv, value.encode(), None)
+    return f"v1.{_b64_encode(iv)}.{_b64_encode(encrypted[:16])}.{_b64_encode(encrypted[16:])}"
+
+
+def _decrypt_config_secret(value: str) -> str:
+    if not value:
+        return ""
+    if not value.startswith("v1."):
+        return value
+    try:
+        _, iv_b64, tag_b64, data_b64 = value.split(".", 3)
+        from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+        aesgcm = AESGCM(_session_key())
+        decrypted = aesgcm.decrypt(
+            _b64_decode(iv_b64),
+            _b64_decode(tag_b64) + _b64_decode(data_b64),
+            None,
+        )
+        return decrypted.decode()
+    except Exception:
+        return ""
 
 
 def _admin_encrypt_session(data: dict) -> str:
@@ -543,12 +598,32 @@ def encrypt_session(session: dict) -> str:
     return f"{_b64_encode(iv)}.{_b64_encode(tag)}.{_b64_encode(data)}"
 
 
+def _google_oauth_settings() -> dict:
+    db_client_id = _admin_setting_get("google_client_id", "").strip()
+    db_secret_enc = _admin_setting_get("google_client_secret", "")
+    db_secret = _decrypt_config_secret(db_secret_enc)
+    client_id = db_client_id or os.environ.get("GOOGLE_CLIENT_ID", "").strip()
+    client_secret = db_secret or os.environ.get("GOOGLE_CLIENT_SECRET", "").strip()
+    configured = bool(client_id and client_secret)
+    enabled_raw = _admin_setting_get("google_oauth_enabled", "")
+    enabled = configured if enabled_raw == "" else enabled_raw == "1"
+    return {
+        "enabled": enabled,
+        "configured": configured,
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "client_secret_set": bool(client_secret),
+        "source": "admin" if (db_client_id or db_secret) else "env",
+    }
+
+
 def _google_oauth_config() -> tuple[str, str]:
-    client_id = os.environ.get("GOOGLE_CLIENT_ID", "").strip()
-    client_secret = os.environ.get("GOOGLE_CLIENT_SECRET", "").strip()
-    if not client_id or not client_secret:
+    settings = _google_oauth_settings()
+    if not settings["enabled"]:
+        raise HTTPException(403, "Google OAuth sign-in is disabled.")
+    if not settings["configured"]:
         raise HTTPException(503, "Google OAuth is not configured.")
-    return client_id, client_secret
+    return settings["client_id"], settings["client_secret"]
 
 
 def _google_redirect_uri(request: Request) -> str:
@@ -1401,6 +1476,17 @@ async def health():
 
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
+
+@app.get("/api/auth/providers")
+async def auth_providers():
+    google = _google_oauth_settings()
+    return {
+        "google": {
+            "enabled": bool(google["enabled"] and google["configured"]),
+            "configured": bool(google["configured"]),
+        }
+    }
+
 
 @app.get("/api/auth/google/start")
 async def google_oauth_start(request: Request):
@@ -3059,6 +3145,55 @@ async def admin_change_password(request: Request, body: dict):
         db.commit()
 
     return JSONResponse({"ok": True})
+
+
+@app.get("/api/admin/oauth/google")
+async def admin_get_google_oauth(request: Request):
+    await require_admin(request)
+    settings = _google_oauth_settings()
+    redirect_uri = _google_redirect_uri(request)
+    return JSONResponse({
+        "enabled": bool(settings["enabled"]),
+        "configured": bool(settings["configured"]),
+        "clientId": settings["client_id"],
+        "clientSecretSet": bool(settings["client_secret_set"]),
+        "source": settings["source"],
+        "redirectUri": redirect_uri,
+        "homePage": redirect_uri.replace("/api/auth/google/callback", "/oauth-home"),
+    })
+
+
+@app.put("/api/admin/oauth/google")
+async def admin_put_google_oauth(request: Request, body: dict):
+    await require_admin(request)
+    enabled = bool(body.get("enabled"))
+    client_id = (body.get("clientId") or "").strip()
+    client_secret = (body.get("clientSecret") or "").strip()
+
+    current_secret = _decrypt_config_secret(_admin_setting_get("google_client_secret", ""))
+    effective_secret = client_secret or current_secret or os.environ.get("GOOGLE_CLIENT_SECRET", "").strip()
+    if enabled and not client_id:
+        raise HTTPException(400, "Google Client ID is required when Google sign-in is enabled.")
+    if enabled and not effective_secret:
+        raise HTTPException(400, "Google Client Secret is required when Google sign-in is enabled.")
+
+    updates = {
+        "google_oauth_enabled": "1" if enabled else "0",
+        "google_client_id": client_id,
+    }
+    if client_secret:
+        updates["google_client_secret"] = _encrypt_config_secret(client_secret)
+    _admin_setting_set_many(updates)
+
+    settings = _google_oauth_settings()
+    return JSONResponse({
+        "ok": True,
+        "enabled": bool(settings["enabled"]),
+        "configured": bool(settings["configured"]),
+        "clientId": settings["client_id"],
+        "clientSecretSet": bool(settings["client_secret_set"]),
+        "source": settings["source"],
+    })
 
 
 @app.get("/api/admin/domains")

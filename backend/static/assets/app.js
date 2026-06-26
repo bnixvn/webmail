@@ -1052,6 +1052,7 @@ function readFileAsDataUrl(file) {
 const S = {
   ready: false,
   account: null,
+  authProviders: { google: false },
   view: "mail",
   mailboxes: [],
   folder: "INBOX",
@@ -1197,11 +1198,11 @@ function renderLogin() {
           ),
           S.loginError ? h("div", { className: "login-error" }, S.loginError) : null,
           h("button", { type: "submit", className: "login-submit" }, t("signIn")),
-          h("button", {
+          S.authProviders.google ? h("button", {
             type: "button",
             className: "login-google",
             onclick: onGoogleLogin,
-          }, h("span", { className: "login-google-icon" }, "G"), h("span", {}, t("googleSignIn"))),
+          }, h("span", { className: "login-google-icon" }, "G"), h("span", {}, t("googleSignIn"))) : null,
           h("div", { className: "login-advanced" },
             h("button", {
               type: "button",
@@ -1245,7 +1246,7 @@ async function onLogin(e) {
   const smtpPort = form.smtpPort?.value.trim() || "";
   set({ loginError: "" });
 
-  if (isGoogleMailAddress(email) && !imapHost && !smtpHost) {
+  if (S.authProviders.google && isGoogleMailAddress(email) && !imapHost && !smtpHost) {
     startGoogleOAuth(form);
     return;
   }
@@ -1284,6 +1285,15 @@ function startGoogleOAuth(form) {
 
 function onGoogleLogin(e) {
   startGoogleOAuth(e.target.closest("form"));
+}
+
+async function loadAuthProviders() {
+  try {
+    const data = await api("/api/auth/providers");
+    set({ authProviders: { google: !!data.google?.enabled } });
+  } catch {
+    set({ authProviders: { google: false } });
+  }
 }
 
 async function bootstrap() {
@@ -4562,6 +4572,7 @@ function onPopState() {
 
   // Listen for browser back/forward
   window.addEventListener("popstate", onPopState);
+  await loadAuthProviders();
 
   try {
     const data = await api("/api/auth/me");
