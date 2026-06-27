@@ -826,8 +826,8 @@ function moveMenuButton(scope, onPick) {
   return wrap;
 }
 
-function renderLabelDropdown(uid) {
-  if (S.labelMenu !== uid) return null;
+function renderLabelDropdown(uid, source) {
+  if (S[source] !== uid) return null;
   const msg = S.messages.find(m => m.uid === uid);
   if (!msg) return null;
   const msgLabels = (msg.labels || []).map(l => l.labelUid);
@@ -843,7 +843,7 @@ function renderLabelDropdown(uid) {
       className: "w-full flex items-center gap-2 px-3 py-2 text-sm text-left text-brand hover:bg-slate-50 dark:hover:bg-slate-600",
       onclick(e) {
         e.stopPropagation();
-        set({ labelMenu: null, labelManagerOpen: true });
+        set({ labelMenuList: null, labelMenuView: null, labelManagerOpen: true });
       },
     }, icon("plus"), t("newLabel")));
     return dropdown;
@@ -869,7 +869,7 @@ function renderLabelDropdown(uid) {
     className: "w-full flex items-center gap-2 px-3 py-2 text-sm text-left text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-600",
     onclick(e) {
       e.stopPropagation();
-      set({ labelMenu: null, labelManagerOpen: true });
+      set({ labelMenuList: null, labelMenuView: null, labelManagerOpen: true });
     },
   }, icon("settings"), t("manageLabels")));
 
@@ -1104,7 +1104,8 @@ const S = {
   // Labels
   labels: [],
   labelsLoaded: false,
-  labelMenu: null,        // uid or "batch" or null
+  labelMenuList: null,    // uid or null — dropdown in message list
+  labelMenuView: null,    // uid or null — dropdown in reading pane
   labelEditing: null,     // label being edited
   labelManagerOpen: false,
   contacts: [],
@@ -2211,20 +2212,18 @@ function renderMessageItem(msg, inThread, isReply) {
       title: t("labels"),
       onclick(e) {
         e.stopPropagation();
-        set({ labelMenu: S.labelMenu === msg.uid ? null : msg.uid });
+        set({ labelMenuList: S.labelMenuList === msg.uid ? null : msg.uid });
       },
     }, labelTagIcon(hasLabels ? primaryLabel.color : null, hasLabels, 16));
     timeCol.appendChild(labelBtn);
   }
   item.appendChild(timeCol);
 
-  // Label dropdown (skip in list on desktop when reading pane shows same message)
-  if (!(window.innerWidth >= 769 && S.selectedUid === msg.uid)) {
-    const labelDropdown = renderLabelDropdown(msg.uid);
-    if (labelDropdown) {
-      item.style.position = "relative";
-      item.appendChild(labelDropdown);
-    }
+  // Label dropdown
+  const labelDropdown = renderLabelDropdown(msg.uid, "labelMenuList");
+  if (labelDropdown) {
+    item.style.position = "relative";
+    item.appendChild(labelDropdown);
   }
 
   return item;
@@ -2738,11 +2737,11 @@ function renderMessageView() {
       innerHTML: I.plus + t("addLabel"),
       onclick(e) {
         e.stopPropagation();
-        set({ labelMenu: S.labelMenu === msg.uid ? null : msg.uid });
+        set({ labelMenuView: S.labelMenuView === msg.uid ? null : msg.uid });
       },
     });
     addLabelWrap.appendChild(addLabelBtn);
-    const labelDropdown = renderLabelDropdown(msg.uid);
+    const labelDropdown = renderLabelDropdown(msg.uid, "labelMenuView");
     if (labelDropdown) {
       labelDropdown.className = labelDropdown.className.replace("right-0 top-6", "left-0 top-7");
       addLabelWrap.appendChild(labelDropdown);
@@ -4468,8 +4467,8 @@ function render() {
     clear(app);
 
     // Close floating menus on outside click
-    if (S.moreMenu || S.moveMenu || S.labelMenu) {
-      document.addEventListener("click", () => set({ moreMenu: false, moveMenu: null, labelMenu: null }), { once: true });
+    if (S.moreMenu || S.moveMenu || S.labelMenuList || S.labelMenuView) {
+      document.addEventListener("click", () => set({ moreMenu: false, moveMenu: null, labelMenuList: null, labelMenuView: null }), { once: true });
     }
 
     if (!S.account) {
