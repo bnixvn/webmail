@@ -89,6 +89,8 @@ sudo systemctl restart bnix-webmail
 
 ### Gmail / Google OAuth Login
 
+Google login is optional and disabled by default. BNIX Webmail works normally with email + mail password over IMAP/SMTP. Enable Google login only if you want users to read Gmail or Google Workspace mail through this app.
+
 Google login requires one OAuth app in Google Cloud. End users do not need Google Cloud access; they only click **Sign in with Google** and approve access.
 
 1. Open `https://console.cloud.google.com/apis/credentials`.
@@ -120,6 +122,8 @@ You can also configure the same values through `/etc/bnix-webmail.env`:
 GOOGLE_CLIENT_ID=...
 GOOGLE_CLIENT_SECRET=...
 ```
+
+Environment credentials only make Google OAuth available for configuration; they do not turn the login button on. Open `/admin` and enable Google login when you want it visible on the login page.
 
 The app auto-detects the public hostname from request/proxy headers. If that fails, set `PUBLIC_BASE_URL=https://your-webmail-domain.example`.
 

@@ -619,7 +619,7 @@ def _google_oauth_settings() -> dict:
     client_secret = db_secret or os.environ.get("GOOGLE_CLIENT_SECRET", "").strip()
     configured = bool(client_id and client_secret)
     enabled_raw = _admin_setting_get("google_oauth_enabled", "")
-    enabled = configured if enabled_raw == "" else enabled_raw == "1"
+    enabled = enabled_raw == "1"
     return {
         "enabled": enabled,
         "configured": configured,
