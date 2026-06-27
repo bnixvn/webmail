@@ -42,7 +42,6 @@ const LOCALES = {
     imapHostPh: "IMAP host", imapPortPh: "IMAP port (993)",
     smtpHostPh: "SMTP host", smtpPortPh: "SMTP port (465)",
     signIn: "Sign in",
-    googleSignIn: "Continue with Google",
     loginFailed: "Login failed",
     sessionExpired: "Session expired. Please sign in again.",
     // Sidebar
@@ -158,7 +157,6 @@ const LOCALES = {
     imapHostPh: "Máy chủ IMAP", imapPortPh: "Cổng IMAP (993)",
     smtpHostPh: "Máy chủ SMTP", smtpPortPh: "Cổng SMTP (465)",
     signIn: "Đăng nhập",
-    googleSignIn: "Đăng nhập bằng Google",
     loginFailed: "Đăng nhập thất bại",
     sessionExpired: "Phiên đã hết hạn. Vui lòng đăng nhập lại.",
     // Sidebar
@@ -705,6 +703,16 @@ function moveBody(destination, role = null) {
   return JSON.stringify(body);
 }
 
+function bulkMoveBody(uids, destination, role = null) {
+  const body = { folder: S.folder, uids, destination };
+  if (role) body.role = role;
+  return JSON.stringify(body);
+}
+
+function bulkDeleteBody(uids) {
+  return JSON.stringify({ folder: S.folder, uids });
+}
+
 function mailboxLabel(mb) {
   const info = mb._info || classifyFolder(mb);
   return folderDisplayName(info, mb.name || mb.path);
@@ -1052,7 +1060,6 @@ function readFileAsDataUrl(file) {
 const S = {
   ready: false,
   account: null,
-  authProviders: { google: false },
   view: "mail",
   mailboxes: [],
   folder: "INBOX",
@@ -1198,11 +1205,6 @@ function renderLogin() {
           ),
           S.loginError ? h("div", { className: "login-error" }, S.loginError) : null,
           h("button", { type: "submit", className: "login-submit" }, t("signIn")),
-          S.authProviders.google ? h("button", {
-            type: "button",
-            className: "login-google",
-            onclick: onGoogleLogin,
-          }, h("span", { className: "login-google-icon" }, "G"), h("span", {}, t("googleSignIn"))) : null,
           h("div", { className: "login-advanced" },
             h("button", {
               type: "button",
@@ -1246,11 +1248,6 @@ async function onLogin(e) {
   const smtpPort = form.smtpPort?.value.trim() || "";
   set({ loginError: "" });
 
-  if (S.authProviders.google && isGoogleMailAddress(email) && !imapHost && !smtpHost) {
-    startGoogleOAuth(form);
-    return;
-  }
-
   try {
     const data = await api("/api/auth/login", {
       method: "POST",
@@ -1268,33 +1265,6 @@ async function onLogin(e) {
 }
 
 // â”€â”€â”€ Bootstrap â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
-function isGoogleMailAddress(email) {
-  const domain = (email.split("@")[1] || "").toLowerCase();
-  return domain === "gmail.com" || domain === "googlemail.com";
-}
-
-function startGoogleOAuth(form) {
-  const email = form?.email?.value.trim() || "";
-  const remember = form?.remember?.checked ? "1" : "0";
-  const params = new URLSearchParams({ remember });
-  if (email) params.set("email", email);
-  set({ loginError: "" });
-  window.location.href = `/api/auth/google/start?${params.toString()}`;
-}
-
-function onGoogleLogin(e) {
-  startGoogleOAuth(e.target.closest("form"));
-}
-
-async function loadAuthProviders() {
-  try {
-    const data = await api("/api/auth/providers");
-    set({ authProviders: { google: !!data.google?.enabled } });
-  } catch {
-    set({ authProviders: { google: false } });
-  }
-}
 
 async function bootstrap() {
   try {
@@ -2972,73 +2942,68 @@ async function deleteMsg() {
 }
 
 async function batchMove(destination) {
-  let failed = 0;
-  for (const uid of S.selectedUids) {
-    try {
-      await api(`/api/messages/${uid}/move`, {
-        method: "POST",
-        body: moveBody(destination),
-      });
-    } catch {
-      failed += 1;
-    }
+  if (!S.selectedUids.length) return;
+  try {
+    await api("/api/messages/bulk/move", {
+      method: "POST",
+      body: bulkMoveBody(S.selectedUids, destination),
+    });
+    set({ selectedUids: [], moveMenu: null });
+    showToast(t("movedOk"));
+    await refreshMailboxes();
+    await loadMessages();
+  } catch (err) {
+    set({ error: err.message });
   }
-  set({ selectedUids: [], moveMenu: null });
-  if (failed) set({ error: `${failed} message(s) could not be moved.` });
-  else showToast(t("movedOk"));
-  await refreshMailboxes();
-  await loadMessages();
 }
 
 async function batchArchive() {
+  if (!S.selectedUids.length) return;
   const destination = folderTarget("archive");
-  let failed = 0;
-  for (const uid of S.selectedUids) {
-    try {
-      await api(`/api/messages/${uid}/move`, {
-        method: "POST",
-        body: moveBody(destination),
-      });
-    } catch {
-      failed += 1;
-    }
+  try {
+    await api("/api/messages/bulk/move", {
+      method: "POST",
+      body: bulkMoveBody(S.selectedUids, destination),
+    });
+    set({ selectedUids: [] });
+    showToast(t("movedOk"));
+    await refreshMailboxes();
+    await loadMessages();
+  } catch (err) {
+    set({ error: err.message });
   }
-  set({ selectedUids: [] });
-  if (failed) set({ error: `${failed} message(s) could not be moved.` });
-  else showToast(t("movedOk"));
-  await refreshMailboxes();
-  await loadMessages();
 }
 
 async function batchSpam() {
+  if (!S.selectedUids.length) return;
   const destination = folderTarget("spam");
-  let failed = 0;
-  for (const uid of S.selectedUids) {
-    try {
-      await api(`/api/messages/${uid}/move`, {
-        method: "POST",
-        body: moveBody(destination, "junk"),
-      });
-    } catch {
-      failed += 1;
-    }
+  try {
+    await api("/api/messages/bulk/move", {
+      method: "POST",
+      body: bulkMoveBody(S.selectedUids, destination, "junk"),
+    });
+    set({ selectedUids: [] });
+    showToast(t("movedOk"));
+    await refreshMailboxes();
+    await loadMessages();
+  } catch (err) {
+    set({ error: err.message });
   }
-  set({ selectedUids: [] });
-  if (failed) set({ error: `${failed} message(s) could not be moved.` });
-  else showToast(t("movedOk"));
-  await refreshMailboxes();
-  await loadMessages();
 }
 
 async function batchDelete() {
-  for (const uid of S.selectedUids) {
-    try {
-      await api(`/api/messages/${uid}?folder=${encodeURIComponent(S.folder)}`, { method: "DELETE" });
-    } catch {}
+  if (!S.selectedUids.length) return;
+  try {
+    await api("/api/messages/bulk/delete", {
+      method: "POST",
+      body: bulkDeleteBody(S.selectedUids),
+    });
+    set({ selectedUids: [] });
+    await refreshMailboxes();
+    await loadMessages();
+  } catch (err) {
+    set({ error: err.message });
   }
-  set({ selectedUids: [] });
-  await refreshMailboxes();
-  await loadMessages();
 }
 
 function defaultSignatureHtml() {
@@ -4572,7 +4537,6 @@ function onPopState() {
 
   // Listen for browser back/forward
   window.addEventListener("popstate", onPopState);
-  await loadAuthProviders();
 
   try {
     const data = await api("/api/auth/me");

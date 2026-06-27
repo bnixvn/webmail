@@ -87,46 +87,6 @@ sudo systemctl restart bnix-webmail
 
 > **Multi-domain support**: Users can log in with any email address. The app resolves the MX record for each email domain to find the correct IMAP/SMTP server. No per-domain configuration needed. If auto-detection fails, users can enter the server manually via "Mail server settings" on the login page.
 
-### Gmail / Google OAuth Login
-
-Google login is optional and disabled by default. BNIX Webmail works normally with email + mail password over IMAP/SMTP. Enable Google login only if you want users to read Gmail or Google Workspace mail through this app.
-
-Google login requires one OAuth app in Google Cloud. End users do not need Google Cloud access; they only click **Sign in with Google** and approve access.
-
-1. Open `https://console.cloud.google.com/apis/credentials`.
-2. Create or select a project.
-3. Configure **OAuth consent screen**:
-   - App name: `BNIX Webmail`
-   - Add your support/developer email
-   - Add test Gmail users if the app is still in Testing
-4. Create **Credentials → OAuth client ID**.
-5. Choose application type **Web application**.
-6. Add **Authorized redirect URI**:
-
-```txt
-https://your-webmail-domain.example/api/auth/google/callback
-```
-
-7. Set **Application home page** to:
-
-```txt
-https://your-webmail-domain.example/oauth-home
-```
-
-8. Copy the generated **Client ID** and **Client Secret**.
-9. In BNIX Webmail, open `/admin`, enable Google login, and paste both values into **Google OAuth Login**.
-
-You can also configure the same values through `/etc/bnix-webmail.env`:
-
-```env
-GOOGLE_CLIENT_ID=...
-GOOGLE_CLIENT_SECRET=...
-```
-
-Environment credentials only make Google OAuth available for configuration; they do not turn the login button on. Open `/admin` and enable Google login when you want it visible on the login page.
-
-The app auto-detects the public hostname from request/proxy headers. If that fails, set `PUBLIC_BASE_URL=https://your-webmail-domain.example`.
-
 ### Caddy Reverse Proxy
 
 Install Caddy and configure:

@@ -303,41 +303,6 @@
       <!-- Alerts -->
       <div id="dashAlert" class="alert"></div>
 
-      <!-- Google OAuth -->
-      <div class="card">
-        <div class="card-header">
-          <h3>Google OAuth Login</h3>
-          <span id="googleOAuthBadge" class="badge badge-off">Not configured</span>
-        </div>
-        <div class="card-body">
-          <div id="googleAlert" class="alert"></div>
-          <form id="googleOAuthForm" onsubmit="saveGoogleOAuth(event)">
-            <label class="toggle-row">
-              <input type="checkbox" name="enabled">
-              <span>Bật đăng nhập bằng Google</span>
-            </label>
-            <div class="form-group">
-              <label>Google Client ID</label>
-              <input type="text" name="clientId" placeholder="1234567890-abc.apps.googleusercontent.com" autocomplete="off">
-            </div>
-            <div class="form-group">
-              <label>Google Client Secret</label>
-              <input type="password" name="clientSecret" placeholder="GOCSPX-..." autocomplete="new-password">
-            </div>
-            <p id="googleSecretStatus" class="form-hint">Để trống Client Secret nếu muốn giữ mã đang lưu.</p>
-            <div class="form-group">
-              <label>Authorized redirect URI</label>
-              <input type="text" id="googleRedirectUri" readonly onclick="this.select()">
-            </div>
-            <div class="form-group">
-              <label>Application home page</label>
-              <input type="text" id="googleHomePage" readonly onclick="this.select()">
-            </div>
-            <button type="submit" class="btn btn-primary btn-sm">Lưu Google OAuth</button>
-          </form>
-        </div>
-      </div>
-
       <!-- Domain Aliases -->
       <div class="card">
         <div class="card-header">
@@ -439,7 +404,6 @@ function showDashboard() {
   document.getElementById('loginPage').style.display = 'none';
   document.getElementById('adminDashboard').style.display = 'block';
   document.getElementById('adminUser').textContent = adminUser;
-  loadGoogleOAuthSettings();
   loadDomains();
 }
 
@@ -468,46 +432,6 @@ async function adminLogout() {
 }
 
 // ─── Domains ────────────────────────────────────────────────────────────────
-async function loadGoogleOAuthSettings() {
-  try {
-    const data = await api('/api/admin/oauth/google');
-    const form = document.getElementById('googleOAuthForm');
-    form.enabled.checked = !!data.enabled;
-    form.clientId.value = data.clientId || '';
-    form.clientSecret.value = '';
-    document.getElementById('googleRedirectUri').value = data.redirectUri || '';
-    document.getElementById('googleHomePage').value = data.homePage || '';
-    document.getElementById('googleSecretStatus').textContent = data.clientSecretSet
-      ? 'Client Secret đã được lưu. Để trống nếu không muốn đổi.'
-      : 'Chưa lưu Client Secret. Cần nhập mã này trước khi bật Google login.';
-    const badge = document.getElementById('googleOAuthBadge');
-    badge.className = `badge ${data.enabled && data.configured ? 'badge-on' : 'badge-off'}`;
-    badge.textContent = data.enabled && data.configured ? 'Enabled' : (data.configured ? 'Configured, off' : 'Not configured');
-  } catch (err) {
-    showAlert('googleAlert', 'Không thể tải Google OAuth: ' + err.message);
-  }
-}
-
-async function saveGoogleOAuth(e) {
-  e.preventDefault();
-  const form = e.target;
-  try {
-    await api('/api/admin/oauth/google', {
-      method: 'PUT',
-      body: JSON.stringify({
-        enabled: form.enabled.checked,
-        clientId: form.clientId.value.trim(),
-        clientSecret: form.clientSecret.value.trim(),
-      }),
-    });
-    form.clientSecret.value = '';
-    showAlert('googleAlert', 'Đã lưu Google OAuth!', 'success');
-    loadGoogleOAuthSettings();
-  } catch (err) {
-    showAlert('googleAlert', err.message);
-  }
-}
-
 async function loadDomains() {
   try {
     const data = await api('/api/admin/domains');

@@ -607,39 +607,6 @@ input, textarea, [contenteditable] {
 .login-submit:hover { opacity: 0.92; }
 .login-submit:active { transform: scale(0.985); }
 
-.login-google {
-  width: 100%;
-  margin-top: 10px;
-  padding: 10px 12px;
-  border: 1.5px solid #dde3ea;
-  border-radius: 10px;
-  background: #fff;
-  color: #334155;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  transition: border-color 0.15s ease, background 0.15s ease, transform 0.1s ease;
-}
-.login-google:hover {
-  border-color: #cbd5e1;
-  background: #f8fafc;
-}
-.login-google:active { transform: scale(0.985); }
-.login-google-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  color: #1a73e8;
-  font-weight: 700;
-}
-
 /* Advanced settings */
 .login-advanced {
   margin-top: 18px;

@@ -239,15 +239,6 @@
   color: #fca5a5;
   border-color: #991b1b;
 }
-.dark .login-google {
-  background: #0f172a;
-  border-color: #334155;
-  color: #e2e8f0;
-}
-.dark .login-google:hover {
-  background: #1e293b;
-  border-color: #475569;
-}
 .dark .login-advanced {
   border-top-color: #334155;
 }
