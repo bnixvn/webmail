@@ -2218,11 +2218,13 @@ function renderMessageItem(msg, inThread, isReply) {
   }
   item.appendChild(timeCol);
 
-  // Label dropdown
-  const labelDropdown = renderLabelDropdown(msg.uid);
-  if (labelDropdown) {
-    item.style.position = "relative";
-    item.appendChild(labelDropdown);
+  // Label dropdown (skip in list on desktop when reading pane shows same message)
+  if (!(window.innerWidth >= 769 && S.selectedUid === msg.uid)) {
+    const labelDropdown = renderLabelDropdown(msg.uid);
+    if (labelDropdown) {
+      item.style.position = "relative";
+      item.appendChild(labelDropdown);
+    }
   }
 
   return item;
