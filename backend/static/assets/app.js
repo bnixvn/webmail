@@ -1674,7 +1674,37 @@ function renderMobileSidebar() {
   // Folders (scrollable)
   const { mainFolders, customFolders } = splitMailboxes();
   const folderSection = h("div", { className: "flex-1 overflow-y-auto px-2 pb-2" });
-  for (const mb of [...mainFolders, ...customFolders]) {
+
+  // Main folders section header
+  if (S.view === "mail") {
+    folderSection.appendChild(h("div", { className: "px-2 pt-2 pb-1" },
+      h("div", { className: "text-[11px] font-semibold uppercase text-slate-400 tracking-wider" }, t("mainSection")),
+    ));
+  }
+  for (const mb of mainFolders) {
+    const info = mb._info || classifyFolder(mb);
+    const active = S.folder === mb.path;
+    folderSection.appendChild(h("button", {
+      className: `folder-item w-full ${active ? "active" : ""}`,
+      onclick() {
+        navigate({ folder: mb.path, uid: null });
+        set({ folder: mb.path, selectedUid: null, selectedMsg: null, threadMsgs: [], mobileSidebar: false });
+        loadMessages();
+      },
+    },
+      icon(info ? info.icon : "folder"),
+      h("span", { className: "flex-1 text-left truncate" }, folderDisplayName(info, mb.name || mb.path)),
+      mb.unseen > 0 ? h("span", { className: "bg-blue-500 text-white text-[11px] px-1.5 py-0.5 rounded-full" }, String(mb.unseen)) : null,
+    ));
+  }
+
+  // Custom folders section header
+  if (S.view === "mail" && customFolders.length > 0) {
+    folderSection.appendChild(h("div", { className: "px-2 pt-3 pb-1 flex items-center justify-between" },
+      h("div", { className: "text-[11px] font-semibold uppercase text-slate-400 tracking-wider" }, t("foldersSection")),
+    ));
+  }
+  for (const mb of customFolders) {
     const info = mb._info || classifyFolder(mb);
     const active = S.folder === mb.path;
     folderSection.appendChild(h("button", {
@@ -1691,6 +1721,78 @@ function renderMobileSidebar() {
     ));
   }
   panel.appendChild(folderSection);
+
+  // Labels section (mail view only)
+  if (S.view === "mail") {
+    const labelSection = h("div", { className: "px-2 pb-2" });
+    labelSection.appendChild(h("div", { className: "flex items-center justify-between px-2 py-1" },
+      h("div", { className: "text-[11px] font-semibold uppercase text-slate-400 tracking-wider flex items-center gap-1" },
+        h("span", { innerHTML: I.tag, className: "text-slate-400" }),
+        t("labels"),
+      ),
+      h("button", {
+        className: "text-slate-400 hover:text-slate-600 p-0.5",
+        title: t("manageLabels"),
+        onclick() { set({ labelManagerOpen: true, labelEditing: null, mobileSidebar: false }); },
+        innerHTML: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>`,
+      }),
+    ));
+    if (S.labels.length > 0) {
+      const labelList = h("div", { className: "space-y-0.5" });
+      for (const label of S.labels) {
+        const labelCount = S.messages.filter(m => (m.labels || []).some(l => l.labelUid === label.uid)).length;
+        const active = S.msgFilter === "labeled" && S.labelFilter === label.uid;
+        labelList.appendChild(h("button", {
+          className: `folder-item w-full ${active ? "active" : ""}`,
+          onclick() {
+            set({ msgFilter: "labeled", labelFilter: label.uid, selectedUids: [], mobileSidebar: false });
+          },
+        },
+          labelTagIcon(label.color, true, 16),
+          h("span", { className: "flex-1 text-left truncate text-sm" }, label.name),
+          labelCount > 0 ? h("span", { className: "text-[11px] text-slate-400" }, String(labelCount)) : null,
+        ));
+      }
+      labelSection.appendChild(labelList);
+    } else {
+      labelSection.appendChild(h("div", { className: "py-1" },
+        h("button", {
+          className: "text-xs text-brand hover:underline",
+          onclick() { set({ labelManagerOpen: true, labelEditing: null, mobileSidebar: false }); },
+        }, t("newLabel")),
+      ));
+    }
+    panel.appendChild(labelSection);
+  }
+
+  // Today's events widget (mail view only)
+  if (S.view === "mail") {
+    const todaySection = h("div", { className: "px-3 py-3 border-t border-line" });
+    const todayHeader = h("div", { className: "flex items-center justify-between mb-2" });
+    todayHeader.appendChild(h("span", { className: "text-[11px] font-semibold uppercase text-slate-400 tracking-wider" }, t("todayEvents") || "Today's events"));
+    todayHeader.appendChild(h("button", {
+      className: "text-[11px] text-blue-600 hover:underline",
+      onclick() { set({ view: "calendar", mobileSidebar: false }); },
+    }, t("viewAll") || "View all"));
+    const todayEvents = S.todayEvents || [];
+    if (todayEvents.length === 0) {
+      todaySection.appendChild(todayHeader);
+      todaySection.appendChild(h("p", { className: "text-xs text-slate-400" }, t("noEventsToday") || "No events today"));
+    } else {
+      todaySection.appendChild(todayHeader);
+      for (const evt of todayEvents.slice(0, 3)) {
+        const evtTime = evt.allDay ? t("allDay") : (evt.dtstart ? new Date(evt.dtstart).toLocaleTimeString(t("dateLocale"), { hour: "numeric", minute: "2-digit" }) : "");
+        todaySection.appendChild(h("button", {
+          className: "block w-full text-left px-2 py-1.5 rounded hover:bg-slate-50 text-xs truncate",
+          onclick() { set({ view: "calendar", calSelected: evt.dtstart?.slice(0, 10), mobileSidebar: false }); },
+        },
+          h("span", { className: "font-medium" }, evt.summary || "(No title)"),
+          evtTime ? h("span", { className: "ml-1 text-slate-400" }, evtTime) : null,
+        ));
+      }
+    }
+    panel.appendChild(todaySection);
+  }
 
   // Footer
   const footer = h("div", { className: "border-t border-line p-3 space-y-1" });

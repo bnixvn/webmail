@@ -249,11 +249,28 @@
     /* ─── Add Domain Form ────────────────────────────────────────────────── */
     .add-domain-form {
       display: grid;
-      grid-template-columns: 1fr auto;
+      grid-template-columns: 1fr 1fr auto;
       gap: 10px;
       align-items: end;
     }
     .add-domain-form .form-group { margin-bottom: 0; }
+    .table-input {
+      width: 100%;
+      min-width: 150px;
+      padding: 7px 9px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 13px;
+      color: var(--text);
+      background: #fff;
+    }
+    .status-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+    }
+    .status-toggle input { accent-color: var(--primary); }
 
     /* ─── Responsive ─────────────────────────────────────────────────────── */
     @media (max-width: 640px) {
@@ -314,18 +331,23 @@
               <label>Domain / Subdomain</label>
               <input type="text" id="newAliasDomain" placeholder="webmail.domain.com">
             </div>
+            <div class="form-group">
+              <label>Target mail domain</label>
+              <input type="text" id="newTargetDomain" placeholder="domain.com">
+            </div>
             <button class="btn btn-primary btn-sm" onclick="addDomain()" style="margin-bottom: 0;">+ Thêm</button>
           </div>
           <table class="domain-table">
             <thead>
               <tr>
                 <th>Domain</th>
+                <th>Mail domain</th>
                 <th>Status</th>
                 <th class="actions">Actions</th>
               </tr>
             </thead>
             <tbody id="domainTableBody">
-              <tr><td colspan="3" class="empty-state">Đang tải...</td></tr>
+              <tr><td colspan="4" class="empty-state">Đang tải...</td></tr>
             </tbody>
           </table>
         </div>
@@ -437,14 +459,25 @@ async function loadDomains() {
     const data = await api('/api/admin/domains');
     const tbody = document.getElementById('domainTableBody');
     if (!data.domains.length) {
-      tbody.innerHTML = '<tr><td colspan="3" class="empty-state">Chưa có domain nào</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="4" class="empty-state">No domain aliases yet</td></tr>';
       return;
     }
     tbody.innerHTML = data.domains.map(d => `
       <tr>
         <td><strong>${escHtml(d.aliasDomain)}</strong></td>
-        <td><span class="badge ${d.enabled ? 'badge-on' : 'badge-off'}">${d.enabled ? 'Active' : 'Disabled'}</span></td>
+        <td>
+          <input class="table-input" id="target-${d.id}" value="${escAttr(d.targetDomain || '')}" placeholder="domain.com">
+        </td>
+        <td>
+          <label class="status-toggle">
+            <input type="checkbox" id="enabled-${d.id}" ${d.enabled ? 'checked' : ''}>
+            <span class="badge ${d.enabled ? 'badge-on' : 'badge-off'}">${d.enabled ? 'Active' : 'Disabled'}</span>
+          </label>
+        </td>
         <td class="actions">
+          <button class="btn btn-primary btn-icon btn-sm" onclick="updateDomain(${d.id})" title="Save">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></svg>
+          </button>
           <button class="btn btn-danger btn-icon btn-sm" onclick="deleteDomain(${d.id})" title="Xóa">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
           </button>
@@ -458,6 +491,7 @@ async function loadDomains() {
 
 async function addDomain() {
   const aliasDomain = document.getElementById('newAliasDomain').value.trim();
+  const targetDomain = document.getElementById('newTargetDomain').value.trim();
   if (!aliasDomain) {
     showAlert('dashAlert', 'Vui lòng nhập domain');
     return;
@@ -465,10 +499,26 @@ async function addDomain() {
   try {
     await api('/api/admin/domains', {
       method: 'POST',
-      body: JSON.stringify({ aliasDomain }),
+      body: JSON.stringify({ aliasDomain, targetDomain }),
     });
     document.getElementById('newAliasDomain').value = '';
+    document.getElementById('newTargetDomain').value = '';
     showAlert('dashAlert', 'Đã thêm domain!', 'success');
+    loadDomains();
+  } catch (err) {
+    showAlert('dashAlert', err.message);
+  }
+}
+
+async function updateDomain(id) {
+  const targetDomain = document.getElementById(`target-${id}`).value.trim();
+  const enabled = document.getElementById(`enabled-${id}`).checked;
+  try {
+    await api(`/api/admin/domains/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ targetDomain, enabled }),
+    });
+    showAlert('dashAlert', 'Domain alias updated', 'success');
     loadDomains();
   } catch (err) {
     showAlert('dashAlert', err.message);
@@ -508,8 +558,12 @@ async function changePassword(e) {
 // ─── Utils ──────────────────────────────────────────────────────────────────
 function escHtml(s) {
   const d = document.createElement('div');
-  d.textContent = s;
+  d.textContent = s || '';
   return d.innerHTML;
+}
+
+function escAttr(s) {
+  return escHtml(s).replace(/`/g, '&#96;');
 }
 
 // ─── Init ───────────────────────────────────────────────────────────────────

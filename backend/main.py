@@ -26,7 +26,7 @@ from email.utils import formataddr, getaddresses
 from functools import partial
 from pathlib import Path
 from typing import Any, AsyncIterator
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 import aioimaplib
 import aiosmtplib
@@ -173,6 +173,48 @@ ADMIN_SESSION_MAX_AGE = 60 * 60 * 8  # 8 hours
 CADDYFILE_PATH = os.environ.get("CADDYFILE_PATH", "/etc/caddy/Caddyfile")
 
 
+def _normalize_domain(value: str, *, allow_empty: bool = False) -> str:
+    value = (value or "").strip().lower()
+    if not value:
+        if allow_empty:
+            return ""
+        raise ValueError("Domain name required.")
+
+    parsed = urlsplit(value if "://" in value else f"//{value}")
+    domain = (parsed.hostname or "").rstrip(".").lower()
+    if not domain:
+        if allow_empty:
+            return ""
+        raise ValueError("Invalid domain name.")
+
+    try:
+        domain = domain.encode("idna").decode("ascii")
+    except UnicodeError as exc:
+        raise ValueError("Invalid domain name.") from exc
+
+    labels = domain.split(".")
+    if (
+        len(domain) > 253
+        or len(labels) < 2
+        or any(not label or len(label) > 63 for label in labels)
+        or any(label.startswith("-") or label.endswith("-") for label in labels)
+        or any(not re.fullmatch(r"[a-z0-9-]+", label) for label in labels)
+    ):
+        raise ValueError("Invalid domain name.")
+    return domain
+
+
+def _default_target_domain(alias_domain: str) -> str:
+    for prefix in ("webmail.",):
+        if alias_domain.startswith(prefix):
+            target = alias_domain[len(prefix):]
+            try:
+                return _normalize_domain(target, allow_empty=True)
+            except ValueError:
+                return ""
+    return ""
+
+
 def _reload_caddy():
     """Reload Caddy config after domain changes."""
     import subprocess
@@ -311,6 +353,66 @@ def _admin_setting_set_many(settings: dict[str, str]):
         db.commit()
 
 
+def _domain_alias_mail_target(alias_domain: str) -> str | None:
+    try:
+        alias_domain = _normalize_domain(alias_domain)
+    except ValueError:
+        return None
+
+    import sqlite3
+    try:
+        with sqlite3.connect(ADMIN_DB) as db:
+            row = db.execute(
+                """SELECT target_domain FROM domain_aliases
+                   WHERE alias_domain=? AND enabled=1""",
+                (alias_domain,),
+            ).fetchone()
+    except Exception:
+        return None
+
+    if not row:
+        return None
+
+    try:
+        return _normalize_domain(row[0], allow_empty=True) or None
+    except ValueError:
+        return None
+
+
+def _request_host_domain(request: Request) -> str:
+    try:
+        return _normalize_domain(request.headers.get("host", ""), allow_empty=True)
+    except ValueError:
+        return ""
+
+
+def _mail_domain_for_login(request: Request, email_domain: str) -> str:
+    host_target = _domain_alias_mail_target(_request_host_domain(request))
+    if host_target:
+        return host_target
+
+    email_target = _domain_alias_mail_target(email_domain)
+    return email_target or email_domain
+
+
+def _session_mail_domain(session: dict) -> str:
+    session_domain = (session.get("mail_domain") or "").strip().lower()
+    if session_domain:
+        try:
+            return _normalize_domain(session_domain)
+        except ValueError:
+            pass
+
+    email = session["email"]
+    email_domain = email.split("@")[1].lower()
+    return _domain_alias_mail_target(email_domain) or email_domain
+
+
+def _email_for_domain(email: str, domain: str) -> str:
+    local, _, _ = email.partition("@")
+    return f"{local}@{domain}"
+
+
 def _encrypt_config_secret(value: str) -> str:
     if not value:
         return ""
@@ -406,7 +508,7 @@ async def _imap_operation_lock(pool_key: str) -> asyncio.Lock:
 
 
 async def _imap_login(client: aioimaplib.IMAP4_SSL, session: dict):
-    email = session["email"]
+    email = session.get("login_email") or session["email"]
     await client.login(email, session["password"])
 
 
@@ -469,7 +571,7 @@ async def with_imap_retry(session: dict, coro_factory):
     coro_factory: a callable that takes (client) and returns a coroutine.
     """
     email = session["email"]
-    domain = email.split("@")[1].lower()
+    domain = _session_mail_domain(session)
     imap_host = session.get("imap_host") or os.environ.get("IMAP_HOST", "").strip() or await _discover_mail_host(domain, "imap")
     imap_port = int(session.get("imap_port") or os.environ.get("IMAP_PORT", "993"))
     auth_type = _session_auth_type(session)
@@ -490,8 +592,7 @@ async def with_imap_retry(session: dict, coro_factory):
 
 async def _get_imap_for_session(session: dict) -> aioimaplib.IMAP4_SSL:
     """Resolve IMAP config for a session."""
-    email = session["email"]
-    domain = email.split("@")[1].lower()
+    domain = _session_mail_domain(session)
     imap_host = session.get("imap_host") or os.environ.get("IMAP_HOST", "").strip() or await _discover_mail_host(domain, "imap")
     imap_port = int(session.get("imap_port") or os.environ.get("IMAP_PORT", "993"))
     return await _get_pooled_imap(session, imap_host, imap_port)
@@ -596,7 +697,7 @@ def encrypt_session(session: dict) -> str:
 
 
 async def _smtp_login_for_session(smtp: aiosmtplib.SMTP, session: dict, email: str):
-    await smtp.login(email, session["password"])
+    await smtp.login(session.get("login_email") or email, session["password"])
 
 
 # ─── Middleware: session ──────────────────────────────────────────────────────
@@ -1373,11 +1474,12 @@ async def login(request: Request, body: dict):
 
     # Resolve IMAP server
     domain = email.split("@")[1].lower()
-    imap_host = imap_host_override or os.environ.get("IMAP_HOST", "").strip() or await _discover_mail_host(domain, "imap")
+    mail_domain = _mail_domain_for_login(request, domain)
+    imap_host = imap_host_override or os.environ.get("IMAP_HOST", "").strip() or await _discover_mail_host(mail_domain, "imap")
     imap_port = int(imap_port_override or os.environ.get("IMAP_PORT", "993"))
 
     # Resolve SMTP server (for sending)
-    smtp_host_raw = smtp_host_override or os.environ.get("SMTP_HOST", "").strip() or await _discover_mail_host(domain, "smtp")
+    smtp_host_raw = smtp_host_override or os.environ.get("SMTP_HOST", "").strip() or await _discover_mail_host(mail_domain, "smtp")
     if ":" in smtp_host_raw and not smtp_host_raw.startswith("["):
         smtp_host, smtp_discovered_port = smtp_host_raw.rsplit(":", 1)
         smtp_port = int(smtp_port_override or smtp_discovered_port)
@@ -1385,18 +1487,37 @@ async def login(request: Request, body: dict):
         smtp_host = smtp_host_raw
         smtp_port = int(smtp_port_override or os.environ.get("SMTP_PORT", "465"))
 
-    client = aioimaplib.IMAP4_SSL(host=imap_host, port=imap_port, timeout=IMAP_TIMEOUT)
+    async def _try_imap_auth(auth_email: str):
+        client = aioimaplib.IMAP4_SSL(host=imap_host, port=imap_port, timeout=IMAP_TIMEOUT)
+        try:
+            await client.wait_hello_from_server()
+            await client.login(auth_email, password)
+        finally:
+            try:
+                await client.logout()
+            except Exception:
+                pass
+
+    login_email = email
     try:
-        await client.wait_hello_from_server()
-        await client.login(email, password)
-        await client.logout()
-    except Exception as e:
-        raise HTTPException(401, "Invalid email or password.")
+        await _try_imap_auth(login_email)
+    except Exception:
+        canonical_email = _email_for_domain(email, mail_domain)
+        if mail_domain != domain and canonical_email != email:
+            try:
+                await _try_imap_auth(canonical_email)
+                login_email = canonical_email
+            except Exception:
+                raise HTTPException(401, "Invalid email or password.")
+        else:
+            raise HTTPException(401, "Invalid email or password.")
 
     session = {
         "email": email,
+        "login_email": login_email,
         "password": password,
         "createdAt": int(time.time() * 1000),
+        "mail_domain": mail_domain,
         "imap_host": imap_host,
         "imap_port": imap_port,
         "smtp_host": smtp_host,
@@ -1412,7 +1533,7 @@ async def login(request: Request, body: dict):
     if smtp_port_override:
         session["smtp_port"] = int(smtp_port_override)
 
-    response = JSONResponse({"email": email, "domain": domain})
+    response = JSONResponse({"email": email, "domain": domain, "mailDomain": mail_domain})
     response.set_cookie(
         key=SESSION_COOKIE,
         value=encrypt_session(session),
@@ -1439,7 +1560,12 @@ async def me(request: Request):
     session = await _load_session(request)
     if not session:
         return {"authenticated": False}
-    return {"authenticated": True, "email": session["email"], "domain": session["email"].split("@")[1]}
+    return {
+        "authenticated": True,
+        "email": session["email"],
+        "domain": session["email"].split("@")[1],
+        "mailDomain": _session_mail_domain(session),
+    }
 
 
 async def _load_session(request: Request) -> dict | None:
@@ -2005,7 +2131,7 @@ async def send_message(request: Request, body: dict):
                 pass  # Skip invalid attachments
 
     # Send via SMTP
-    domain = email.split("@")[1].lower()
+    domain = _session_mail_domain(session)
     smtp_host_raw = session.get("smtp_host") or os.environ.get("SMTP_HOST", "").strip() or await _discover_mail_host(domain, "smtp")
     # Handle host:port format from discovery (e.g., "mail.domain.com:587")
     if ":" in smtp_host_raw and not smtp_host_raw.startswith("["):
@@ -2236,7 +2362,7 @@ def _get_dav_config(session: dict) -> dict:
     """Build CalDAV/CardDAV server config from session + env vars."""
     email = session["email"]
     password = session.get("password") or ""
-    domain = email.split("@")[1].lower()
+    domain = _session_mail_domain(session)
 
     use_https = os.environ.get("DAV_SECURE", "true").lower() != "false"
     dav_port = os.environ.get("DAV_PORT", "2080")
@@ -2694,7 +2820,7 @@ async def send_calendar_invite(request: Request, body: dict):
         filename="invite.ics",
     )
 
-    domain = account.split("@")[1].lower()
+    domain = _session_mail_domain(session)
     smtp_host_raw = session.get("smtp_host") or os.environ.get("SMTP_HOST", "").strip() or await _discover_mail_host(domain, "smtp")
     if ":" in smtp_host_raw and not smtp_host_raw.startswith("["):
         smtp_host, discovered_port = smtp_host_raw.rsplit(":", 1)
@@ -3016,9 +3142,14 @@ async def admin_list_domains(request: Request):
 @app.post("/api/admin/domains")
 async def admin_add_domain(request: Request, body: dict):
     await require_admin(request)
-    alias_domain = (body.get("aliasDomain") or "").lower().strip()
-    if not alias_domain:
-        raise HTTPException(400, "Domain name required.")
+    try:
+        alias_domain = _normalize_domain(body.get("aliasDomain") or "")
+        target_domain = _normalize_domain(body.get("targetDomain") or "", allow_empty=True)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+    if not target_domain:
+        target_domain = _default_target_domain(alias_domain)
 
     now = datetime.utcnow().isoformat()
     import sqlite3
@@ -3026,8 +3157,8 @@ async def admin_add_domain(request: Request, body: dict):
         with sqlite3.connect(ADMIN_DB) as db:
             db.execute(
                 """INSERT INTO domain_aliases (alias_domain, target_domain, enabled, created_at, updated_at)
-                   VALUES (?, '', 1, ?, ?)""",
-                (alias_domain, now, now),
+                   VALUES (?, ?, 1, ?, ?)""",
+                (alias_domain, target_domain, now, now),
             )
             db.commit()
     except sqlite3.IntegrityError:
@@ -3039,20 +3170,30 @@ async def admin_add_domain(request: Request, body: dict):
     caddy_ok = _add_caddy_domain(alias_domain)
     log.info(f"[admin] add domain '{alias_domain}' — caddy_ok={caddy_ok}")
 
-    return JSONResponse({"ok": True, "aliasDomain": alias_domain, "caddyReloaded": caddy_ok})
+    return JSONResponse({
+        "ok": True,
+        "aliasDomain": alias_domain,
+        "targetDomain": target_domain,
+        "caddyReloaded": caddy_ok,
+    })
 
 
 @app.put("/api/admin/domains/{domain_id}")
 async def admin_update_domain(request: Request, domain_id: int, body: dict):
     await require_admin(request)
     import sqlite3
+    try:
+        target_domain = _normalize_domain(body.get("targetDomain") or "", allow_empty=True)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
     now = datetime.utcnow().isoformat()
     with sqlite3.connect(ADMIN_DB) as db:
         cur = db.execute(
             """UPDATE domain_aliases
                SET target_domain=?, enabled=?, updated_at=?
                WHERE id=?""",
-            (body.get("targetDomain", ""), 1 if body.get("enabled", True) else 0, now, domain_id),
+            (target_domain, 1 if body.get("enabled", True) else 0, now, domain_id),
         )
         db.commit()
         if cur.rowcount == 0:
