@@ -37,12 +37,10 @@ const LOCALES = {
     emailPlaceholder: "Email address",
     passwordPlaceholder: "Password",
     staySignedIn: "Stay signed in",
-    serverSettings: "Mail server settings (optional)",
-    serverSettingsHint: "Auto-detected via DNS. Only fill in if auto-detection fails.",
-    imapHostPh: "IMAP host", imapPortPh: "IMAP port (993)",
-    smtpHostPh: "SMTP host", smtpPortPh: "SMTP port (465)",
     signIn: "Sign in",
     loginFailed: "Login failed",
+    loginAttemptsRemaining: (n) => `Invalid email or password. ${n} attempt(s) remaining.`,
+    loginTemporarilyLocked: (n) => `Login is temporarily locked due to too many failed attempts. Try again in ${n} minute(s).`,
     sessionExpired: "Session expired. Please sign in again.",
     // Sidebar
     compose: "Compose",
@@ -152,12 +150,10 @@ const LOCALES = {
     emailPlaceholder: "Địa chỉ email",
     passwordPlaceholder: "Mật khẩu",
     staySignedIn: "Duy trì đăng nhập",
-    serverSettings: "Cài đặt máy thư (tùy chọn)",
-    serverSettingsHint: "Tự động phát hiện qua DNS. Chỉ điền nếu phát hiện tự động thất bại.",
-    imapHostPh: "Máy chủ IMAP", imapPortPh: "Cổng IMAP (993)",
-    smtpHostPh: "Máy chủ SMTP", smtpPortPh: "Cổng SMTP (465)",
     signIn: "Đăng nhập",
     loginFailed: "Đăng nhập thất bại",
+    loginAttemptsRemaining: (n) => `Email hoặc mật khẩu không đúng. Còn ${n} lần thử.`,
+    loginTemporarilyLocked: (n) => `Đăng nhập tạm khóa do nhập sai quá nhiều lần. Vui lòng thử lại sau ${n} phút.`,
     sessionExpired: "Phiên đã hết hạn. Vui lòng đăng nhập lại.",
     // Sidebar
     compose: "Soạn thư",
@@ -265,7 +261,7 @@ const LOCALES = {
 };
 
 function getLang() {
-  return localStorage.getItem("webmail_lang") || "en";
+  return localStorage.getItem("webmail_lang") || "vi";
 }
 function setLang(lang) {
   localStorage.setItem("webmail_lang", lang);
@@ -1003,8 +999,14 @@ async function api(path, opts = {}) {
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    const err = new Error(data.detail || data.error || `HTTP ${res.status}`);
+    const detail = data.detail;
+    const err = new Error(
+      (detail && typeof detail === "object" ? detail.message : detail)
+      || data.error
+      || `HTTP ${res.status}`
+    );
     err.status = res.status;
+    if (detail && typeof detail === "object") Object.assign(err, detail);
     throw err;
   }
   return res.json();
@@ -1208,30 +1210,6 @@ function renderLogin() {
           ),
           S.loginError ? h("div", { className: "login-error" }, S.loginError) : null,
           h("button", { type: "submit", className: "login-submit" }, t("signIn")),
-          h("div", { className: "login-advanced" },
-            h("button", {
-              type: "button",
-              className: "login-advanced-toggle",
-              onclick() {
-                const adv = document.getElementById("login-advanced-fields");
-                adv.classList.toggle("open");
-              },
-            },
-              h("span", {}, t("serverSettings")),
-              h("svg", { width: "14", height: "14", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "stroke-width": "2", "stroke-linecap": "round", "stroke-linejoin": "round" },
-                h("polyline", { points: "6 9 12 15 18 9" }),
-              ),
-            ),
-            h("div", { id: "login-advanced-fields", className: "login-advanced-fields" },
-              h("p", { className: "login-advanced-hint" }, t("serverSettingsHint")),
-              h("div", { className: "login-advanced-grid" },
-                h("input", { name: "imapHost", placeholder: t("imapHostPh") }),
-                h("input", { name: "imapPort", placeholder: t("imapPortPh") }),
-                h("input", { name: "smtpHost", placeholder: t("smtpHostPh") }),
-                h("input", { name: "smtpPort", placeholder: t("smtpPortPh") }),
-              ),
-            ),
-          ),
         ),
       ),
       ),
@@ -1245,16 +1223,12 @@ async function onLogin(e) {
   const email = form.email.value.trim();
   const password = form.password.value;
   const remember = form.remember.checked;
-  const imapHost = form.imapHost?.value.trim() || "";
-  const imapPort = form.imapPort?.value.trim() || "";
-  const smtpHost = form.smtpHost?.value.trim() || "";
-  const smtpPort = form.smtpPort?.value.trim() || "";
   set({ loginError: "" });
 
   try {
     const data = await api("/api/auth/login", {
       method: "POST",
-      body: JSON.stringify({ email, password, remember, imapHost, imapPort, smtpHost, smtpPort }),
+      body: JSON.stringify({ email, password, remember }),
     });
     S.account = { email: data.email, domain: data.domain };
     S.ready = false;
@@ -1263,7 +1237,14 @@ async function onLogin(e) {
     await bootstrap();
   } catch (err) {
     S.account = null;
-    set({ loginError: err.message || t("loginFailed") });
+    if (err.code === "LOGIN_TEMPORARILY_LOCKED") {
+      const minutes = Math.max(1, Math.ceil((err.retryAfter || 900) / 60));
+      set({ loginError: t("loginTemporarilyLocked", minutes) });
+    } else if (err.code === "INVALID_CREDENTIALS") {
+      set({ loginError: t("loginAttemptsRemaining", err.remainingAttempts ?? 0) });
+    } else {
+      set({ loginError: err.message || t("loginFailed") });
+    }
   }
 }
 
@@ -1351,7 +1332,7 @@ async function doLogout() {
     selectedUid: null, selectedMsg: null, compose: null,
     signature: null, sigOpen: false, sigMode: "visual", sigHtmlDraft: "", loginError: "",
   });
-  window.location.href = "https://webmail.bnix.asia/";
+  window.location.href = `${window.location.origin}/`;
 }
 
 // â”€â”€â”€ Sidebar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

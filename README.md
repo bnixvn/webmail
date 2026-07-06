@@ -85,7 +85,9 @@ Restart the service:
 sudo systemctl restart bnix-webmail
 ```
 
-> **Multi-domain support**: Users can log in with any email address. The app resolves the MX record for each email domain to find the correct IMAP/SMTP server. No per-domain configuration needed. If auto-detection fails, users can enter the server manually via "Mail server settings" on the login page.
+The installer creates a random initial admin password in `/root/bnix-webmail-admin.txt`. Sign in at `/admin` and change it after first use.
+
+> **Multi-domain support**: Users can log in with any email address. The app resolves DNS for each email domain to find the correct IMAP/SMTP server. If auto-detection is not suitable for a deployment, configure trusted `IMAP_HOST` and `SMTP_HOST` values in `/etc/bnix-webmail.env`.
 
 ### Caddy Reverse Proxy
 
@@ -108,6 +110,8 @@ Or create `/etc/caddy/Caddyfile` manually:
 webmail.yourdomain.com {
     reverse_proxy 127.0.0.1:8000
 }
+
+import /etc/caddy/*.conf
 ```
 
 ## Local Development

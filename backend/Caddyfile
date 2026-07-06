@@ -1,7 +1,11 @@
-# Thêm domain alias vào danh sách dưới, ngăn cách bằng khoảng trắng
-# Sau đó reload Caddy: caddy reload --config /etc/caddy/Caddyfile
+# BNIX Webmail primary site.
+#
+# The admin alias panel writes enabled aliases to /etc/caddy/bnix-webmail.conf.
+# Keep the import below so Caddy can serve those aliases without letting the
+# web app rewrite /etc/caddy/Caddyfile.
 
-webmail.bnix.asia,
 webmail.example.com {
     reverse_proxy 127.0.0.1:8000
 }
+
+import /etc/caddy/*.conf

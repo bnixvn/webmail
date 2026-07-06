@@ -9,6 +9,8 @@ DATA_DIR="${APP_ROOT}/data"
 VENV_DIR="${APP_ROOT}/venv"
 ENV_FILE="/etc/${APP_NAME}.env"
 SERVICE_FILE="/etc/systemd/system/${APP_NAME}.service"
+ADMIN_CREDENTIALS_FILE="/root/${APP_NAME}-admin.txt"
+CADDY_FRAGMENT_FILE="/etc/caddy/${APP_NAME}.conf"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE_DIR="${SOURCE_DIR:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
@@ -124,6 +126,7 @@ copy_source() {
     --exclude '.venv' \
     --exclude '__pycache__' \
     "${SOURCE_DIR}/" "${SRC_DIR}/"
+  chown -R "${APP_USER}:${APP_USER}" "${DATA_DIR}"
   # Fix .git ownership so bnix-webmail user can git pull
   if [ -d "${SRC_DIR}/.git" ]; then
     chown -R "${APP_USER}:${APP_USER}" "${SRC_DIR}/.git"
@@ -153,6 +156,8 @@ IMAP_SECURE=true
 SMTP_HOST=${smtp_host}
 SMTP_PORT=465
 SMTP_SECURE=true
+ENABLE_CADDY_AUTOMATION=true
+CADDY_ALIASES_PATH=${CADDY_FRAGMENT_FILE}
 DAV_HOST=
 DAV_PORT=2080
 DAV_SECURE=false
@@ -162,6 +167,75 @@ DATA_DIR=${DATA_DIR}
 EOF
 
   chmod 0600 "${ENV_FILE}"
+}
+
+provision_admin() {
+  log "Provisioning initial admin account if needed"
+  local admin_db="${DATA_DIR}/db/admin.db"
+  local admin_user="${ADMIN_USERNAME:-admin}"
+  local admin_password="${ADMIN_PASSWORD:-$(generate_secret)}"
+  local admin_status
+
+  install -d -m 0750 "${DATA_DIR}/db"
+
+  admin_status="$("${VENV_DIR}/bin/python" - "${admin_db}" "${admin_user}" "${admin_password}" <<'PY'
+import datetime
+import hashlib
+import sqlite3
+import sys
+
+db_path, username, password = sys.argv[1:4]
+now = datetime.datetime.utcnow().isoformat()
+with sqlite3.connect(db_path) as db:
+    db.execute(
+        """CREATE TABLE IF NOT EXISTS admin_users (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            username   TEXT    UNIQUE NOT NULL,
+            password   TEXT    NOT NULL,
+            created_at TEXT    NOT NULL,
+            updated_at TEXT    NOT NULL
+        )"""
+    )
+    if db.execute("SELECT COUNT(*) FROM admin_users").fetchone()[0] == 0:
+        db.execute(
+            "INSERT INTO admin_users (username, password, created_at, updated_at) VALUES (?,?,?,?)",
+            (username, hashlib.sha256(password.encode()).hexdigest(), now, now),
+        )
+        db.commit()
+        print("created")
+    else:
+        print("exists")
+PY
+)"
+
+  if [ "${admin_status}" = "created" ]; then
+    cat > "${ADMIN_CREDENTIALS_FILE}" <<EOF
+BNIX Webmail initial admin
+URL: /admin
+Username: ${admin_user}
+Password: ${admin_password}
+EOF
+    chmod 0600 "${ADMIN_CREDENTIALS_FILE}"
+    log "Initial admin credentials written to ${ADMIN_CREDENTIALS_FILE}"
+  fi
+
+  chown -R "${APP_USER}:${APP_USER}" "${DATA_DIR}"
+}
+
+setup_caddy_fragment() {
+  if [ ! -d /etc/caddy ]; then
+    log "Caddy directory not found; skipping Caddy fragment setup"
+    return
+  fi
+
+  log "Preparing Caddy fragment: ${CADDY_FRAGMENT_FILE}"
+  touch "${CADDY_FRAGMENT_FILE}"
+  chown "${APP_USER}:${APP_USER}" "${CADDY_FRAGMENT_FILE}"
+  chmod 0644 "${CADDY_FRAGMENT_FILE}"
+
+  if [ -f /etc/caddy/Caddyfile ] && ! grep -Eq '^[[:space:]]*import[[:space:]]+/etc/caddy/\\*\\.conf' /etc/caddy/Caddyfile; then
+    printf '\nimport /etc/caddy/*.conf\n' >> /etc/caddy/Caddyfile
+  fi
 }
 
 setup_python() {
@@ -187,6 +261,8 @@ main() {
   copy_source
   prepare_env
   setup_python
+  provision_admin
+  setup_caddy_fragment
   install_service
 
   log "Done."

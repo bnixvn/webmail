@@ -332,8 +332,8 @@
               <input type="text" id="newAliasDomain" placeholder="webmail.domain.com">
             </div>
             <div class="form-group">
-              <label>Target mail domain</label>
-              <input type="text" id="newTargetDomain" placeholder="domain.com">
+              <label>Target mail domain (tùy chọn)</label>
+              <input type="text" id="newTargetDomain" placeholder="Để trống để tự nhận dạng">
             </div>
             <button class="btn btn-primary btn-sm" onclick="addDomain()" style="margin-bottom: 0;">+ Thêm</button>
           </div>
@@ -390,7 +390,17 @@ async function api(url, opts = {}) {
     ...opts,
   });
   const data = await res.json();
-  if (!res.ok) throw new Error(data.detail || 'Request failed');
+  if (!res.ok) {
+    const detail = data.detail;
+    const err = new Error(
+      detail && typeof detail === 'object'
+        ? (detail.message || 'Request failed')
+        : (detail || 'Request failed')
+    );
+    err.status = res.status;
+    if (detail && typeof detail === 'object') Object.assign(err, detail);
+    throw err;
+  }
   return data;
 }
 
@@ -443,7 +453,20 @@ document.getElementById('loginForm').onsubmit = async (e) => {
     adminUser = data.username;
     showDashboard();
   } catch (err) {
-    showAlert('loginAlert', err.message);
+    if (err.code === 'LOGIN_TEMPORARILY_LOCKED') {
+      const minutes = Math.max(1, Math.ceil((err.retryAfter || 900) / 60));
+      showAlert(
+        'loginAlert',
+        `Đăng nhập tạm khóa do nhập sai quá nhiều lần. Vui lòng thử lại sau ${minutes} phút.`
+      );
+    } else if (err.code === 'INVALID_CREDENTIALS') {
+      showAlert(
+        'loginAlert',
+        `Tên đăng nhập hoặc mật khẩu không đúng. Còn ${err.remainingAttempts ?? 0} lần thử.`
+      );
+    } else {
+      showAlert('loginAlert', err.message);
+    }
   }
 };
 
@@ -466,7 +489,7 @@ async function loadDomains() {
       <tr>
         <td><strong>${escHtml(d.aliasDomain)}</strong></td>
         <td>
-          <input class="table-input" id="target-${d.id}" value="${escAttr(d.targetDomain || '')}" placeholder="domain.com">
+          <input class="table-input" id="target-${d.id}" value="${escAttr(d.targetDomain || '')}" placeholder="Tùy chọn">
         </td>
         <td>
           <label class="status-toggle">
