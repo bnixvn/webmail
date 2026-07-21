@@ -153,6 +153,7 @@ AUTH_SECRET=${auth_secret}
 IMAP_HOST=${imap_host}
 IMAP_PORT=993
 IMAP_SECURE=true
+# Set IMAP_SECURE=false when the IMAP server only speaks plain IMAP on port 143.
 SMTP_HOST=${smtp_host}
 SMTP_PORT=465
 SMTP_SECURE=true

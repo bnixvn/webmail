@@ -658,7 +658,7 @@ STATIC_DIR = Path(__file__).parent / "static"
 
 # ─── IMAP Pool ────────────────────────────────────────────────────────────────
 
-_pool: dict[str, tuple[aioimaplib.IMAP4_SSL, float]] = {}
+_pool: dict[str, tuple[aioimaplib.IMAP4, float]] = {}
 _pool_lock = asyncio.Lock()
 _imap_op_locks: dict[str, asyncio.Lock] = {}
 _executor = ThreadPoolExecutor(4)
@@ -668,8 +668,9 @@ def _session_auth_type(session: dict) -> str:
     return session.get("auth_type") or "password"
 
 
-def _imap_pool_key(email: str, auth_type: str = "password") -> str:
-    return f"{auth_type}:{email.lower()}"
+def _imap_pool_key(email: str, auth_type: str = "password", secure: bool = True) -> str:
+    protocol = "imaps" if secure else "imap"
+    return f"{auth_type}:{protocol}:{email.lower()}"
 
 
 async def _imap_operation_lock(pool_key: str) -> asyncio.Lock:
@@ -681,15 +682,58 @@ async def _imap_operation_lock(pool_key: str) -> asyncio.Lock:
         return lock
 
 
-async def _imap_login(client: aioimaplib.IMAP4_SSL, session: dict):
+def _new_imap_client(
+    imap_host: str,
+    imap_port: int,
+    imap_secure: bool,
+    timeout: float = IMAP_TIMEOUT,
+) -> aioimaplib.IMAP4:
+    imap_class = aioimaplib.IMAP4_SSL if imap_secure else aioimaplib.IMAP4
+    return imap_class(
+        host=imap_host,
+        port=imap_port,
+        timeout=timeout,
+    )
+
+
+async def _probe_imap_server(
+    host: str,
+    port: int,
+    secure: bool,
+    timeout: float = 5,
+) -> bool:
+    writer = None
+    ssl_context = ssl.create_default_context() if secure else None
+    try:
+        connect = asyncio.open_connection(
+            host,
+            port,
+            ssl=ssl_context if secure else False,
+        )
+        reader, writer = await asyncio.wait_for(connect, timeout=timeout)
+        greeting = await asyncio.wait_for(reader.readline(), timeout=timeout)
+        line = greeting.strip().upper()
+        return line.startswith(b"* OK") or line.startswith(b"* PREAUTH")
+    finally:
+        if writer:
+            writer.close()
+            await writer.wait_closed()
+
+
+async def _imap_login(client: aioimaplib.IMAP4, session: dict):
     email = session.get("login_email") or session["email"]
     await client.login(email, session["password"])
 
 
-async def _get_pooled_imap(session: dict, imap_host: str, imap_port: int) -> aioimaplib.IMAP4_SSL:
+async def _get_pooled_imap(
+    session: dict,
+    imap_host: str,
+    imap_port: int,
+    imap_secure: bool,
+) -> aioimaplib.IMAP4:
     """Get or create a pooled IMAP connection."""
     email = session["email"]
-    pool_key = _imap_pool_key(email, _session_auth_type(session))
+    pool_key = _imap_pool_key(email, _session_auth_type(session), imap_secure)
     async with _pool_lock:
         entry = _pool.get(pool_key)
         now = time.time()
@@ -706,11 +750,7 @@ async def _get_pooled_imap(session: dict, imap_host: str, imap_port: int) -> aio
             except Exception:
                 pass
 
-        client = aioimaplib.IMAP4_SSL(
-            host=imap_host,
-            port=imap_port,
-            timeout=IMAP_TIMEOUT,
-        )
+        client = _new_imap_client(imap_host, imap_port, imap_secure)
         # aioimaplib requires waiting for server greeting before any command
         await client.wait_hello_from_server()
         await _imap_login(client, session)
@@ -718,10 +758,10 @@ async def _get_pooled_imap(session: dict, imap_host: str, imap_port: int) -> aio
         return client
 
 
-async def _evict_imap(email: str, auth_type: str = "password"):
+async def _evict_imap(email: str, auth_type: str = "password", secure: bool = True):
     """Remove a broken connection from the pool."""
     async with _pool_lock:
-        entry = _pool.pop(_imap_pool_key(email, auth_type), None)
+        entry = _pool.pop(_imap_pool_key(email, auth_type, secure), None)
         if entry:
             try:
                 await entry[0].logout()
@@ -746,37 +786,38 @@ async def with_imap_retry(session: dict, coro_factory):
     """
     email = session["email"]
     domain = _session_mail_domain(session)
-    imap_host, imap_port = await _resolve_imap_config(domain)
+    imap_host, imap_port, imap_secure = await _resolve_imap_config(domain)
     auth_type = _session_auth_type(session)
-    pool_key = _imap_pool_key(email, auth_type)
+    pool_key = _imap_pool_key(email, auth_type, imap_secure)
     op_lock = await _imap_operation_lock(pool_key)
 
     async with op_lock:
         for attempt in range(2):
             try:
-                client = await _get_pooled_imap(session, imap_host, imap_port)
+                client = await _get_pooled_imap(session, imap_host, imap_port, imap_secure)
                 return await coro_factory(client)
             except (aioimaplib.Abort, ConnectionError, OSError, asyncio.TimeoutError):
                 if attempt == 0:
-                    await _evict_imap(email, auth_type)
+                    await _evict_imap(email, auth_type, imap_secure)
                     continue
                 raise
 
 
-async def _get_imap_for_session(session: dict) -> aioimaplib.IMAP4_SSL:
+async def _get_imap_for_session(session: dict) -> aioimaplib.IMAP4:
     """Resolve IMAP config for a session."""
     domain = _session_mail_domain(session)
-    imap_host, imap_port = await _resolve_imap_config(domain)
-    return await _get_pooled_imap(session, imap_host, imap_port)
+    imap_host, imap_port, imap_secure = await _resolve_imap_config(domain)
+    return await _get_pooled_imap(session, imap_host, imap_port, imap_secure)
 
 
 async def _discover_mail_host(domain: str, service: str = "imap") -> str:
     """
     Auto-discover mail server — Roundcube-style with TCP probing.
     Tries: mail.{domain} → {domain} → MX record → mail.{domain} (fallback)
+    For IMAP, probes SSL first, then plain port 143 for servers without SSL.
     For SMTP, probes both port 465 (SMTPS) and 587 (STARTTLS).
     """
-    ports = [993] if service == "imap" else [465, 587]
+    ports = [993, 143] if service == "imap" else [465, 587]
 
     candidates = [f"mail.{domain}", domain]
 
@@ -795,18 +836,22 @@ async def _discover_mail_host(domain: str, service: str = "imap") -> str:
     if f"mail.{domain}" not in candidates:
         candidates.append(f"mail.{domain}")
 
-    # Probe each candidate with TCP connect
+    # Probe each candidate with the same protocol the app will use.
     for host in candidates:
         for port in ports:
             try:
-                _, writer = await asyncio.wait_for(
-                    asyncio.open_connection(host, port, ssl=False),
-                    timeout=5,
-                )
-                writer.close()
-                await writer.wait_closed()
-                # Return host:port as "host" string for SMTP with non-default port
-                if service == "smtp" and port != 465:
+                if service == "imap":
+                    if not await _probe_imap_server(host, port, port != 143):
+                        raise OSError("IMAP probe failed")
+                else:
+                    _, writer = await asyncio.wait_for(
+                        asyncio.open_connection(host, port, ssl=False),
+                        timeout=5,
+                    )
+                    writer.close()
+                    await writer.wait_closed()
+                # Return host:port as "host" string for discovered non-default ports.
+                if (service == "smtp" and port != 465) or (service == "imap" and port != 993):
                     return f"{host}:{port}"
                 return host
             except Exception:
@@ -816,10 +861,25 @@ async def _discover_mail_host(domain: str, service: str = "imap") -> str:
     return candidates[0]
 
 
-async def _resolve_imap_config(domain: str) -> tuple[str, int]:
-    imap_host = os.environ.get("IMAP_HOST", "").strip() or await _discover_mail_host(domain, "imap")
-    imap_port = int(os.environ.get("IMAP_PORT", "993"))
-    return imap_host, imap_port
+async def _resolve_imap_config(domain: str) -> tuple[str, int, bool]:
+    imap_host_raw = os.environ.get("IMAP_HOST", "").strip()
+    imap_secure_raw = os.environ.get("IMAP_SECURE", "").strip().lower()
+    if imap_host_raw:
+        imap_host = imap_host_raw
+        imap_port = int(os.environ.get("IMAP_PORT", "993"))
+        imap_secure = imap_secure_raw not in ("0", "false", "no", "off") if imap_secure_raw else True
+    else:
+        imap_host_raw = await _discover_mail_host(domain, "imap")
+        if ":" in imap_host_raw and not imap_host_raw.startswith("["):
+            imap_host, discovered_port = imap_host_raw.rsplit(":", 1)
+            imap_port = int(discovered_port)
+        else:
+            imap_host = imap_host_raw
+            imap_port = int(os.environ.get("IMAP_PORT", "993"))
+        imap_secure = imap_secure_raw not in ("0", "false", "no", "off") if imap_secure_raw else True
+    if imap_port == 143:
+        imap_secure = False
+    return imap_host, imap_port, imap_secure
 
 
 async def _resolve_smtp_config(domain: str) -> tuple[str, int]:
@@ -1698,13 +1758,13 @@ async def login(request: Request, body: dict):
     # Resolve IMAP server
     domain = email.split("@")[1].lower()
     mail_domain = _mail_domain_for_login(request, domain)
-    imap_host, imap_port = await _resolve_imap_config(mail_domain)
+    imap_host, imap_port, imap_secure = await _resolve_imap_config(mail_domain)
 
     # Resolve SMTP server (for sending)
     smtp_host, smtp_port = await _resolve_smtp_config(mail_domain)
 
     async def _try_imap_auth(auth_email: str):
-        client = aioimaplib.IMAP4_SSL(host=imap_host, port=imap_port, timeout=IMAP_TIMEOUT)
+        client = _new_imap_client(imap_host, imap_port, imap_secure)
         try:
             await client.wait_hello_from_server()
             await client.login(auth_email, password)
@@ -1740,6 +1800,7 @@ async def login(request: Request, body: dict):
         "mail_domain": mail_domain,
         "imap_host": imap_host,
         "imap_port": imap_port,
+        "imap_secure": imap_secure,
         "smtp_host": smtp_host,
         "smtp_port": smtp_port,
     }

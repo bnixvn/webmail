@@ -138,9 +138,64 @@ class SecurityHardeningTests(unittest.TestCase):
         token = cookie_header.split("webmail_session=", 1)[1].split(";", 1)[0]
         session = main.decrypt_session(token)
         self.assertEqual(session["imap_host"], "imap.safe.example")
+        self.assertTrue(session["imap_secure"])
         self.assertEqual(session["smtp_host"], "smtp.safe.example")
         self.assertNotEqual(session["imap_host"], "127.0.0.1")
         self.assertNotEqual(session["smtp_host"], "169.254.169.254")
+
+    def test_login_supports_plain_imap_on_port_143(self):
+        self._patch_env({
+            "IMAP_HOST": "mail.safe.example",
+            "IMAP_PORT": "143",
+            "IMAP_SECURE": "true",
+            "SMTP_HOST": "smtp.safe.example",
+            "SMTP_PORT": "465",
+        })
+        captured = {}
+
+        class FakePlainIMAP:
+            def __init__(self, host, port, timeout):
+                captured["imap_host"] = host
+                captured["imap_port"] = port
+                captured["imap_secure"] = False
+
+            async def wait_hello_from_server(self):
+                return None
+
+            async def login(self, email, password):
+                captured["login_email"] = email
+                return None
+
+            async def logout(self):
+                return None
+
+        with (
+            patch.object(main.aioimaplib, "IMAP4", FakePlainIMAP),
+            patch.object(main.aioimaplib, "IMAP4_SSL", side_effect=AssertionError("SSL IMAP should not be used")),
+        ):
+            response = asyncio.run(main.login(_request(), {
+                "email": "user@example.com",
+                "password": "correct-password",
+            }))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(captured["imap_host"], "mail.safe.example")
+        self.assertEqual(captured["imap_port"], 143)
+        self.assertFalse(captured["imap_secure"])
+        cookie_header = response.headers["set-cookie"]
+        token = cookie_header.split("webmail_session=", 1)[1].split(";", 1)[0]
+        session = main.decrypt_session(token)
+        self.assertFalse(session["imap_secure"])
+
+    def test_imap_port_143_forces_plain_even_if_secure_env_is_true(self):
+        self._patch_env({
+            "IMAP_HOST": "mail.safe.example",
+            "IMAP_PORT": "143",
+            "IMAP_SECURE": "true",
+        })
+
+        host, port, secure = asyncio.run(main._resolve_imap_config("example.com"))
+        self.assertEqual((host, port, secure), ("mail.safe.example", 143, False))
 
     def test_session_mail_resolution_ignores_tampered_session_hosts(self):
         self._patch_env({
@@ -151,9 +206,10 @@ class SecurityHardeningTests(unittest.TestCase):
         })
         captured = {}
 
-        async def fake_get_pooled_imap(session, host, port):
+        async def fake_get_pooled_imap(session, host, port, secure):
             captured["host"] = host
             captured["port"] = port
+            captured["secure"] = secure
             return object()
 
         with patch.object(main, "_get_pooled_imap", AsyncMock(side_effect=fake_get_pooled_imap)):
@@ -165,7 +221,26 @@ class SecurityHardeningTests(unittest.TestCase):
                 "imap_port": 1143,
             }))
 
-        self.assertEqual(captured, {"host": "imap.env.example", "port": 993})
+        self.assertEqual(captured, {"host": "imap.env.example", "port": 993, "secure": True})
+
+    def test_imap_discovery_prefers_ssl_but_falls_back_to_plain_143(self):
+        calls = []
+
+        async def fake_probe(host, port, secure):
+            calls.append((host, port, secure))
+            return port == 143
+
+        with (
+            patch.object(main, "_probe_imap_server", AsyncMock(side_effect=fake_probe)),
+            patch("dns.resolver.Resolver.resolve", side_effect=Exception("dns unavailable")),
+        ):
+            host_port = asyncio.run(main._discover_mail_host("example.com", "imap"))
+
+        self.assertEqual(host_port, "mail.example.com:143")
+        self.assertEqual(calls[:2], [
+            ("mail.example.com", 993, True),
+            ("mail.example.com", 143, False),
+        ])
 
     def test_sanitizer_blocks_obfuscated_javascript_links(self):
         payloads = [
