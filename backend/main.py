@@ -180,6 +180,141 @@ def _label_row(row: tuple) -> dict:
 
 _labels_init()
 
+# --- Mail Rule Database -----------------------------------------------------
+
+MAIL_RULES_DB = os.path.join(DATA_DIR, "db", "mail_rules.db")
+
+RULE_FIELDS = {"from", "to", "subject", "body"}
+RULE_OPERATORS = {"contains", "not_contains", "equals", "starts_with", "ends_with"}
+RULE_FLAGS = {"has_attachment", "unread", "starred"}
+RULE_ACTION_TYPES = {"move", "delete", "mark_read", "mark_unread", "star", "unstar"}
+RULE_MAX_CONDITIONS = 12
+RULE_MAX_ACTIONS = 6
+RULE_APPLY_LIMIT = 200
+
+
+def _mail_rules_init():
+    """Init per-account mail filtering rule schema once per process."""
+    import sqlite3
+
+    with sqlite3.connect(MAIL_RULES_DB) as db:
+        db.execute("""CREATE TABLE IF NOT EXISTS mail_rules (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            uid        TEXT    UNIQUE NOT NULL,
+            account    TEXT    NOT NULL,
+            name       TEXT    NOT NULL DEFAULT '',
+            enabled    INTEGER NOT NULL DEFAULT 1,
+            mode       TEXT    NOT NULL DEFAULT 'all',
+            conditions TEXT    NOT NULL DEFAULT '[]',
+            actions    TEXT    NOT NULL DEFAULT '[]',
+            stop       INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT    NOT NULL,
+            updated_at TEXT    NOT NULL
+        )""")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_mail_rules_account ON mail_rules(account)")
+        db.commit()
+
+
+def _json_list(value: str | None) -> list:
+    try:
+        data = json.loads(value or "[]")
+    except Exception:
+        return []
+    return data if isinstance(data, list) else []
+
+
+def _mail_rule_row(row: tuple) -> dict:
+    return {
+        "uid": row[1],
+        "name": row[3] or "",
+        "enabled": bool(row[4]),
+        "mode": row[5] if row[5] in ("all", "any") else "all",
+        "conditions": _json_list(row[6]),
+        "actions": _json_list(row[7]),
+        "stop": bool(row[8]),
+    }
+
+
+def _normalize_rule_condition(raw: Any) -> dict | None:
+    if not isinstance(raw, dict):
+        return None
+    field = (raw.get("field") or "").strip()
+    if field in RULE_FIELDS:
+        op = (raw.get("operator") or "contains").strip()
+        if op not in RULE_OPERATORS:
+            raise HTTPException(400, "Invalid rule operator.")
+        value = str(raw.get("value") or "").strip()
+        if not value:
+            return None
+        return {"field": field, "operator": op, "value": value[:500]}
+    if field in RULE_FLAGS:
+        return {"field": field, "operator": "is", "value": "true"}
+    raise HTTPException(400, "Invalid rule condition.")
+
+
+def _normalize_rule_action(raw: Any) -> dict | None:
+    if not isinstance(raw, dict):
+        return None
+    action_type = (raw.get("type") or "").strip()
+    if action_type not in RULE_ACTION_TYPES:
+        raise HTTPException(400, "Invalid rule action.")
+    action = {"type": action_type}
+    if action_type == "move":
+        destination = str(raw.get("destination") or "").strip()
+        role = _canonical_mailbox_role(raw.get("role") if isinstance(raw.get("role"), str) else None)
+        if not destination and not role:
+            raise HTTPException(400, "Move action requires a destination.")
+        action["destination"] = destination[:255]
+        if role:
+            action["role"] = role
+    return action
+
+
+def _normalize_mail_rule(account: str, body: dict, existing: dict | None = None) -> dict:
+    if not isinstance(body, dict):
+        raise HTTPException(400, "Rule data is required.")
+    name = str(body.get("name") or (existing or {}).get("name") or "").strip()
+    if not name:
+        raise HTTPException(400, "Rule name is required.")
+    mode = str(body.get("mode") or (existing or {}).get("mode") or "all").strip()
+    if mode not in ("all", "any"):
+        raise HTTPException(400, "Rule mode must be all or any.")
+
+    raw_conditions = body.get("conditions", (existing or {}).get("conditions") or [])
+    raw_actions = body.get("actions", (existing or {}).get("actions") or [])
+    if not isinstance(raw_conditions, list) or not isinstance(raw_actions, list):
+        raise HTTPException(400, "Rule conditions and actions must be lists.")
+    if len(raw_conditions) > RULE_MAX_CONDITIONS or len(raw_actions) > RULE_MAX_ACTIONS:
+        raise HTTPException(400, "Rule is too large.")
+
+    conditions = []
+    for raw in raw_conditions:
+        condition = _normalize_rule_condition(raw)
+        if condition:
+            conditions.append(condition)
+    actions = []
+    for raw in raw_actions:
+        action = _normalize_rule_action(raw)
+        if action:
+            actions.append(action)
+    if not conditions:
+        raise HTTPException(400, "At least one condition is required.")
+    if not actions:
+        raise HTTPException(400, "At least one action is required.")
+
+    return {
+        "name": name[:120],
+        "enabled": bool(body.get("enabled", (existing or {}).get("enabled", True))),
+        "mode": mode,
+        "conditions": conditions,
+        "actions": actions,
+        "stop": bool(body.get("stop", (existing or {}).get("stop", False))),
+        "account": account,
+    }
+
+
+_mail_rules_init()
+
 # ─── Admin Database ──────────────────────────────────────────────────────────
 
 ADMIN_DB = os.path.join(DATA_DIR, "db", "admin.db")
@@ -498,6 +633,10 @@ def _raise_invalid_login(scope: str, ip_address: str, detail: str):
     )
 
 
+class SessionExpiredError(Exception):
+    pass
+
+
 def _admin_user_count() -> int:
     import sqlite3
 
@@ -722,7 +861,9 @@ async def _probe_imap_server(
 
 async def _imap_login(client: aioimaplib.IMAP4, session: dict):
     email = session.get("login_email") or session["email"]
-    await client.login(email, session["password"])
+    response = await client.login(email, session["password"])
+    if not _imap_ok(response):
+        raise SessionExpiredError()
 
 
 async def _get_pooled_imap(
@@ -752,8 +893,15 @@ async def _get_pooled_imap(
 
         client = _new_imap_client(imap_host, imap_port, imap_secure)
         # aioimaplib requires waiting for server greeting before any command
-        await client.wait_hello_from_server()
-        await _imap_login(client, session)
+        try:
+            await client.wait_hello_from_server()
+            await _imap_login(client, session)
+        except Exception:
+            try:
+                await client.logout()
+            except Exception:
+                pass
+            raise
         _pool[pool_key] = (client, now)
         return client
 
@@ -767,6 +915,18 @@ async def _evict_imap(email: str, auth_type: str = "password", secure: bool = Tr
                 await entry[0].logout()
             except Exception:
                 pass
+
+
+async def _evict_session_imap(session: dict):
+    email = session.get("email")
+    if not email:
+        return
+    auth_type = _session_auth_type(session)
+    secure_values = {True, False}
+    if "imap_secure" in session:
+        secure_values.add(bool(session.get("imap_secure")))
+    for secure in secure_values:
+        await _evict_imap(email, auth_type, secure)
 
 
 async def _evict_pool():
@@ -796,6 +956,15 @@ async def with_imap_retry(session: dict, coro_factory):
             try:
                 client = await _get_pooled_imap(session, imap_host, imap_port, imap_secure)
                 return await coro_factory(client)
+            except SessionExpiredError:
+                await _evict_imap(email, auth_type, imap_secure)
+                raise HTTPException(
+                    401,
+                    detail={
+                        "code": "SESSION_EXPIRED",
+                        "message": "Session expired. Please sign in again.",
+                    },
+                )
             except (aioimaplib.Abort, ConnectionError, OSError, asyncio.TimeoutError):
                 if attempt == 0:
                     await _evict_imap(email, auth_type, imap_secure)
@@ -1141,7 +1310,7 @@ def _sanitize_html(html: str) -> str:
     return out
 
 
-async def _async_parse_email(raw_source: bytes) -> dict:
+async def _async_parse_email(raw_source: bytes, uid: int | None = None, folder: str = "INBOX") -> dict:
     """Parse raw email source into structured dict (runs in executor to avoid blocking)."""
     def _parse():
         msg = EmailParser(policy=email_default).parsebytes(raw_source)
@@ -1171,7 +1340,11 @@ async def _async_parse_email(raw_source: bytes) -> dict:
             if is_attachment:
                 index = len(attachments)
                 if cid and payload and content_type.startswith("image/"):
-                    cid_urls[cid] = f"data:{content_type};base64,{base64.b64encode(payload).decode()}"
+                    if uid is not None:
+                        cid_urls[cid] = (
+                            f"/api/messages/{uid}/attachments/{index}"
+                            f"?folder={quote(folder or 'INBOX')}"
+                        )
                 if not filename and content_type.startswith("image/"):
                     ext = content_type.split("/", 1)[1].split(";", 1)[0] or "image"
                     filename = f"inline-{index + 1}.{ext}"
@@ -1193,10 +1366,10 @@ async def _async_parse_email(raw_source: bytes) -> dict:
                     html_parts.append(payload.decode(part.get_content_charset() or "utf-8", errors="replace"))
 
         def _replace_cid_urls(html: str) -> str:
-            for cid, data_url in cid_urls.items():
+            for cid, attachment_url in cid_urls.items():
                 escaped = re.escape(cid)
-                html = re.sub(rf"cid:{escaped}", data_url, html, flags=re.IGNORECASE)
-                html = re.sub(rf"cid:{re.escape(quote(cid))}", data_url, html, flags=re.IGNORECASE)
+                html = re.sub(rf"cid:{escaped}", attachment_url, html, flags=re.IGNORECASE)
+                html = re.sub(rf"cid:{re.escape(quote(cid))}", attachment_url, html, flags=re.IGNORECASE)
             return html
 
         if msg.is_multipart():
@@ -1295,6 +1468,114 @@ def _envelope_summary(msg: Any, snippet: str = "") -> dict:
     }
 
 
+def _rule_decode_part_text(part) -> str:
+    try:
+        content = part.get_content()
+        if isinstance(content, str):
+            return content
+        if isinstance(content, bytes):
+            return content.decode(part.get_content_charset() or "utf-8", errors="replace")
+    except Exception:
+        pass
+    try:
+        payload = part.get_payload(decode=True)
+        if payload:
+            return payload.decode(part.get_content_charset() or "utf-8", errors="replace")
+    except Exception:
+        pass
+    return ""
+
+
+def _rule_message_body_text(message) -> str:
+    parts = message.walk() if message.is_multipart() else [message]
+    chunks: list[str] = []
+    for part in parts:
+        if part.is_multipart():
+            continue
+        content_type = (part.get_content_type() or "").lower()
+        disposition = (part.get_content_disposition() or "").lower()
+        if disposition == "attachment":
+            continue
+        if content_type == "text/plain":
+            chunks.append(_rule_decode_part_text(part))
+        elif content_type == "text/html":
+            html_text = _rule_decode_part_text(part)
+            html_text = re.sub(r"<(script|style)[\s\S]*?</\1>", " ", html_text, flags=re.IGNORECASE)
+            chunks.append(re.sub(r"<[^>]+>", " ", html_lib.unescape(html_text)))
+    return re.sub(r"\s+", " ", " ".join(chunks)).strip()[:50000]
+
+
+def _rule_message_has_attachment(message) -> bool:
+    parts = message.walk() if message.is_multipart() else [message]
+    for part in parts:
+        if part.is_multipart():
+            continue
+        disposition = (part.get_content_disposition() or "").lower()
+        if disposition in ("attachment", "inline") or part.get_filename():
+            return True
+    return False
+
+
+def _rule_message_context(uid: int, meta: str, raw_source: bytes) -> dict:
+    message = EmailParser(policy=email_default).parsebytes(raw_source)
+    flags = _fetch_flags(meta)
+
+    def _addr_text(header: str) -> str:
+        values = []
+        for addr in _header_addresses(message.get(header)):
+            values.extend([addr.get("name") or "", addr.get("address") or ""])
+        return " ".join(v for v in values if v)
+
+    return {
+        "uid": uid,
+        "messageId": message.get("Message-ID") or "",
+        "from": _addr_text("From"),
+        "to": " ".join([_addr_text("To"), _addr_text("Cc"), _addr_text("Bcc")]).strip(),
+        "subject": _decode_header_value(message.get("Subject")),
+        "body": _rule_message_body_text(message),
+        "has_attachment": _rule_message_has_attachment(message),
+        "unread": "\\Seen" not in flags,
+        "starred": "\\Flagged" in flags,
+    }
+
+
+def _rule_text_matches(haystack: str, operator: str, needle: str) -> bool:
+    haystack = (haystack or "").casefold()
+    needle = (needle or "").casefold()
+    if operator == "contains":
+        return needle in haystack
+    if operator == "not_contains":
+        return needle not in haystack
+    if operator == "equals":
+        return haystack == needle
+    if operator == "starts_with":
+        return haystack.startswith(needle)
+    if operator == "ends_with":
+        return haystack.endswith(needle)
+    return False
+
+
+def _rule_condition_matches(condition: dict, context: dict) -> bool:
+    field = condition.get("field")
+    if field in RULE_FLAGS:
+        return bool(context.get(field))
+    if field in RULE_FIELDS:
+        return _rule_text_matches(
+            str(context.get(field) or ""),
+            condition.get("operator") or "contains",
+            str(condition.get("value") or ""),
+        )
+    return False
+
+
+def _rule_matches_message(rule: dict, context: dict) -> bool:
+    conditions = rule.get("conditions") or []
+    if not conditions:
+        return False
+    checks = [_rule_condition_matches(condition, context) for condition in conditions]
+    return any(checks) if rule.get("mode") == "any" else all(checks)
+
+
 def _iso_date(date_val) -> str | None:
     if date_val is None:
         return None
@@ -1351,6 +1632,8 @@ def _imap_bytes(value) -> bytes:
 def _require_imap_ok(response, action: str):
     result = _imap_result(response)
     if result and result.upper() != "OK":
+        if _imap_auth_failed(response):
+            raise SessionExpiredError()
         detail = "; ".join(_imap_text(line) for line in _imap_lines(response)[:2])
         raise HTTPException(502, f"IMAP {action} failed: {detail or result}")
 
@@ -1386,6 +1669,22 @@ def _imap_ok(response) -> bool:
 
 def _imap_response_detail(response) -> str:
     return "; ".join(_imap_text(line) for line in _imap_lines(response)[:3]) or (_imap_result(response) or "")
+
+
+def _imap_auth_failed(response) -> bool:
+    result = (_imap_result(response) or "").upper()
+    if result not in {"NO", "BAD"}:
+        return False
+    detail = _imap_response_detail(response).casefold()
+    auth_markers = (
+        "authenticationfailed",
+        "authenticate failed",
+        "authentication failed",
+        "login failed",
+        "not authenticated",
+        "invalid credentials",
+    )
+    return any(marker in detail for marker in auth_markers)
 
 
 def _fold_mailbox_text(value: str) -> str:
@@ -1767,7 +2066,9 @@ async def login(request: Request, body: dict):
         client = _new_imap_client(imap_host, imap_port, imap_secure)
         try:
             await client.wait_hello_from_server()
-            await client.login(auth_email, password)
+            login_resp = await client.login(auth_email, password)
+            if not _imap_ok(login_resp):
+                raise SessionExpiredError()
         finally:
             try:
                 await client.logout()
@@ -1820,6 +2121,9 @@ async def login(request: Request, body: dict):
 
 @app.post("/api/auth/logout")
 async def logout(request: Request):
+    session = await _load_session(request)
+    if session:
+        await _evict_session_imap(session)
     response = JSONResponse({"ok": True})
     response.delete_cookie(SESSION_COOKIE, path="/")
     return response
@@ -2146,7 +2450,7 @@ async def get_message(request: Request, uid: int):
         summary["text"] = None
         summary["attachments"] = []
 
-        parsed = await _async_parse_email(source)
+        parsed = await _async_parse_email(source, uid=uid, folder=folder)
         summary["snippet"] = _clean_snippet(parsed.get("text", ""))
         html = parsed.get("html")
         summary["html"] = _sanitize_html(html) if html else None
@@ -2280,6 +2584,49 @@ async def delete_messages_bulk(request: Request, body: dict):
 
     await with_imap_retry(session, _do)
     return JSONResponse({"ok": True})
+
+
+async def _mail_rule_apply_move(client, folder: str, uid_set: str, action: dict) -> str:
+    destination = action.get("destination") or "Trash"
+    target = await _ensure_mailbox(client, destination, role=action.get("role"))
+    copy_resp = await client.uid("COPY", uid_set, _quote_imap_folder(target))
+    if not _imap_ok(copy_resp) and "TRYCREATE" in _imap_response_detail(copy_resp).upper():
+        target = await _create_mailbox_if_missing(client, target)
+        copy_resp = await client.uid("COPY", uid_set, _quote_imap_folder(target))
+    _require_imap_ok(copy_resp, "UID COPY")
+
+    store_resp = await client.uid("STORE", uid_set, "+FLAGS", "\\Deleted")
+    _require_imap_ok(store_resp, "UID STORE")
+    expunge_resp = await client.expunge()
+    _require_imap_ok(expunge_resp, "EXPUNGE")
+    return target
+
+
+async def _mail_rule_apply_action(client, folder: str, uid_set: str, action: dict) -> dict:
+    action_type = action.get("type")
+    if action_type == "move":
+        target = await _mail_rule_apply_move(client, folder, uid_set, action)
+        return {"type": "move", "destination": target}
+    if action_type == "delete":
+        store_resp = await client.uid("STORE", uid_set, "+FLAGS", "\\Deleted")
+        _require_imap_ok(store_resp, "UID STORE")
+        expunge_resp = await client.expunge()
+        _require_imap_ok(expunge_resp, "EXPUNGE")
+        return {"type": "delete"}
+
+    flag_map = {
+        "mark_read": ("+FLAGS", "\\Seen"),
+        "mark_unread": ("-FLAGS", "\\Seen"),
+        "star": ("+FLAGS", "\\Flagged"),
+        "unstar": ("-FLAGS", "\\Flagged"),
+    }
+    if action_type in flag_map:
+        command, flag = flag_map[action_type]
+        store_resp = await client.uid("STORE", uid_set, command, flag)
+        _require_imap_ok(store_resp, "UID STORE")
+        return {"type": action_type}
+
+    raise HTTPException(400, "Invalid rule action.")
 
 
 @app.post("/api/messages/{uid}/move")
@@ -2541,6 +2888,179 @@ def _write_signature(email: str, data: dict) -> dict:
     with open(path, "w") as f:
         json.dump(defaults, f, indent=2)
     return defaults
+
+
+# --- Mail Rules -------------------------------------------------------------
+
+
+@app.get("/api/mail-rules")
+async def list_mail_rules(request: Request):
+    session = await require_session(request)
+    import sqlite3
+
+    with sqlite3.connect(MAIL_RULES_DB) as db:
+        rows = db.execute(
+            """SELECT *
+               FROM mail_rules
+               WHERE account=?
+               ORDER BY id DESC""",
+            (session["email"],),
+        ).fetchall()
+    return JSONResponse({"rules": [_mail_rule_row(tuple(row)) for row in rows]})
+
+
+@app.post("/api/mail-rules")
+async def create_mail_rule(request: Request, body: dict):
+    session = await require_session(request)
+    import sqlite3
+
+    rule = _normalize_mail_rule(session["email"], body)
+    uid = body.get("uid") or str(uuid.uuid4())
+    now = datetime.utcnow().isoformat()
+    with sqlite3.connect(MAIL_RULES_DB) as db:
+        db.execute(
+            """INSERT INTO mail_rules
+               (uid, account, name, enabled, mode, conditions, actions, stop, created_at, updated_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?)""",
+            (
+                uid,
+                session["email"],
+                rule["name"],
+                int(rule["enabled"]),
+                rule["mode"],
+                json.dumps(rule["conditions"]),
+                json.dumps(rule["actions"]),
+                int(rule["stop"]),
+                now,
+                now,
+            ),
+        )
+        db.commit()
+    rule.update({"uid": uid})
+    return JSONResponse({"rule": rule}, status_code=201)
+
+
+@app.put("/api/mail-rules/{rule_uid}")
+async def update_mail_rule(request: Request, rule_uid: str, body: dict):
+    session = await require_session(request)
+    import sqlite3
+
+    with sqlite3.connect(MAIL_RULES_DB) as db:
+        row = db.execute(
+            "SELECT * FROM mail_rules WHERE uid=? AND account=?",
+            (rule_uid, session["email"]),
+        ).fetchone()
+        if not row:
+            raise HTTPException(404, "Rule not found")
+        existing = _mail_rule_row(tuple(row))
+        rule = _normalize_mail_rule(session["email"], body, existing)
+        now = datetime.utcnow().isoformat()
+        db.execute(
+            """UPDATE mail_rules
+               SET name=?, enabled=?, mode=?, conditions=?, actions=?, stop=?, updated_at=?
+               WHERE uid=? AND account=?""",
+            (
+                rule["name"],
+                int(rule["enabled"]),
+                rule["mode"],
+                json.dumps(rule["conditions"]),
+                json.dumps(rule["actions"]),
+                int(rule["stop"]),
+                now,
+                rule_uid,
+                session["email"],
+            ),
+        )
+        db.commit()
+    rule.update({"uid": rule_uid})
+    return JSONResponse({"rule": rule})
+
+
+@app.delete("/api/mail-rules/{rule_uid}")
+async def delete_mail_rule(request: Request, rule_uid: str):
+    session = await require_session(request)
+    import sqlite3
+
+    with sqlite3.connect(MAIL_RULES_DB) as db:
+        cur = db.execute("DELETE FROM mail_rules WHERE uid=? AND account=?", (rule_uid, session["email"]))
+        db.commit()
+        if cur.rowcount == 0:
+            raise HTTPException(404, "Rule not found")
+    return JSONResponse({"ok": True})
+
+
+@app.post("/api/mail-rules/apply")
+async def apply_mail_rules(request: Request, body: dict):
+    session = await require_session(request)
+    folder = (body.get("folder") or "INBOX").strip() or "INBOX"
+    limit = min(max(int(body.get("limit", RULE_APPLY_LIMIT)), 1), RULE_APPLY_LIMIT)
+    import sqlite3
+
+    with sqlite3.connect(MAIL_RULES_DB) as db:
+        rows = db.execute(
+            """SELECT *
+               FROM mail_rules
+               WHERE account=? AND enabled=1
+               ORDER BY id ASC""",
+            (session["email"],),
+        ).fetchall()
+    rules = [_mail_rule_row(tuple(row)) for row in rows]
+    if not rules:
+        return JSONResponse({"ok": True, "matched": 0, "applied": 0, "results": []})
+
+    async def _do(client):
+        select_resp = await client.select(_quote_imap_folder(folder))
+        _require_imap_ok(select_resp, f"SELECT {folder}")
+        search_resp = await client.uid_search("ALL")
+        _require_imap_ok(search_resp, "UID SEARCH")
+        uids: list[str] = []
+        for item in _imap_lines(search_resp):
+            text = _imap_text(item).strip()
+            if re.fullmatch(r"[\d\s]+", text):
+                uids.extend(text.split())
+
+        matched = 0
+        applied = 0
+        rule_results = []
+        for uid_text in uids[-limit:]:
+            fetch_resp = await client.uid("FETCH", uid_text, "(UID FLAGS BODY.PEEK[])")
+            _require_imap_ok(fetch_resp, "UID FETCH")
+            meta = ""
+            source = None
+            for item_meta, item_source in _iter_fetch_literals(fetch_resp):
+                meta = item_meta
+                source = item_source
+                break
+            if not source:
+                continue
+            context = _rule_message_context(int(uid_text), meta, source)
+            for rule in rules:
+                if not _rule_matches_message(rule, context):
+                    continue
+                matched += 1
+                applied_actions = []
+                message_finalized = False
+                action_list = sorted(
+                    rule["actions"],
+                    key=lambda action: 1 if action.get("type") in ("move", "delete") else 0,
+                )
+                for action in action_list:
+                    applied_actions.append(await _mail_rule_apply_action(client, folder, uid_text, action))
+                    applied += 1
+                    if action.get("type") in ("move", "delete"):
+                        message_finalized = True
+                        break
+                rule_results.append({
+                    "ruleUid": rule["uid"],
+                    "messageUid": int(uid_text),
+                    "actions": applied_actions,
+                })
+                if rule.get("stop") or message_finalized:
+                    break
+        return matched, applied, rule_results
+
+    matched, applied, results = await with_imap_retry(session, _do)
+    return JSONResponse({"ok": True, "matched": matched, "applied": applied, "results": results})
 
 
 # ── Signature Image Upload ────────────────────────────────────────────────────

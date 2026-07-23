@@ -57,6 +57,21 @@ const LOCALES = {
     messages: (n) => `${n} messages`,
     filterAll: "All", filterUnread: "Unread", filterStarred: "Starred",
     noFolders: "No folders",
+    mailRules: "Mail rules", manageRules: "Manage Rules", newRule: "New Rule",
+    ruleName: "Rule name", ruleConditions: "Conditions", ruleActions: "Actions",
+    addCondition: "Add condition", addAction: "Add action", applyRules: "Apply rules",
+    ruleApplied: (n) => `Applied ${n} action${n === 1 ? "" : "s"}`,
+    noRules: "No rules yet", deleteRuleConfirm: (n) => `Delete rule "${n}"?`,
+    stopMoreRules: "Stop after this rule", matchAll: "Match all", matchAny: "Match any",
+    conditionFrom: "From", conditionTo: "To/Cc/Bcc", conditionSubject: "Subject",
+    conditionBody: "Body", conditionHasAttachment: "Has attachment",
+    conditionUnread: "Unread", conditionStarred: "Starred",
+    operatorContains: "contains", operatorNotContains: "does not contain",
+    operatorEquals: "equals", operatorStarts: "starts with", operatorEnds: "ends with",
+    actionMove: "Move to folder", actionDelete: "Delete",
+    actionMarkRead: "Mark read", actionMarkUnread: "Mark unread",
+    actionStar: "Star", actionUnstar: "Unstar",
+    destinationFolder: "Destination folder",
     // Message view
     noConvSelected: "No conversation selected",
     chooseMessage: "Choose a message from the list",
@@ -170,6 +185,21 @@ const LOCALES = {
     messages: (n) => `${n} thư`,
     filterAll: "Tất cả", filterUnread: "Chưa đọc", filterStarred: "Đã gắn sao",
     noFolders: "Không có thư mục",
+    mailRules: "Rule lọc mail", manageRules: "Quản lý rule", newRule: "Rule mới",
+    ruleName: "Tên rule", ruleConditions: "Điều kiện", ruleActions: "Hành động",
+    addCondition: "Thêm điều kiện", addAction: "Thêm hành động", applyRules: "Chạy rule",
+    ruleApplied: (n) => `Đã chạy ${n} hành động`,
+    noRules: "Chưa có rule", deleteRuleConfirm: (n) => `Xóa rule "${n}"?`,
+    stopMoreRules: "Dừng sau rule này", matchAll: "Khớp tất cả", matchAny: "Khớp bất kỳ",
+    conditionFrom: "Từ", conditionTo: "Đến/Cc/Bcc", conditionSubject: "Tiêu đề",
+    conditionBody: "Nội dung", conditionHasAttachment: "Có tệp đính kèm",
+    conditionUnread: "Chưa đọc", conditionStarred: "Đã gắn sao",
+    operatorContains: "chứa", operatorNotContains: "không chứa",
+    operatorEquals: "bằng", operatorStarts: "bắt đầu bằng", operatorEnds: "kết thúc bằng",
+    actionMove: "Chuyển vào thư mục", actionDelete: "Xóa",
+    actionMarkRead: "Đánh dấu đã đọc", actionMarkUnread: "Đánh dấu chưa đọc",
+    actionStar: "Gắn sao", actionUnstar: "Bỏ sao",
+    destinationFolder: "Thư mục đích",
     // Message view
     noConvSelected: "Chưa chọn cuộc trò chuyện",
     chooseMessage: "Chọn một thư từ danh sách",
@@ -822,6 +852,31 @@ function moveMenuButton(scope, onPick) {
   return wrap;
 }
 
+function moreMenuButton(menuItems) {
+  const wrap = h("div", { className: "relative" });
+  wrap.appendChild(h("button", {
+    className: "p-1.5 rounded hover:bg-slate-100 text-slate-500",
+    innerHTML: I.more,
+    onclick(e) {
+      e.stopPropagation();
+      set({ moreMenu: !S.moreMenu });
+    },
+  }));
+  if (S.moreMenu) {
+    const dropdown = h("div", {
+      className: "absolute right-0 top-8 bg-white dark:bg-slate-700 border border-line rounded-lg shadow-lg py-1 z-50 w-48",
+    });
+    for (const mi of menuItems) {
+      dropdown.appendChild(h("button", {
+        className: "w-full text-left px-3 py-1.5 text-sm hover:bg-slate-50 flex items-center gap-2",
+        onclick(e) { e.stopPropagation(); set({ moreMenu: false }); mi.fn(); },
+      }, mi.iconName ? icon(mi.iconName) : null, h("span", {}, mi.label)));
+    }
+    wrap.appendChild(dropdown);
+  }
+  return wrap;
+}
+
 function renderLabelDropdown(uid, source) {
   if (S[source] !== uid) return null;
   const msg = S.messages.find(m => m.uid === uid);
@@ -1007,6 +1062,10 @@ async function api(path, opts = {}) {
     );
     err.status = res.status;
     if (detail && typeof detail === "object") Object.assign(err, detail);
+    if (res.status === 401 && !["/api/auth/login", "/api/auth/logout", "/api/auth/me"].includes(path)) {
+      err.authExpired = true;
+      await handleSessionExpired();
+    }
     throw err;
   }
   return res.json();
@@ -1038,9 +1097,14 @@ async function uploadSignatureImage(file) {
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
     const err = new Error(data.detail || data.error || `HTTP ${res.status}`);
+    err.status = res.status;
+    if (res.status === 401) {
+      err.authExpired = true;
+      await handleSessionExpired();
+    }
     if ([400, 401, 403, 413, 415].includes(res.status)) {
       err.noFallback = true;
-      showToast(t("imageUploadFailed"), "error");
+      if (!err.authExpired) showToast(t("imageUploadFailed"), "error");
     }
     throw err;
   }
@@ -1110,6 +1174,11 @@ const S = {
   labelMenuView: null,    // uid or null — dropdown in reading pane
   labelEditing: null,     // label being edited
   labelManagerOpen: false,
+  mailRules: [],
+  ruleManagerOpen: false,
+  ruleEditing: null,
+  ruleSaving: false,
+  rulesApplying: false,
   contacts: [],
   calendarEvents: [],
   todayEvents: [],
@@ -1124,9 +1193,97 @@ const S = {
 };
 
 let _rendering = false;
+let _handlingSessionExpired = false;
+const BASE_TITLE = "Webmail";
+
+function updateDocumentTitle() {
+  const unread = S.account ? S.messages.filter(m => !m.seen).length : 0;
+  document.title = unread > 0 ? `(${unread}) ${BASE_TITLE}` : BASE_TITLE;
+}
+
 function set(patch) {
   Object.assign(S, patch);
+  updateDocumentTitle();
   if (!_rendering) render();
+}
+
+function resetSessionState(loginError = "") {
+  set({
+    ready: true,
+    account: null,
+    view: "mail",
+    mailboxes: [],
+    folder: "INBOX",
+    messages: [],
+    selectedUid: null,
+    selectedMsg: null,
+    query: "",
+    msgFilter: "all",
+    labelFilter: null,
+    selectedUids: [],
+    quickReply: "",
+    quickAttachments: [],
+    compose: null,
+    composeFullPage: false,
+    showCc: false,
+    showBcc: false,
+    signature: null,
+    sigOpen: false,
+    sigSaving: false,
+    sigSaved: false,
+    sigMode: "visual",
+    sigHtmlDraft: "",
+    error: "",
+    loadingMsgs: false,
+    loadingMsg: false,
+    loadingMore: false,
+    sending: false,
+    quickSending: false,
+    expandedThreads: new Set(),
+    threadMsgs: [],
+    loadingThread: false,
+    collapsedMsgs: new Set(),
+    newFolder: "",
+    showNewFolder: false,
+    moreMenu: false,
+    moveMenu: null,
+    labelMenuList: null,
+    labelMenuView: null,
+    labelEditing: null,
+    labelManagerOpen: false,
+    labels: [],
+    labelsLoaded: false,
+    mailRules: [],
+    ruleManagerOpen: false,
+    ruleEditing: null,
+    ruleSaving: false,
+    rulesApplying: false,
+    contacts: [],
+    calendarEvents: [],
+    todayEvents: [],
+    calSelected: null,
+    calEditing: null,
+    contactEditing: null,
+    msgOffset: 0,
+    msgTotal: 0,
+    loginError,
+  });
+}
+
+async function handleSessionExpired() {
+  if (_handlingSessionExpired) return;
+  _handlingSessionExpired = true;
+  resetSessionState(t("sessionExpired"));
+  try {
+    window.history.replaceState(null, "", `${window.location.origin}/`);
+  } catch {}
+  try {
+    await fetch("/api/auth/logout", {
+      method: "POST",
+      credentials: "include",
+      cache: "no-store",
+    });
+  } catch {}
 }
 
 function showToast(msg, type = "success", duration = 3000) {
@@ -1232,6 +1389,7 @@ async function onLogin(e) {
     });
     S.account = { email: data.email, domain: data.domain };
     S.ready = false;
+    _handlingSessionExpired = false;
     // Show loading while bootstrap runs
     render();
     await bootstrap();
@@ -1261,12 +1419,10 @@ async function bootstrap() {
       mailboxes: mbData.mailboxes || [],
       ready: true,
     });
-    await Promise.all([loadMessages(), loadTodayEvents(), loadLabels()]);
+    await Promise.all([loadMessages(), loadTodayEvents(), loadLabels(), loadMailRules()]);
   } catch (err) {
-    // Only logout on actual auth errors (401/403)
-    if (err.status === 401 || err.status === 403) {
-      await doLogout();
-      set({ loginError: t("sessionExpired") });
+    if (err.authExpired || err.status === 401) {
+      await handleSessionExpired();
     } else {
       // IMAP/other error â€” stay logged in, show error
       set({ ready: true, error: t("couldNotLoad", err.message) });
@@ -1327,11 +1483,8 @@ async function loadMessage(uid) {
 
 async function doLogout() {
   try { await api("/api/auth/logout", { method: "POST" }); } catch {}
-  set({
-    account: null, mailboxes: [], messages: [],
-    selectedUid: null, selectedMsg: null, compose: null,
-    signature: null, sigOpen: false, sigMode: "visual", sigHtmlDraft: "", loginError: "",
-  });
+  _handlingSessionExpired = false;
+  resetSessionState("");
   window.location.href = `${window.location.origin}/`;
 }
 
@@ -2597,37 +2750,16 @@ function renderMessageView() {
     onclick() { toggleFlag("\\Flagged", !msg.flagged); },
   }));
 
-  // More menu
-  const moreWrap = h("div", { className: "relative" });
-  moreWrap.appendChild(h("button", {
-    className: "p-1.5 rounded hover:bg-slate-100 text-slate-500",
-    innerHTML: I.more,
-    onclick(e) {
-      e.stopPropagation();
-      set({ moreMenu: !S.moreMenu });
-    },
-  }));
-  if (S.moreMenu) {
-    const dropdown = h("div", {
-      className: "absolute right-0 top-8 bg-white dark:bg-slate-700 border border-line rounded-lg shadow-lg py-1 z-50 w-48",
-    });
-    const menuItems = [
-      { label: t("replyAll"), fn() { openCompose({ replyAll: msg }); } },
-      { label: t("forward"), fn() { openCompose({ forward: msg }); } },
-      { label: msg.seen ? t("markUnread") : t("markRead"), fn() { toggleFlag("\\Seen", !msg.seen); } },
-      { label: t("archive"), fn() { moveMsg(folderTarget("archive")); } },
-      { label: t("reportSpam"), fn() { moveMsg(folderTarget("spam")); } },
-      { label: t("delete"), fn() { deleteMsg(); } },
-    ];
-    for (const mi of menuItems) {
-      dropdown.appendChild(h("button", {
-        className: "w-full text-left px-3 py-1.5 text-sm hover:bg-slate-50",
-        onclick(e) { e.stopPropagation(); set({ moreMenu: false }); mi.fn(); },
-      }, mi.label));
-    }
-    moreWrap.appendChild(dropdown);
-  }
-  actions.appendChild(moreWrap);
+  const messageMoreItems = [
+    { label: t("replyAll"), fn() { openCompose({ replyAll: msg }); } },
+    { label: t("forward"), fn() { openCompose({ forward: msg }); } },
+    { label: msg.seen ? t("markUnread") : t("markRead"), fn() { toggleFlag("\\Seen", !msg.seen); } },
+    { label: t("archive"), fn() { moveMsg(folderTarget("archive")); } },
+    { label: t("reportSpam"), fn() { moveMsg(folderTarget("spam")); } },
+    { label: t("delete"), fn() { deleteMsg(); } },
+    { label: t("mailRules"), iconName: "filter", fn() { set({ ruleManagerOpen: true, ruleEditing: null }); } },
+  ];
+  actions.appendChild(moreMenuButton(messageMoreItems));
   row1.appendChild(actions);
   header.appendChild(row1);
 
@@ -2644,6 +2776,7 @@ function renderMessageView() {
     innerHTML: msg.flagged ? I.starFill : I.star,
     onclick() { toggleFlag("\\Flagged", !msg.flagged); },
   }));
+  mobileActions.appendChild(moreMenuButton(messageMoreItems));
   header.appendChild(mobileActions);
 
   // Sender info
@@ -3829,6 +3962,130 @@ function renderCalendarEditModal() {
   return overlay;
 }
 
+// --- Mail Rules -------------------------------------------------------------
+
+const RULE_FIELD_OPTIONS = [
+  { value: "from", labelKey: "conditionFrom", needsValue: true },
+  { value: "to", labelKey: "conditionTo", needsValue: true },
+  { value: "subject", labelKey: "conditionSubject", needsValue: true },
+  { value: "body", labelKey: "conditionBody", needsValue: true },
+  { value: "has_attachment", labelKey: "conditionHasAttachment", needsValue: false },
+  { value: "unread", labelKey: "conditionUnread", needsValue: false },
+  { value: "starred", labelKey: "conditionStarred", needsValue: false },
+];
+
+const RULE_OPERATOR_OPTIONS = [
+  { value: "contains", labelKey: "operatorContains" },
+  { value: "not_contains", labelKey: "operatorNotContains" },
+  { value: "equals", labelKey: "operatorEquals" },
+  { value: "starts_with", labelKey: "operatorStarts" },
+  { value: "ends_with", labelKey: "operatorEnds" },
+];
+
+const RULE_ACTION_OPTIONS = [
+  { value: "move", labelKey: "actionMove" },
+  { value: "delete", labelKey: "actionDelete" },
+  { value: "mark_read", labelKey: "actionMarkRead" },
+  { value: "mark_unread", labelKey: "actionMarkUnread" },
+  { value: "star", labelKey: "actionStar" },
+  { value: "unstar", labelKey: "actionUnstar" },
+];
+
+function defaultRuleDraft() {
+  return {
+    name: "",
+    enabled: true,
+    mode: "all",
+    stop: false,
+    conditions: [{ field: "from", operator: "contains", value: "" }],
+    actions: [{ type: "move", destination: "Archive", role: "archive" }],
+  };
+}
+
+function cloneRule(rule) {
+  return {
+    uid: rule?.uid,
+    name: rule?.name || "",
+    enabled: rule?.enabled !== false,
+    mode: rule?.mode === "any" ? "any" : "all",
+    stop: !!rule?.stop,
+    conditions: (rule?.conditions?.length ? rule.conditions : defaultRuleDraft().conditions)
+      .map(c => ({ field: c.field || "from", operator: c.operator || "contains", value: c.value || "" })),
+    actions: (rule?.actions?.length ? rule.actions : defaultRuleDraft().actions)
+      .map(a => ({ type: a.type || "move", destination: a.destination || "", role: a.role || "" })),
+  };
+}
+
+function ruleFieldNeedsValue(field) {
+  return RULE_FIELD_OPTIONS.find(opt => opt.value === field)?.needsValue !== false;
+}
+
+function ruleActionLabel(action) {
+  const option = RULE_ACTION_OPTIONS.find(opt => opt.value === action.type);
+  if (!option) return action.type || "";
+  if (action.type === "move" && action.destination) return `${t(option.labelKey)}: ${action.destination}`;
+  return t(option.labelKey);
+}
+
+async function loadMailRules() {
+  try {
+    const data = await api("/api/mail-rules");
+    set({ mailRules: data.rules || [] });
+  } catch (err) {
+    console.error("Failed to load mail rules:", err);
+  }
+}
+
+async function saveMailRule(rule) {
+  set({ ruleSaving: true });
+  try {
+    const method = rule.uid ? "PUT" : "POST";
+    const path = rule.uid ? `/api/mail-rules/${rule.uid}` : "/api/mail-rules";
+    const body = {
+      name: rule.name,
+      enabled: rule.enabled !== false,
+      mode: rule.mode === "any" ? "any" : "all",
+      stop: !!rule.stop,
+      conditions: rule.conditions,
+      actions: rule.actions,
+    };
+    const data = await api(path, { method, body: JSON.stringify(body) });
+    const saved = data.rule;
+    const exists = S.mailRules.some(r => r.uid === saved.uid);
+    set({
+      mailRules: exists ? S.mailRules.map(r => r.uid === saved.uid ? saved : r) : [saved, ...S.mailRules],
+      ruleEditing: null,
+      ruleSaving: false,
+    });
+  } catch (err) {
+    set({ error: err.message, ruleSaving: false });
+  }
+}
+
+async function deleteMailRule(uid) {
+  try {
+    await api(`/api/mail-rules/${uid}`, { method: "DELETE" });
+    set({ mailRules: S.mailRules.filter(r => r.uid !== uid), ruleEditing: null });
+  } catch (err) {
+    set({ error: err.message });
+  }
+}
+
+async function applyMailRules() {
+  set({ rulesApplying: true });
+  try {
+    const data = await api("/api/mail-rules/apply", {
+      method: "POST",
+      body: JSON.stringify({ folder: S.folder, limit: 200 }),
+    });
+    set({ rulesApplying: false, ruleManagerOpen: false, ruleEditing: null });
+    showToast(t("ruleApplied", data.applied || 0));
+    await Promise.all([loadMessages(), refreshMailboxes()]);
+  } catch (err) {
+    set({ error: err.message, rulesApplying: false });
+  }
+}
+
 // â”€â”€â”€ Contacts View â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async function loadContacts() {
@@ -4437,6 +4694,209 @@ function renderLabelManagerModal() {
 
 // â”€â”€â”€ Main Render â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
+function renderRuleManagerModal() {
+  if (!S.ruleManagerOpen) return h("div", { style: { display: "none" } });
+
+  const editing = S.ruleEditing ? cloneRule(S.ruleEditing) : null;
+  const overlay = h("div", {
+    className: "fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-3",
+    onclick(e) { if (e.target === overlay) set({ ruleManagerOpen: false, ruleEditing: null }); },
+  });
+  const modal = h("div", {
+    className: "bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-xl max-h-[78vh] flex flex-col overflow-hidden",
+    onclick(e) { e.stopPropagation(); },
+  });
+  modal.appendChild(h("div", { className: "flex items-center justify-between h-14 px-4 border-b border-line shrink-0" },
+    h("h2", { className: "text-lg font-semibold" }, t("manageRules")),
+    h("button", { className: "p-1 rounded hover:bg-slate-100", innerHTML: I.x, onclick() { set({ ruleManagerOpen: false, ruleEditing: null }); } }),
+  ));
+
+  const body = h("div", { className: "flex-1 min-h-0 overflow-y-auto p-4 grid grid-cols-1 sm:grid-cols-[180px_1fr] gap-4" });
+  const listPane = h("div", { className: "space-y-3 min-w-0" });
+  listPane.appendChild(h("button", {
+    className: "w-full px-3 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand-hover flex items-center justify-center gap-2",
+    onclick() { set({ ruleEditing: defaultRuleDraft() }); },
+  }, icon("plus"), t("newRule")));
+  if (!S.mailRules.length) {
+    listPane.appendChild(h("div", { className: "text-sm text-slate-400 text-center py-8 border border-dashed border-line rounded-lg" }, t("noRules")));
+  } else {
+    const ruleList = h("div", { className: "space-y-2" });
+    for (const rule of S.mailRules) {
+      const active = S.ruleEditing?.uid === rule.uid;
+      const summary = (rule.actions || []).map(ruleActionLabel).join(", ");
+      ruleList.appendChild(h("button", {
+        className: `w-full text-left p-2.5 rounded-lg border ${active ? "border-blue-300 bg-blue-50" : "border-line hover:bg-slate-50"} dark:hover:bg-slate-700`,
+        onclick() { set({ ruleEditing: cloneRule(rule) }); },
+      },
+        h("div", { className: "flex items-center gap-2" },
+          h("span", { className: `w-2 h-2 rounded-full ${rule.enabled !== false ? "bg-emerald-500" : "bg-slate-300"}` }),
+          h("span", { className: "font-medium text-sm truncate flex-1" }, rule.name || t("newRule")),
+        ),
+        summary ? h("div", { className: "mt-1 text-xs text-slate-500 truncate" }, summary) : null,
+      ));
+    }
+    listPane.appendChild(ruleList);
+  }
+  body.appendChild(listPane);
+
+  const editorPane = h("div", { className: "min-w-0" });
+  if (!editing) {
+    editorPane.appendChild(h("div", { className: "h-full min-h-[180px] flex items-center justify-center text-sm text-slate-400 border border-dashed border-line rounded-lg" }, t("newRule")));
+  } else {
+    const form = h("div", { className: "space-y-4" });
+    const draft = S.ruleEditing;
+    const nameRow = h("div", { className: "grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3" });
+    const nameInput = h("input", {
+      className: "w-full px-3 py-2 border border-line rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-300",
+      placeholder: t("ruleName"),
+      value: editing.name,
+    });
+    nameInput.addEventListener("input", e => { draft.name = e.target.value; });
+    nameRow.appendChild(nameInput);
+    const enabledToggle = h("label", { className: "flex items-center gap-2 text-sm text-slate-600 px-2" });
+    const enabledInput = h("input", { type: "checkbox" });
+    enabledInput.checked = editing.enabled !== false;
+    enabledInput.addEventListener("change", () => { draft.enabled = enabledInput.checked; });
+    enabledToggle.appendChild(enabledInput);
+    enabledToggle.appendChild(document.createTextNode(t("enabled")));
+    nameRow.appendChild(enabledToggle);
+    form.appendChild(nameRow);
+
+    const modeRow = h("div", { className: "flex items-center gap-2 flex-wrap" });
+    for (const mode of [{ value: "all", label: t("matchAll") }, { value: "any", label: t("matchAny") }]) {
+      modeRow.appendChild(h("button", {
+        type: "button",
+        className: `px-3 py-1.5 rounded-lg border text-sm ${editing.mode === mode.value ? "bg-blue-50 border-blue-300 text-blue-700" : "border-line text-slate-600 hover:bg-slate-50"}`,
+        onclick() { draft.mode = mode.value; set({ ruleEditing: draft }); },
+      }, mode.label));
+    }
+    const stopToggle = h("label", { className: "ml-auto flex items-center gap-2 text-sm text-slate-600" });
+    const stopInput = h("input", { type: "checkbox" });
+    stopInput.checked = !!editing.stop;
+    stopInput.addEventListener("change", () => { draft.stop = stopInput.checked; });
+    stopToggle.appendChild(stopInput);
+    stopToggle.appendChild(document.createTextNode(t("stopMoreRules")));
+    modeRow.appendChild(stopToggle);
+    form.appendChild(modeRow);
+
+    form.appendChild(h("div", { className: "text-xs font-semibold uppercase text-slate-400 tracking-wider" }, t("ruleConditions")));
+    const conditionsWrap = h("div", { className: "space-y-2" });
+    editing.conditions.forEach((condition, index) => {
+      const row = h("div", { className: "grid grid-cols-1 sm:grid-cols-[1fr_1fr] gap-2 items-center" });
+      const fieldSelect = h("select", { className: "px-2 py-2 border border-line rounded-lg text-sm bg-white dark:bg-slate-700" });
+      for (const opt of RULE_FIELD_OPTIONS) fieldSelect.appendChild(h("option", { value: opt.value, selected: condition.field === opt.value }, t(opt.labelKey)));
+      fieldSelect.addEventListener("change", e => {
+        draft.conditions[index].field = e.target.value;
+        if (!ruleFieldNeedsValue(e.target.value)) draft.conditions[index].value = "";
+        set({ ruleEditing: draft });
+      });
+      row.appendChild(fieldSelect);
+      const opSelect = h("select", {
+        className: "px-2 py-2 border border-line rounded-lg text-sm bg-white dark:bg-slate-700",
+        disabled: !ruleFieldNeedsValue(condition.field) ? "disabled" : undefined,
+      });
+      for (const opt of RULE_OPERATOR_OPTIONS) opSelect.appendChild(h("option", { value: opt.value, selected: condition.operator === opt.value }, t(opt.labelKey)));
+      opSelect.addEventListener("change", e => { draft.conditions[index].operator = e.target.value; });
+      row.appendChild(opSelect);
+      const valueInput = h("input", {
+        className: "px-3 py-2 border border-line rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-300",
+        placeholder: t("searchMsgsPh"),
+        value: condition.value || "",
+        disabled: !ruleFieldNeedsValue(condition.field) ? "disabled" : undefined,
+      });
+      valueInput.addEventListener("input", e => { draft.conditions[index].value = e.target.value; });
+      row.appendChild(valueInput);
+      row.appendChild(h("button", {
+        className: "p-2 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 sm:col-span-2 justify-self-start",
+        innerHTML: I.trash,
+        onclick() {
+          draft.conditions.splice(index, 1);
+          if (!draft.conditions.length) draft.conditions.push(defaultRuleDraft().conditions[0]);
+          set({ ruleEditing: draft });
+        },
+      }));
+      conditionsWrap.appendChild(row);
+    });
+    form.appendChild(conditionsWrap);
+    form.appendChild(h("button", {
+      className: "px-3 py-1.5 rounded-lg border border-line text-sm text-slate-600 hover:bg-slate-50 flex items-center gap-2",
+      onclick() { draft.conditions.push({ field: "subject", operator: "contains", value: "" }); set({ ruleEditing: draft }); },
+    }, icon("plus"), t("addCondition")));
+
+    form.appendChild(h("div", { className: "text-xs font-semibold uppercase text-slate-400 tracking-wider pt-2" }, t("ruleActions")));
+    const actionsWrap = h("div", { className: "space-y-2" });
+    editing.actions.forEach((action, index) => {
+      const row = h("div", { className: "grid grid-cols-1 sm:grid-cols-[1fr_1fr] gap-2 items-center" });
+      const actionSelect = h("select", { className: "px-2 py-2 border border-line rounded-lg text-sm bg-white dark:bg-slate-700" });
+      for (const opt of RULE_ACTION_OPTIONS) actionSelect.appendChild(h("option", { value: opt.value, selected: action.type === opt.value }, t(opt.labelKey)));
+      actionSelect.addEventListener("change", e => {
+        draft.actions[index].type = e.target.value;
+        if (e.target.value !== "move") {
+          draft.actions[index].destination = "";
+          draft.actions[index].role = "";
+        } else if (!draft.actions[index].destination) {
+          draft.actions[index].destination = "Archive";
+          draft.actions[index].role = "archive";
+        }
+        set({ ruleEditing: draft });
+      });
+      row.appendChild(actionSelect);
+      const destInput = h("input", {
+        className: "px-3 py-2 border border-line rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-300",
+        placeholder: t("destinationFolder"),
+        value: action.destination || "",
+        disabled: action.type !== "move" ? "disabled" : undefined,
+      });
+      destInput.addEventListener("input", e => { draft.actions[index].destination = e.target.value; draft.actions[index].role = ""; });
+      row.appendChild(destInput);
+      row.appendChild(h("button", {
+        className: "p-2 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 sm:col-span-2 justify-self-start",
+        innerHTML: I.trash,
+        onclick() {
+          draft.actions.splice(index, 1);
+          if (!draft.actions.length) draft.actions.push(defaultRuleDraft().actions[0]);
+          set({ ruleEditing: draft });
+        },
+      }));
+      actionsWrap.appendChild(row);
+    });
+    form.appendChild(actionsWrap);
+    form.appendChild(h("button", {
+      className: "px-3 py-1.5 rounded-lg border border-line text-sm text-slate-600 hover:bg-slate-50 flex items-center gap-2",
+      onclick() { draft.actions.push({ type: "mark_read", destination: "", role: "" }); set({ ruleEditing: draft }); },
+    }, icon("plus"), t("addAction")));
+
+    const editorActions = h("div", { className: "flex items-center gap-2 pt-3 border-t border-line" });
+    if (editing.uid) {
+      editorActions.appendChild(h("button", {
+        className: "px-3 py-2 rounded-lg border border-red-200 text-red-600 text-sm hover:bg-red-50",
+        onclick() { if (confirm(t("deleteRuleConfirm", editing.name || t("newRule")))) deleteMailRule(editing.uid); },
+      }, t("delete")));
+    }
+    editorActions.appendChild(h("div", { className: "flex-1" }));
+    editorActions.appendChild(h("button", { className: "px-4 py-2 rounded-lg border border-line text-sm text-slate-600 hover:bg-slate-50", onclick() { set({ ruleEditing: null }); } }, t("cancel")));
+    editorActions.appendChild(h("button", {
+      className: "px-5 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand-hover disabled:opacity-50",
+      disabled: S.ruleSaving ? "disabled" : undefined,
+      onclick() { saveMailRule(draft); },
+    }, S.ruleSaving ? t("saving") : t("save")));
+    form.appendChild(editorActions);
+    editorPane.appendChild(form);
+  }
+  body.appendChild(editorPane);
+  modal.appendChild(body);
+  modal.appendChild(h("div", { className: "flex items-center justify-between h-14 px-4 border-t border-line shrink-0" },
+    h("span", { className: "text-xs text-slate-400" }, `${S.mailRules.length} ${t("mailRules")}`),
+    h("button", {
+      className: "px-4 py-2 rounded-lg border border-line text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50 flex items-center gap-2",
+      disabled: S.rulesApplying ? "disabled" : undefined,
+      onclick: applyMailRules,
+    }, icon("filter"), S.rulesApplying ? t("saving") : t("applyRules")),
+  ));
+  overlay.appendChild(modal);
+  return overlay;
+}
+
 function render() {
   _rendering = true;
   // Preserve contenteditable editor content across re-renders so typing isn't lost
@@ -4512,6 +4972,7 @@ function render() {
       app.appendChild(shell);
       app.appendChild(renderSignatureModal());
       app.appendChild(renderLabelManagerModal());
+      app.appendChild(renderRuleManagerModal());
 
       // Restore editor content after DOM is rebuilt so typing is never lost
       if (savedHtml !== null) {

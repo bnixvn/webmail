@@ -4,6 +4,8 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from email.message import EmailMessage
+from types import SimpleNamespace
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -97,6 +99,33 @@ class SecurityHardeningTests(unittest.TestCase):
             self.assertTrue(main._write_caddy_aliases(["webmail.safe.example"]))
         self.assertIn("webmail.safe.example", include_path.read_text(encoding="utf-8"))
 
+    def test_inline_cid_images_are_rewritten_to_attachment_urls(self):
+        msg = EmailMessage()
+        msg["From"] = "Bank <bank@example.com>"
+        msg["To"] = "User <user@example.com>"
+        msg["Subject"] = "Inline image"
+        msg.set_content("Fallback text")
+        msg.add_alternative(
+            '<html><body><img src="cid:header.png@example"></body></html>',
+            subtype="html",
+        )
+        html_part = msg.get_payload()[1]
+        html_part.add_related(
+            b"fake-png",
+            maintype="image",
+            subtype="png",
+            cid="<header.png@example>",
+            filename="header.png",
+            disposition="inline",
+        )
+
+        parsed = asyncio.run(main._async_parse_email(msg.as_bytes(), uid=42, folder="INBOX"))
+        sanitized = main._sanitize_html(parsed["html"])
+
+        self.assertIn('/api/messages/42/attachments/0?folder=INBOX', sanitized)
+        self.assertNotIn('src="#"', sanitized)
+        self.assertEqual(parsed["attachments"][0]["cid"], "header.png@example")
+
     def test_login_ignores_client_supplied_mail_server_overrides(self):
         self._patch_env({
             "IMAP_HOST": "imap.safe.example",
@@ -116,7 +145,7 @@ class SecurityHardeningTests(unittest.TestCase):
 
             async def login(self, email, password):
                 captured["login_email"] = email
-                return None
+                return SimpleNamespace(result="OK", lines=[])
 
             async def logout(self):
                 return None
@@ -164,7 +193,7 @@ class SecurityHardeningTests(unittest.TestCase):
 
             async def login(self, email, password):
                 captured["login_email"] = email
-                return None
+                return SimpleNamespace(result="OK", lines=[])
 
             async def logout(self):
                 return None
@@ -186,6 +215,37 @@ class SecurityHardeningTests(unittest.TestCase):
         token = cookie_header.split("webmail_session=", 1)[1].split(";", 1)[0]
         session = main.decrypt_session(token)
         self.assertFalse(session["imap_secure"])
+
+    def test_login_rejects_non_ok_imap_response(self):
+        self._patch_env({
+            "IMAP_HOST": "imap.safe.example",
+            "IMAP_PORT": "993",
+            "SMTP_HOST": "smtp.safe.example",
+            "SMTP_PORT": "465",
+        })
+
+        class RejectingIMAP:
+            def __init__(self, host, port, timeout):
+                pass
+
+            async def wait_hello_from_server(self):
+                return None
+
+            async def login(self, email, password):
+                return SimpleNamespace(result="NO", lines=[b"NO LOGIN failed"])
+
+            async def logout(self):
+                return None
+
+        with patch.object(main.aioimaplib, "IMAP4_SSL", RejectingIMAP):
+            with self.assertRaises(main.HTTPException) as raised:
+                asyncio.run(main.login(_request(), {
+                    "email": "user@example.com",
+                    "password": "wrong-password",
+                }))
+
+        self.assertEqual(raised.exception.status_code, 401)
+        self.assertEqual(raised.exception.detail["code"], "INVALID_CREDENTIALS")
 
     def test_imap_port_143_forces_plain_even_if_secure_env_is_true(self):
         self._patch_env({
@@ -222,6 +282,37 @@ class SecurityHardeningTests(unittest.TestCase):
             }))
 
         self.assertEqual(captured, {"host": "imap.env.example", "port": 993, "secure": True})
+
+    def test_with_imap_retry_turns_session_auth_failure_into_401(self):
+        self._patch_env({
+            "IMAP_HOST": "imap.env.example",
+            "IMAP_PORT": "993",
+        })
+        session = {
+            "email": "user@example.com",
+            "password": "expired-password",
+            "createdAt": int(main.time.time() * 1000),
+        }
+
+        with (
+            patch.object(main, "_get_pooled_imap", AsyncMock(side_effect=main.SessionExpiredError())),
+            patch.object(main, "_evict_imap", AsyncMock()) as evict,
+        ):
+            with self.assertRaises(main.HTTPException) as raised:
+                asyncio.run(main.with_imap_retry(session, lambda client: None))
+
+        self.assertEqual(raised.exception.status_code, 401)
+        self.assertEqual(raised.exception.detail["code"], "SESSION_EXPIRED")
+        evict.assert_awaited_once_with("user@example.com", "password", True)
+
+    def test_imap_auth_failure_response_is_session_expired(self):
+        response = SimpleNamespace(
+            result="NO",
+            lines=[b"NO [AUTHENTICATIONFAILED] Authentication failed."],
+        )
+
+        with self.assertRaises(main.SessionExpiredError):
+            main._require_imap_ok(response, "SELECT INBOX")
 
     def test_imap_discovery_prefers_ssl_but_falls_back_to_plain_143(self):
         calls = []
