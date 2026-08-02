@@ -490,6 +490,19 @@ def _admin_init():
             updated_at     INTEGER NOT NULL,
             PRIMARY KEY (scope, ip_address)
         )""")
+        db.execute("""CREATE TABLE IF NOT EXISTS s3_configs (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            email          TEXT    UNIQUE NOT NULL,
+            bucket         TEXT    NOT NULL,
+            region         TEXT    NOT NULL DEFAULT 'us-east-1',
+            endpoint_url   TEXT    DEFAULT '',
+            access_key     TEXT    NOT NULL,
+            secret_key     TEXT    NOT NULL,
+            prefix         TEXT    DEFAULT '',
+            enabled        INTEGER NOT NULL DEFAULT 1,
+            created_at     TEXT    NOT NULL,
+            updated_at     TEXT    NOT NULL
+        )""")
         db.commit()
 
 
@@ -664,6 +677,94 @@ def _admin_setting_set_many(settings: dict[str, str]):
                 (key, value or "", now),
             )
         db.commit()
+
+
+# ─── S3 Storage Helpers ──────────────────────────────────────────────────────
+
+S3_ATTACHMENT_THRESHOLD = 22 * 1024 * 1024  # 22 MB
+
+
+def _s3_get_config_for_email(email: str) -> dict | None:
+    """Get S3 config for a specific email address."""
+    import sqlite3
+    with sqlite3.connect(ADMIN_DB) as db:
+        db.row_factory = sqlite3.Row
+        row = db.execute(
+            "SELECT * FROM s3_configs WHERE email=? AND enabled=1", (email.lower(),)
+        ).fetchone()
+    if not row:
+        return None
+    return {
+        "id": row["id"],
+        "email": row["email"],
+        "bucket": row["bucket"],
+        "region": row["region"],
+        "endpointUrl": row["endpoint_url"] or "",
+        "accessKey": row["access_key"],
+        "secretKey": row["secret_key"],
+        "prefix": row["prefix"] or "",
+        "enabled": bool(row["enabled"]),
+    }
+
+
+def _s3_make_client(cfg: dict):
+    """Create a boto3 S3 client from config dict."""
+    import boto3
+    kwargs = {
+        "aws_access_key_id": cfg["accessKey"],
+        "aws_secret_access_key": cfg["secretKey"],
+        "region_name": cfg["region"],
+    }
+    if cfg.get("endpointUrl"):
+        kwargs["endpoint_url"] = cfg["endpointUrl"]
+    return boto3.client("s3", **kwargs)
+
+
+def _s3_upload_bytes(cfg: dict, key: str, data: bytes, content_type: str = "application/octet-stream") -> str:
+    """Upload bytes to S3. Returns the S3 key."""
+    client = _s3_make_client(cfg)
+    client.put_object(
+        Bucket=cfg["bucket"],
+        Key=key,
+        Body=data,
+        ContentType=content_type,
+    )
+    return key
+
+
+def _s3_download_bytes(cfg: dict, key: str) -> bytes:
+    """Download bytes from S3."""
+    client = _s3_make_client(cfg)
+    resp = client.get_object(Bucket=cfg["bucket"], Key=key)
+    return resp["Body"].read()
+
+
+def _s3_delete_object(cfg: dict, key: str):
+    """Delete an object from S3."""
+    client = _s3_make_client(cfg)
+    client.delete_object(Bucket=cfg["bucket"], Key=key)
+
+
+def _s3_generate_presigned_url(cfg: dict, key: str, expiration: int = 3600) -> str:
+    """Generate a presigned URL for downloading from S3."""
+    client = _s3_make_client(cfg)
+    return client.generate_presigned_url(
+        "get_object",
+        Params={"Bucket": cfg["bucket"], "Key": key},
+        ExpiresIn=expiration,
+    )
+
+
+def _s3_build_key(email: str, prefix: str, filename: str) -> str:
+    """Build an S3 key for an attachment."""
+    safe_email = re.sub(r"[^a-zA-Z0-9._-]", "_", email.lower())
+    uid = uuid.uuid4().hex[:12]
+    safe_name = re.sub(r"[^a-zA-Z0-9._()-]", "_", filename)
+    parts = []
+    if prefix:
+        parts.append(prefix.strip("/"))
+    parts.extend([safe_email, uid, safe_name])
+    return "/".join(parts)
 
 
 def _domain_alias_mail_target(alias_domain: str) -> str | None:
@@ -2727,18 +2828,38 @@ async def send_message(request: Request, body: dict):
     else:
         mime_message.set_content(text or "", subtype="plain", charset="utf-8")
 
-    # Attachments
+    # Attachments (supports both base64 inline data and S3 references)
     attachments = body.get("attachments", [])
+    s3_cfg = _s3_get_config_for_email(email)
     for att in attachments:
         att_name = att.get("name", "attachment")
         mime_type = att.get("type", "application/octet-stream")
-        data_b64 = att.get("data", "")
-        # Strip data URL prefix if present (e.g. "data:application/pdf;base64,ABC...")
-        if data_b64 and "," in data_b64[:100]:
-            data_b64 = data_b64.split(",", 1)[1]
-        if data_b64:
+        s3_key = att.get("s3Key", "")
+
+        data_bytes = None
+
+        # S3-referenced attachment (large files >= 22MB)
+        if s3_key and s3_cfg:
             try:
-                data_bytes = base64.b64decode(data_b64)
+                data_bytes = _s3_download_bytes(s3_cfg, s3_key)
+                print(f"[S3] Downloaded attachment from S3: {s3_key} ({len(data_bytes)} bytes)")
+            except Exception as exc:
+                print(f"[S3] Failed to download {s3_key}: {exc}")
+                pass
+
+        # Base64 inline attachment (small files)
+        if data_bytes is None:
+            data_b64 = att.get("data", "")
+            if data_b64 and "," in data_b64[:100]:
+                data_b64 = data_b64.split(",", 1)[1]
+            if data_b64:
+                try:
+                    data_bytes = base64.b64decode(data_b64)
+                except Exception:
+                    pass
+
+        if data_bytes:
+            try:
                 main, sub = (mime_type.split("/") + ["octet-stream"])[:2]
                 mime_message.add_attachment(
                     data_bytes,
@@ -2747,7 +2868,7 @@ async def send_message(request: Request, body: dict):
                     filename=att_name,
                 )
             except Exception:
-                pass  # Skip invalid attachments
+                pass
 
     # Send via SMTP
     domain = _session_mail_domain(session)
@@ -4005,6 +4126,205 @@ async def admin_delete_domain(request: Request, domain_id: int):
     _remove_caddy_domain(alias_domain)
 
     return JSONResponse({"ok": True})
+
+
+# ─── S3 Storage Admin API ────────────────────────────────────────────────────
+
+@app.get("/api/admin/s3-configs")
+async def admin_list_s3_configs(request: Request):
+    """List all S3 configs (secrets masked)."""
+    await require_admin(request)
+    import sqlite3
+    with sqlite3.connect(ADMIN_DB) as db:
+        db.row_factory = sqlite3.Row
+        rows = db.execute("SELECT * FROM s3_configs ORDER BY email").fetchall()
+    return JSONResponse({
+        "configs": [
+            {
+                "id": r["id"],
+                "email": r["email"],
+                "bucket": r["bucket"],
+                "region": r["region"],
+                "endpointUrl": r["endpoint_url"] or "",
+                "accessKey": r["access_key"][:4] + "****" if len(r["access_key"]) > 4 else "****",
+                "secretKey": "********",
+                "prefix": r["prefix"] or "",
+                "enabled": bool(r["enabled"]),
+                "createdAt": r["created_at"],
+            }
+            for r in rows
+        ]
+    })
+
+
+@app.post("/api/admin/s3-configs")
+async def admin_add_s3_config(request: Request, body: dict):
+    """Add or update S3 config for an email."""
+    await require_admin(request)
+    email = (body.get("email") or "").strip().lower()
+    bucket = (body.get("bucket") or "").strip()
+    region = (body.get("region") or "us-east-1").strip()
+    endpoint_url = (body.get("endpointUrl") or "").strip()
+    access_key = (body.get("accessKey") or "").strip()
+    secret_key = (body.get("secretKey") or "").strip()
+    prefix = (body.get("prefix") or "").strip()
+    enabled = bool(body.get("enabled", True))
+
+    if not email or "@" not in email:
+        raise HTTPException(400, "Valid email address required.")
+    if not bucket:
+        raise HTTPException(400, "Bucket name required.")
+    if not access_key or not secret_key:
+        raise HTTPException(400, "Access key and secret key required.")
+
+    now = datetime.utcnow().isoformat()
+    import sqlite3
+    try:
+        with sqlite3.connect(ADMIN_DB) as db:
+            db.execute(
+                """INSERT INTO s3_configs (email, bucket, region, endpoint_url, access_key, secret_key, prefix, enabled, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(email) DO UPDATE SET
+                     bucket=excluded.bucket, region=excluded.region, endpoint_url=excluded.endpoint_url,
+                     access_key=excluded.access_key, secret_key=excluded.secret_key, prefix=excluded.prefix,
+                     enabled=excluded.enabled, updated_at=excluded.updated_at""",
+                (email, bucket, region, endpoint_url, access_key, secret_key, prefix, int(enabled), now, now),
+            )
+            db.commit()
+    except sqlite3.Error as exc:
+        raise HTTPException(500, f"Database error: {exc}")
+
+    return JSONResponse({"ok": True, "email": email})
+
+
+@app.put("/api/admin/s3-configs/{config_id}")
+async def admin_update_s3_config(request: Request, config_id: int, body: dict):
+    """Update an existing S3 config."""
+    await require_admin(request)
+    import sqlite3
+    now = datetime.utcnow().isoformat()
+
+    fields = []
+    values = []
+    for field, col in [
+        ("bucket", "bucket"), ("region", "region"), ("endpointUrl", "endpoint_url"),
+        ("accessKey", "access_key"), ("secretKey", "secret_key"), ("prefix", "prefix"),
+    ]:
+        if field in body:
+            fields.append(f"{col}=?")
+            values.append((body[field] or "").strip())
+    if "enabled" in body:
+        fields.append("enabled=?")
+        values.append(int(bool(body["enabled"])))
+    if not fields:
+        raise HTTPException(400, "No fields to update.")
+    fields.append("updated_at=?")
+    values.append(now)
+    values.append(config_id)
+
+    with sqlite3.connect(ADMIN_DB) as db:
+        row = db.execute("SELECT id FROM s3_configs WHERE id=?", (config_id,)).fetchone()
+        if not row:
+            raise HTTPException(404, "S3 config not found.")
+        db.execute(f"UPDATE s3_configs SET {', '.join(fields)} WHERE id=?", values)
+        db.commit()
+
+    return JSONResponse({"ok": True})
+
+
+@app.delete("/api/admin/s3-configs/{config_id}")
+async def admin_delete_s3_config(request: Request, config_id: int):
+    """Delete an S3 config."""
+    await require_admin(request)
+    import sqlite3
+    with sqlite3.connect(ADMIN_DB) as db:
+        row = db.execute("SELECT id FROM s3_configs WHERE id=?", (config_id,)).fetchone()
+        if not row:
+            raise HTTPException(404, "S3 config not found.")
+        db.execute("DELETE FROM s3_configs WHERE id=?", (config_id,))
+        db.commit()
+    return JSONResponse({"ok": True})
+
+
+@app.post("/api/admin/s3-configs/{config_id}/test")
+async def admin_test_s3_config(request: Request, config_id: int):
+    """Test S3 connectivity by uploading and deleting a small test object."""
+    await require_admin(request)
+    import sqlite3
+    with sqlite3.connect(ADMIN_DB) as db:
+        db.row_factory = sqlite3.Row
+        row = db.execute("SELECT * FROM s3_configs WHERE id=?", (config_id,)).fetchone()
+    if not row:
+        raise HTTPException(404, "S3 config not found.")
+
+    cfg = {
+        "accessKey": row["access_key"],
+        "secretKey": row["secret_key"],
+        "bucket": row["bucket"],
+        "region": row["region"],
+        "endpointUrl": row["endpoint_url"] or "",
+    }
+    test_key = f"_connection_test_{uuid.uuid4().hex[:8]}.txt"
+    try:
+        _s3_upload_bytes(cfg, test_key, b"bnix-webmail connection test", "text/plain")
+        _s3_delete_object(cfg, test_key)
+    except Exception as exc:
+        raise HTTPException(502, f"S3 connection failed: {exc}")
+    return JSONResponse({"ok": True, "message": "S3 connection successful"})
+
+
+# ─── S3 Attachment API (user-facing) ─────────────────────────────────────────
+
+@app.post("/api/attachments/upload")
+async def upload_attachment_to_s3(request: Request, file: UploadFile = File(...)):
+    """Upload a large attachment (>= 22MB) to S3. Returns a reference for composing."""
+    session = await require_session(request)
+    email = session["email"]
+
+    cfg = _s3_get_config_for_email(email)
+    if not cfg:
+        raise HTTPException(400, "S3 storage not configured for this email account.")
+
+    content = await file.read()
+    if len(content) < S3_ATTACHMENT_THRESHOLD:
+        raise HTTPException(400, f"File must be at least {S3_ATTACHMENT_THRESHOLD // (1024*1024)}MB to use S3 upload.")
+
+    filename = file.filename or "attachment"
+    content_type = file.content_type or "application/octet-stream"
+    s3_key = _s3_build_key(email, cfg.get("prefix", ""), filename)
+
+    try:
+        _s3_upload_bytes(cfg, s3_key, content, content_type)
+    except Exception as exc:
+        raise HTTPException(502, f"S3 upload failed: {exc}")
+
+    ref_id = uuid.uuid4().hex
+    return JSONResponse({
+        "ok": True,
+        "refId": ref_id,
+        "s3Key": s3_key,
+        "filename": filename,
+        "contentType": content_type,
+        "size": len(content),
+    })
+
+
+@app.get("/api/attachments/s3/{s3_key:path}")
+async def download_s3_attachment(request: Request, s3_key: str):
+    """Generate a presigned URL to download an S3 attachment."""
+    session = await require_session(request)
+    email = session["email"]
+
+    cfg = _s3_get_config_for_email(email)
+    if not cfg:
+        raise HTTPException(400, "S3 storage not configured.")
+
+    try:
+        url = _s3_generate_presigned_url(cfg, s3_key, expiration=3600)
+    except Exception as exc:
+        raise HTTPException(502, f"Failed to generate download URL: {exc}")
+
+    return JSONResponse({"ok": True, "url": url})
 
 
 # ─── Static Files & SPA ──────────────────────────────────────────────────────

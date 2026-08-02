@@ -281,7 +281,57 @@
       .add-domain-form { grid-template-columns: 1fr; }
       .domain-table { font-size: 13px; }
       .domain-table th, .domain-table td { padding: 8px; }
+      .s3-form-grid { grid-template-columns: 1fr; }
     }
+
+    /* ─── S3 Config ─────────────────────────────────────────────────────── */
+    .s3-form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    .s3-form-grid .form-group.full-width {
+      grid-column: 1 / -1;
+    }
+    .s3-card-item {
+      background: #f8fafc;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px;
+      margin-bottom: 12px;
+    }
+    .s3-card-item .s3-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .s3-card-item .s3-email {
+      font-weight: 600;
+      font-size: 14px;
+      color: var(--primary);
+    }
+    .s3-card-item .s3-details {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+    .s3-card-item .s3-details span { color: var(--text); font-weight: 500; }
+    .s3-actions { display: flex; gap: 6px; }
+    .btn-xs {
+      padding: 4px 10px;
+      font-size: 12px;
+      border-radius: 5px;
+      border: 1px solid var(--border);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .btn-xs.btn-outline { background: #fff; color: var(--text); }
+    .btn-xs.btn-outline:hover { background: var(--bg); }
+    .btn-xs.btn-danger-outline { background: #fff; color: var(--danger); border-color: #fecaca; }
+    .btn-xs.btn-danger-outline:hover { background: var(--danger-bg); }
   </style>
 </head>
 <body>
@@ -350,6 +400,63 @@
               <tr><td colspan="4" class="empty-state">Đang tải...</td></tr>
             </tbody>
           </table>
+        </div>
+      </div>
+
+      <!-- S3 Storage Configuration -->
+      <div class="card">
+        <div class="card-header">
+          <h3>☁️ S3 Storage — Email Attachments</h3>
+        </div>
+        <div class="card-body">
+          <p style="font-size:13px; color:var(--text-muted); margin-bottom:16px;">
+            Cấu hình S3 cho từng email. File đính kèm lớn hơn 22MB sẽ được tự động lưu lên S3 bucket.
+          </p>
+          <div id="s3Alert" class="alert"></div>
+
+          <!-- Add new S3 config form -->
+          <div id="s3FormWrapper" style="display:none; margin-bottom:16px;">
+            <div class="s3-form-grid">
+              <div class="form-group">
+                <label>Email</label>
+                <input type="email" id="s3Email" placeholder="user@domain.com">
+              </div>
+              <div class="form-group">
+                <label>Bucket</label>
+                <input type="text" id="s3Bucket" placeholder="my-mail-attachments">
+              </div>
+              <div class="form-group">
+                <label>Region</label>
+                <input type="text" id="s3Region" value="us-east-1" placeholder="us-east-1">
+              </div>
+              <div class="form-group">
+                <label>Endpoint URL (tùy chọn)</label>
+                <input type="text" id="s3Endpoint" placeholder="https://s3.amazonaws.com">
+              </div>
+              <div class="form-group">
+                <label>Access Key</label>
+                <input type="text" id="s3AccessKey" placeholder="AKIA...">
+              </div>
+              <div class="form-group">
+                <label>Secret Key</label>
+                <input type="password" id="s3SecretKey" placeholder="••••••••">
+              </div>
+              <div class="form-group">
+                <label>Prefix (tùy chọn)</label>
+                <input type="text" id="s3Prefix" placeholder="webmail-attachments/">
+              </div>
+              <div class="form-group" style="display:flex; align-items:flex-end;">
+                <button class="btn btn-primary btn-sm" onclick="saveS3Config()">💾 Lưu cấu hình</button>
+                <button class="btn btn-sm" onclick="toggleS3Form()" style="margin-left:8px;">Hủy</button>
+              </div>
+            </div>
+          </div>
+
+          <button id="btnAddS3" class="btn btn-primary btn-sm" onclick="toggleS3Form()" style="margin-bottom:12px;">+ Thêm S3 Config</button>
+
+          <div id="s3ConfigList">
+            <div class="empty-state">Đang tải...</div>
+          </div>
         </div>
       </div>
 
@@ -437,6 +544,7 @@ function showDashboard() {
   document.getElementById('adminDashboard').style.display = 'block';
   document.getElementById('adminUser').textContent = adminUser;
   loadDomains();
+  loadS3Configs();
 }
 
 document.getElementById('loginForm').onsubmit = async (e) => {
@@ -591,6 +699,105 @@ function escAttr(s) {
 
 // ─── Init ───────────────────────────────────────────────────────────────────
 checkAuth();
+loadS3Configs();
+
+// ─── S3 Config Management ───────────────────────────────────────────────────
+let s3Configs = [];
+let s3FormVisible = false;
+
+function toggleS3Form() {
+  s3FormVisible = !s3FormVisible;
+  document.getElementById('s3FormWrapper').style.display = s3FormVisible ? 'block' : 'none';
+  document.getElementById('btnAddS3').style.display = s3FormVisible ? 'none' : 'inline-block';
+}
+
+async function loadS3Configs() {
+  try {
+    const data = await api('/api/admin/s3-configs');
+    s3Configs = data.configs || [];
+    renderS3Configs();
+  } catch (err) {
+    document.getElementById('s3ConfigList').innerHTML =
+      `<div class="empty-state">Lỗi tải cấu hình S3: ${escHtml(err.message)}</div>`;
+  }
+}
+
+function renderS3Configs() {
+  const container = document.getElementById('s3ConfigList');
+  if (!s3Configs.length) {
+    container.innerHTML = '<div class="empty-state">Chưa có cấu hình S3 nào</div>';
+    return;
+  }
+  container.innerHTML = s3Configs.map(c => `
+    <div class="s3-card-item">
+      <div class="s3-header">
+        <span class="s3-email">${escHtml(c.email)}</span>
+        <div class="s3-actions">
+          <span class="badge ${c.enabled ? 'badge-on' : 'badge-off'}">${c.enabled ? 'Active' : 'Disabled'}</span>
+          <button class="btn-xs btn-outline" onclick="testS3Config(${c.id})" title="Test kết nối">🔌 Test</button>
+          <button class="btn-xs btn-danger-outline" onclick="deleteS3Config(${c.id})" title="Xóa">🗑️</button>
+        </div>
+      </div>
+      <div class="s3-details">
+        <div>Bucket: <span>${escHtml(c.bucket)}</span></div>
+        <div>Region: <span>${escHtml(c.region)}</span></div>
+        <div>Endpoint: <span>${escHtml(c.endpointUrl || 'default')}</span></div>
+        <div>Access Key: <span>${escHtml(c.accessKey)}</span></div>
+        ${c.prefix ? `<div>Prefix: <span>${escHtml(c.prefix)}</span></div>` : ''}
+      </div>
+    </div>
+  `).join('');
+}
+
+async function saveS3Config() {
+  const email = document.getElementById('s3Email').value.trim();
+  const bucket = document.getElementById('s3Bucket').value.trim();
+  const region = document.getElementById('s3Region').value.trim() || 'us-east-1';
+  const endpointUrl = document.getElementById('s3Endpoint').value.trim();
+  const accessKey = document.getElementById('s3AccessKey').value.trim();
+  const secretKey = document.getElementById('s3SecretKey').value;
+  const prefix = document.getElementById('s3Prefix').value.trim();
+
+  if (!email || !bucket || !accessKey || !secretKey) {
+    showAlert('s3Alert', 'Vui lòng điền đầy đủ Email, Bucket, Access Key và Secret Key');
+    return;
+  }
+
+  try {
+    await api('/api/admin/s3-configs', {
+      method: 'POST',
+      body: JSON.stringify({ email, bucket, region, endpointUrl, accessKey, secretKey, prefix, enabled: true }),
+    });
+    showAlert('s3Alert', `Đã lưu cấu hình S3 cho ${email}`, 'success');
+    // Clear form
+    ['s3Email', 's3Bucket', 's3Endpoint', 's3AccessKey', 's3SecretKey', 's3Prefix'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('s3Region').value = 'us-east-1';
+    toggleS3Form();
+    loadS3Configs();
+  } catch (err) {
+    showAlert('s3Alert', err.message);
+  }
+}
+
+async function testS3Config(id) {
+  try {
+    const data = await api(`/api/admin/s3-configs/${id}/test`, { method: 'POST' });
+    showAlert('s3Alert', data.message || 'Kết nối S3 thành công!', 'success');
+  } catch (err) {
+    showAlert('s3Alert', err.message);
+  }
+}
+
+async function deleteS3Config(id) {
+  if (!confirm('Xóa cấu hình S3 này?')) return;
+  try {
+    await api(`/api/admin/s3-configs/${id}`, { method: 'DELETE' });
+    showAlert('s3Alert', 'Đã xóa cấu hình S3', 'success');
+    loadS3Configs();
+  } catch (err) {
+    showAlert('s3Alert', err.message);
+  }
+}
 </script>
 </body>
 </html>

@@ -92,6 +92,9 @@ const LOCALES = {
     sentOk: "Email sent successfully!",
     sentSavedWarn: "Email sent, but could not save it to Sent.",
     movedOk: "Moved",
+    s3NotConfigured: 'S3 not configured. Cannot attach files larger than 22MB.',
+    s3Uploading: "Uploading to S3, please wait...",
+    fileTooLarge: (name) => `File "${name}" is too large (max 50MB)`,
     // Compose
     newMessage: "New Message",
     toPh: "To", ccPh: "Cc", bccPh: "Bcc", subjectPh: "Subject",
@@ -220,6 +223,9 @@ const LOCALES = {
     sentOk: "Gửi thư thành công!",
     sentSavedWarn: "Đã gửi thư, nhưng không thể lưu vào Đã gửi.",
     movedOk: "Đã di chuyển",
+    s3NotConfigured: 'S3 chưa được cấu hình. Không thể đính kèm file lớn hơn 22MB.',
+    s3Uploading: "Đang tải file lên S3, vui lòng đợi...",
+    fileTooLarge: (name) => `File "${name}" quá lớn (tối đa 50MB)`,
     // Compose
     newMessage: "Thư mới",
     toPh: "Đến", ccPh: "Cc", bccPh: "Bcc", subjectPh: "Tiêu đề",
@@ -452,7 +458,8 @@ function fullDate(value) {
 function fileSize(bytes) {
   if (!bytes) return "";
   if (bytes < 1024) return `${bytes} B`;
-  return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 // Prevent mobile browser from scrolling to top when input/contenteditable gets focus
@@ -494,6 +501,71 @@ const SIG_ALLOWED_CSS = new Set([
   "padding-right", "padding-top", "text-align", "text-decoration",
   "vertical-align", "white-space", "width",
 ]);
+
+// ─── S3 Attachment Upload ───────────────────────────────────────────────────
+const S3_ATTACHMENT_THRESHOLD = 22 * 1024 * 1024; // 22 MB
+
+async function uploadAttachmentToS3(file) {
+  const formData = new FormData();
+  formData.append("file", file);
+  const res = await fetch("/api/attachments/upload", {
+    method: "POST",
+    credentials: "same-origin",
+    body: formData,
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    const detail = data.detail;
+    const msg = (detail && typeof detail === "object") ? (detail.message || "Upload failed") : (detail || "Upload failed");
+    const err = new Error(msg);
+    err.status = res.status;
+    throw err;
+  }
+  return data;
+}
+
+/**
+ * Handle adding a file attachment.
+ * - < 22MB: always base64 inline (works for all accounts)
+ * - >= 22MB + S3 configured: upload to S3
+ * - >= 22MB + no S3: reject with clear message
+ * - > 50MB: hard reject
+ */
+function handleAttachmentFile(file, attachList, onRefresh) {
+  const MAX_HARD = 50 * 1024 * 1024; // 50MB absolute max
+  if (file.size > MAX_HARD) {
+    showToast(t("fileTooLarge", file.name), "error");
+    return;
+  }
+  if (file.size >= S3_ATTACHMENT_THRESHOLD) {
+    // Large file → try S3 upload
+    const placeholder = { name: file.name, type: file.type, size: file.size, s3Key: "", uploading: true };
+    attachList.push(placeholder);
+    onRefresh();
+    uploadAttachmentToS3(file).then(result => {
+      placeholder.s3Key = result.s3Key;
+      placeholder.uploading = false;
+      onRefresh();
+    }).catch(err => {
+      const idx = attachList.indexOf(placeholder);
+      if (idx !== -1) attachList.splice(idx, 1);
+      onRefresh();
+      if (err.status === 400) {
+        showToast(t("s3NotConfigured"), "error");
+      } else {
+        showToast("S3 upload failed: " + err.message, "error");
+      }
+    });
+  } else {
+    // Small file → base64 inline
+    const reader = new FileReader();
+    reader.onload = () => {
+      attachList.push({ name: file.name, type: file.type, size: file.size, data: reader.result });
+      onRefresh();
+    };
+    reader.readAsDataURL(file);
+  }
+}
 
 function isSafeSignatureUrl(value, imageOnly = false) {
   const url = String(value || "").trim();
@@ -2464,9 +2536,14 @@ function renderQuickReply(placeholder) {
     clear(attContainer);
     for (let i = 0; i < S.quickAttachments.length; i++) {
       const att = S.quickAttachments[i];
-      attContainer.appendChild(h("div", { className: "inline-flex items-center gap-1 px-2 py-0.5 bg-slate-100 rounded text-xs text-slate-600" },
+      const label = att.uploading
+        ? `${att.name} (uploading...)`
+        : att.s3Key
+        ? `${att.name} ☁️`
+        : att.name;
+      attContainer.appendChild(h("div", { className: `inline-flex items-center gap-1 px-2 py-0.5 bg-slate-100 rounded text-xs text-slate-600 ${att.uploading ? "opacity-60" : ""}` },
         icon("paperclip"),
-        h("span", { className: "truncate max-w-[140px]" }, att.name),
+        h("span", { className: "truncate max-w-[140px]" }, label),
         h("button", {
           className: "text-slate-400 hover:text-red-500 leading-none",
           type: "button",
@@ -2511,14 +2588,7 @@ function renderQuickReply(placeholder) {
 
   fileInput.addEventListener("change", e => {
     for (const file of e.target.files) {
-      if (file.size > 10 * 1024 * 1024) continue;
-      const reader = new FileReader();
-      reader.onload = () => {
-        S.quickAttachments.push({ name: file.name, type: file.type, size: file.size, data: reader.result });
-        renderAttPreviews();
-        updateSendBtn();
-      };
-      reader.readAsDataURL(file);
+      handleAttachmentFile(file, S.quickAttachments, () => { renderAttPreviews(); updateSendBtn(); });
     }
     fileInput.value = "";
   });
@@ -3263,10 +3333,19 @@ async function sendQuickReply() {
       references: [msg.references, msg.inReplyTo, msg.messageId].filter(Boolean).join(" ").trim(),
     };
     if (S.quickAttachments.length > 0) {
-      body.attachments = S.quickAttachments.map(a => ({
-        name: a.name, type: a.type,
-        data: a.data.includes(",") ? a.data.split(",")[1] : a.data,
-      }));
+      // Block send if any S3 upload is still in progress
+      if (S.quickAttachments.some(a => a.uploading)) {
+        showToast(t("s3Uploading"), "error");
+        S.quickSending = false;
+        if (sendBtn) sendBtn.disabled = false;
+        return;
+      }
+      body.attachments = S.quickAttachments.map(a => {
+        if (a.s3Key) return { name: a.name, type: a.type, s3Key: a.s3Key };
+        return { name: a.name, type: a.type,
+          data: a.data.includes(",") ? a.data.split(",")[1] : a.data,
+        };
+      });
     }
     const result = await api("/api/messages/send", { method: "POST", body: JSON.stringify(body) });
 
@@ -3439,9 +3518,14 @@ function renderComposePage() {
     const attDiv = h("div", { className: "px-4 py-2 border-t border-slate-200 dark:border-slate-700 flex flex-wrap gap-2 shrink-0" });
     for (let i = 0; i < S.compose.attachments.length; i++) {
       const att = S.compose.attachments[i];
-      attDiv.appendChild(h("div", { className: "attachment-item" },
+      const label = att.uploading
+        ? `${att.name} (uploading...)`
+        : att.s3Key
+        ? `${att.name} ☁️`
+        : att.name;
+      attDiv.appendChild(h("div", { className: `attachment-item ${att.uploading ? "opacity-60" : ""}` },
         icon("paperclip"),
-        h("span", { className: "truncate max-w-[200px]" }, att.name),
+        h("span", { className: "truncate max-w-[200px]" }, label),
         h("button", {
           className: "text-slate-400 hover:text-red-500",
           type: "button",
@@ -3458,13 +3542,7 @@ function renderComposePage() {
   const fileInput = h("input", { type: "file", multiple: "multiple", className: "hidden" });
   fileInput.addEventListener("change", e => {
     for (const file of e.target.files) {
-      if (file.size > 10 * 1024 * 1024) continue;
-      const reader = new FileReader();
-      reader.onload = () => {
-        S.compose.attachments.push({ name: file.name, type: file.type, size: file.size, data: reader.result });
-        render();
-      };
-      reader.readAsDataURL(file);
+      handleAttachmentFile(file, S.compose.attachments, render);
     }
     fileInput.value = "";
   });
@@ -3667,10 +3745,18 @@ async function sendCompose(e) {
       references: c.references || "",
     };
     if (c.attachments && c.attachments.length > 0) {
-      payload.attachments = c.attachments.map(a => ({
-        name: a.name, type: a.type,
-        data: a.data.includes(",") ? a.data.split(",")[1] : a.data,
-      }));
+      // Block send if any S3 upload is still in progress
+      if (c.attachments.some(a => a.uploading)) {
+        showToast(t("s3Uploading"), "error");
+        set({ sending: false });
+        return;
+      }
+      payload.attachments = c.attachments.map(a => {
+        if (a.s3Key) return { name: a.name, type: a.type, s3Key: a.s3Key };
+        return { name: a.name, type: a.type,
+          data: a.data.includes(",") ? a.data.split(",")[1] : a.data,
+        };
+      });
     }
     const result = await api("/api/messages/send", {
       method: "POST",
