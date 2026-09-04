@@ -24,7 +24,7 @@ from email.header import Header, decode_header, make_header
 from email.message import EmailMessage
 from email.parser import BytesParser as EmailParser
 from email.policy import default as email_default
-from email.utils import formataddr, getaddresses
+from email.utils import formataddr, getaddresses, make_msgid
 from functools import partial
 from pathlib import Path
 from typing import Any, AsyncIterator
@@ -92,6 +92,38 @@ def _contacts_init():
         )""")
         db.execute("CREATE TABLE IF NOT EXISTS contacts_migrated (account TEXT PRIMARY KEY)")
         db.commit()
+
+
+def _contacts_auto_add(account: str, email_addr: str) -> None:
+    """
+    Silently save a new recipient as a contact after a successful send, so the
+    recipient autocomplete (see /api/contacts) has something to suggest without
+    the user manually adding everyone. Local sqlite only — never pushed to an
+    external CardDAV server, so it can't pollute a synced address book.
+    """
+    import sqlite3
+
+    email_addr = (email_addr or "").strip().lower()
+    if not email_addr or "@" not in email_addr or email_addr == account.strip().lower():
+        return
+    now = datetime.utcnow().isoformat()
+    try:
+        with sqlite3.connect(CONTACTS_DB, timeout=5) as db:
+            existing = db.execute(
+                "SELECT uid FROM contacts WHERE account=? AND LOWER(email)=LOWER(?)",
+                (account, email_addr),
+            ).fetchone()
+            if existing:
+                return
+            db.execute(
+                """INSERT INTO contacts
+                   (uid, account, fn, email, phone, organization, title, note, photo, created_at, updated_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                (str(uuid.uuid4()), account, "", email_addr, "", "", "", "", "", now, now),
+            )
+            db.commit()
+    except sqlite3.Error:
+        pass
 
 
 CALENDAR_DB = os.path.join(DATA_DIR, "db", "calendar.db")
@@ -314,6 +346,122 @@ def _normalize_mail_rule(account: str, body: dict, existing: dict | None = None)
 
 
 _mail_rules_init()
+
+# ─── Two-Factor Authentication (TOTP) ────────────────────────────────────────
+
+TWOFA_DB = os.path.join(DATA_DIR, "db", "twofa.db")
+TWOFA_BACKUP_CODE_COUNT = 8
+
+
+def _twofa_init():
+    """Init per-account TOTP schema once per process."""
+    import sqlite3
+
+    with sqlite3.connect(TWOFA_DB) as db:
+        db.execute("""CREATE TABLE IF NOT EXISTS twofa (
+            account      TEXT PRIMARY KEY,
+            secret       TEXT NOT NULL,
+            enabled      INTEGER NOT NULL DEFAULT 0,
+            backup_codes TEXT NOT NULL DEFAULT '[]',
+            created_at   TEXT NOT NULL,
+            confirmed_at TEXT
+        )""")
+        db.commit()
+
+
+_twofa_init()
+
+
+def _twofa_get(account: str) -> dict | None:
+    import sqlite3
+
+    with sqlite3.connect(TWOFA_DB, timeout=5) as db:
+        row = db.execute(
+            "SELECT secret, enabled, backup_codes FROM twofa WHERE account=?", (account,)
+        ).fetchone()
+    if not row:
+        return None
+    return {"secret": row[0], "enabled": bool(row[1]), "backup_codes": _json_list(row[2])}
+
+
+def _twofa_is_enabled(account: str) -> bool:
+    info = _twofa_get(account)
+    return bool(info and info["enabled"])
+
+
+def _twofa_save_secret(account: str, secret: str):
+    import sqlite3
+
+    now = datetime.utcnow().isoformat()
+    with sqlite3.connect(TWOFA_DB, timeout=5) as db:
+        db.execute(
+            """INSERT INTO twofa (account, secret, enabled, backup_codes, created_at)
+               VALUES (?, ?, 0, '[]', ?)
+               ON CONFLICT(account) DO UPDATE SET secret=excluded.secret, enabled=0, backup_codes='[]'""",
+            (account, secret, now),
+        )
+        db.commit()
+
+
+def _twofa_enable(account: str, backup_code_hashes: list[str]):
+    import sqlite3
+
+    now = datetime.utcnow().isoformat()
+    with sqlite3.connect(TWOFA_DB, timeout=5) as db:
+        db.execute(
+            "UPDATE twofa SET enabled=1, backup_codes=?, confirmed_at=? WHERE account=?",
+            (json.dumps(backup_code_hashes), now, account),
+        )
+        db.commit()
+
+
+def _twofa_disable(account: str):
+    import sqlite3
+
+    with sqlite3.connect(TWOFA_DB, timeout=5) as db:
+        db.execute("DELETE FROM twofa WHERE account=?", (account,))
+        db.commit()
+
+
+def _twofa_consume_backup_code(account: str, code: str) -> bool:
+    """Check and burn a single-use backup code. Returns True if it matched."""
+    import sqlite3
+
+    info = _twofa_get(account)
+    if not info or not code.strip():
+        return False
+    code_hash = hashlib.sha256(code.strip().lower().encode()).hexdigest()
+    remaining = [h for h in info["backup_codes"] if h != code_hash]
+    if len(remaining) == len(info["backup_codes"]):
+        return False
+    with sqlite3.connect(TWOFA_DB, timeout=5) as db:
+        db.execute("UPDATE twofa SET backup_codes=? WHERE account=?", (json.dumps(remaining), account))
+        db.commit()
+    return True
+
+
+def _twofa_generate_backup_codes() -> tuple[list[str], list[str]]:
+    """Return (plaintext_codes_to_show_once, sha256_hashes_to_store)."""
+    codes, hashes = [], []
+    for _ in range(TWOFA_BACKUP_CODE_COUNT):
+        raw = secrets.token_hex(5)  # 10 hex chars
+        code = f"{raw[:5]}-{raw[5:]}"
+        codes.append(code)
+        hashes.append(hashlib.sha256(code.strip().lower().encode()).hexdigest())
+    return codes, hashes
+
+
+def _totp_qr_svg(otpauth_uri: str) -> str:
+    import io
+
+    import qrcode
+    import qrcode.image.svg
+
+    img = qrcode.make(otpauth_uri, image_factory=qrcode.image.svg.SvgPathImage)
+    buf = io.BytesIO()
+    img.save(buf)
+    return buf.getvalue().decode("utf-8")
+
 
 # ─── Admin Database ──────────────────────────────────────────────────────────
 
@@ -1228,12 +1376,40 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+_CSP = (
+    "default-src 'self'; "
+    "script-src 'self'; "
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+    "font-src 'self' https://fonts.gstatic.com; "
+    "img-src 'self' data: https:; "
+    "connect-src 'self'; "
+    "frame-ancestors 'none'; "
+    "base-uri 'none'; "
+    "form-action 'self'; "
+    "object-src 'none'"
+)
+
+
+@app.middleware("http")
+async def _security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+    response.headers["Content-Security-Policy"] = _CSP
+    # Browsers only honor HSTS on responses actually received over HTTPS,
+    # so this is a no-op (and harmless) for local plain-HTTP development.
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    return response
+
 
 async def require_session(request: Request) -> dict:
     token = request.cookies.get(SESSION_COOKIE)
     session = decrypt_session(token)
     if not session:
         raise HTTPException(401, "Not authenticated.")
+    if session.get("pending2fa"):
+        raise HTTPException(401, "Two-factor verification required.")
     return session
 
 
@@ -2008,6 +2184,17 @@ def _quote_imap_folder(folder: str) -> str:
     return f'"{escaped}"'
 
 
+def _imap_quote_search(value: str) -> str:
+    """
+    Quote free text for use as an IMAP SEARCH string literal.
+    Strips CR/LF and escapes backslash/quote so user-supplied search text
+    cannot break out of the quoted string into the IMAP command stream.
+    """
+    cleaned = re.sub(r"[\r\n]+", " ", value or "").strip()
+    escaped = cleaned.replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{escaped}"'
+
+
 def _encode_modified_utf7(s: str) -> str:
     """
     Encode a UTF-8 string to IMAP Modified UTF-7 (RFC 3501).
@@ -2207,6 +2394,23 @@ async def login(request: Request, body: dict):
         "smtp_port": smtp_port,
     }
 
+    if _twofa_is_enabled(email):
+        # Credentials are correct but a second factor is still required.
+        # Stash the verified session behind a short-lived "pending2fa" cookie —
+        # require_session() rejects it until /api/auth/verify-2fa clears the flag.
+        pending_session = {**session, "pending2fa": True, "remember": remember}
+        response = JSONResponse({"email": email, "domain": domain, "twoFactorRequired": True})
+        response.set_cookie(
+            key=SESSION_COOKIE,
+            value=encrypt_session(pending_session),
+            httponly=True,
+            secure=True,
+            samesite="lax",
+            path="/",
+            max_age=300,
+        )
+        return response
+
     response = JSONResponse({"email": email, "domain": domain, "mailDomain": mail_domain})
     response.set_cookie(
         key=SESSION_COOKIE,
@@ -2218,6 +2422,116 @@ async def login(request: Request, body: dict):
         max_age=SESSION_MAX_AGE if remember else None,
     )
     return response
+
+
+@app.post("/api/auth/verify-2fa")
+async def verify_2fa(request: Request, body: dict):
+    """Second step of login when the account has TOTP enabled."""
+    session = decrypt_session(request.cookies.get(SESSION_COOKIE))
+    if not session or not session.get("pending2fa"):
+        raise HTTPException(401, "No pending two-factor login.")
+
+    client_ip = _login_client_ip(request)
+    retry_after = _login_block_remaining("webmail_2fa", client_ip)
+    if retry_after:
+        _raise_login_blocked(retry_after)
+
+    email = session["email"]
+    code = str(body.get("code") or "").strip()
+    info = _twofa_get(email)
+
+    if info and info["enabled"]:
+        import pyotp
+        valid = bool(code) and (
+            pyotp.TOTP(info["secret"]).verify(code, valid_window=1)
+            or _twofa_consume_backup_code(email, code)
+        )
+    else:
+        # 2FA was disabled between login and this step — nothing left to check.
+        valid = True
+
+    if not valid:
+        _raise_invalid_login("webmail_2fa", client_ip, "Invalid authentication code.")
+
+    _reset_login_failures("webmail_2fa", client_ip)
+
+    remember = session.pop("remember", True)
+    session.pop("pending2fa", None)
+
+    response = JSONResponse({"email": email, "domain": email.split("@")[1]})
+    response.set_cookie(
+        key=SESSION_COOKIE,
+        value=encrypt_session(session),
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        path="/",
+        max_age=SESSION_MAX_AGE if remember else None,
+    )
+    return response
+
+
+@app.get("/api/settings/2fa")
+async def get_2fa_status(request: Request):
+    session = await require_session(request)
+    return JSONResponse({"enabled": _twofa_is_enabled(session["email"])})
+
+
+@app.post("/api/settings/2fa/setup")
+async def setup_2fa(request: Request):
+    session = await require_session(request)
+    email = session["email"]
+    if _twofa_is_enabled(email):
+        raise HTTPException(400, "Two-factor authentication is already enabled.")
+
+    import pyotp
+    secret = pyotp.random_base32()
+    _twofa_save_secret(email, secret)
+    otpauth_uri = pyotp.TOTP(secret).provisioning_uri(name=email, issuer_name="BNIX Webmail")
+    return JSONResponse({"secret": secret, "otpauthUri": otpauth_uri, "qrSvg": _totp_qr_svg(otpauth_uri)})
+
+
+@app.post("/api/settings/2fa/enable")
+async def enable_2fa(request: Request, body: dict):
+    session = await require_session(request)
+    email = session["email"]
+    code = str(body.get("code") or "").strip()
+
+    info = _twofa_get(email)
+    if not info:
+        raise HTTPException(400, "Start setup first.")
+    if info["enabled"]:
+        raise HTTPException(400, "Two-factor authentication is already enabled.")
+
+    import pyotp
+    if not code or not pyotp.TOTP(info["secret"]).verify(code, valid_window=1):
+        raise HTTPException(400, "Invalid code.")
+
+    codes, hashes = _twofa_generate_backup_codes()
+    _twofa_enable(email, hashes)
+    return JSONResponse({"ok": True, "backupCodes": codes})
+
+
+@app.post("/api/settings/2fa/disable")
+async def disable_2fa(request: Request, body: dict):
+    session = await require_session(request)
+    email = session["email"]
+    code = str(body.get("code") or "").strip()
+
+    info = _twofa_get(email)
+    if not info or not info["enabled"]:
+        raise HTTPException(400, "Two-factor authentication is not enabled.")
+
+    import pyotp
+    valid = bool(code) and (
+        pyotp.TOTP(info["secret"]).verify(code, valid_window=1)
+        or _twofa_consume_backup_code(email, code)
+    )
+    if not valid:
+        raise HTTPException(400, "Invalid code.")
+
+    _twofa_disable(email)
+    return JSONResponse({"ok": True})
 
 
 @app.post("/api/auth/logout")
@@ -2237,6 +2551,8 @@ async def me(request: Request):
     session = await _load_session(request)
     if not session:
         return {"authenticated": False}
+    if session.get("pending2fa"):
+        return {"authenticated": False, "twoFactorRequired": True, "email": session["email"]}
     return {
         "authenticated": True,
         "email": session["email"],
@@ -2264,6 +2580,40 @@ async def list_mailboxes(request: Request):
 
     mailboxes = await with_imap_retry(session, _do)
     return JSONResponse({"mailboxes": mailboxes})
+
+
+@app.get("/api/quota")
+async def get_quota(request: Request):
+    """
+    Best-effort mailbox storage quota (RFC 2087 QUOTA extension).
+    Not every backend mail server exposes this — returns {"supported": false}
+    rather than guessing when it's unavailable.
+    """
+    session = await require_session(request)
+
+    async def _do(client):
+        if not client.has_capability("QUOTA"):
+            return None
+        try:
+            resp = await client.getquotaroot("INBOX")
+        except Exception:
+            return None
+        if not _imap_ok(resp):
+            return None
+        for line in _imap_lines(resp):
+            m = re.search(r"STORAGE\s+(\d+)\s+(\d+)", _imap_text(line))
+            if m:
+                return {"usedKb": int(m.group(1)), "limitKb": int(m.group(2))}
+        return None
+
+    try:
+        quota = await with_imap_retry(session, _do)
+    except Exception:
+        quota = None
+
+    if quota is None:
+        return JSONResponse({"supported": False})
+    return JSONResponse({"supported": True, **quota})
 
 
 @app.post("/api/mailboxes")
@@ -2429,7 +2779,7 @@ async def get_thread(request: Request):
                 sel = await client.select(_quote_imap_folder(_folder), readonly=True)
                 _require_imap_ok(sel, f"SELECT {_folder}")
                 # IMAP SEARCH by subject text
-                search_resp = await client.uid("SEARCH", "SUBJECT", f'"{_subj}"')
+                search_resp = await client.uid("SEARCH", "SUBJECT", _imap_quote_search(_subj))
                 _require_imap_ok(search_resp, "UID SEARCH SUBJECT")
                 uids: list[str] = []
                 for item in _imap_lines(search_resp):
@@ -2484,6 +2834,110 @@ async def get_thread(request: Request):
     deduped.sort(key=lambda m: m["uid"])
 
     return JSONResponse({"messages": deduped})
+
+
+def _imap_search_date(value: str) -> str | None:
+    """Parse an ISO date (YYYY-MM-DD) into IMAP SEARCH date format (01-Jan-2026)."""
+    try:
+        return datetime.fromisoformat(value[:10]).strftime("%d-%b-%Y")
+    except Exception:
+        return None
+
+
+@app.get("/api/messages/search")
+async def search_messages(request: Request):
+    """
+    Real IMAP-side search (as opposed to the client-side substring filter
+    over the currently-loaded page). Supports free text plus from/subject/date
+    filters, either within one folder or across every mailbox.
+    """
+    session = await require_session(request)
+    q = (request.query_params.get("q") or "").strip()
+    from_filter = (request.query_params.get("from") or "").strip()
+    subject_filter = (request.query_params.get("subject") or "").strip()
+    since = _imap_search_date(request.query_params.get("since") or "")
+    before = _imap_search_date(request.query_params.get("before") or "")
+    current_folder = request.query_params.get("folder", "INBOX")
+    scope = "all" if request.query_params.get("scope") == "all" else "folder"
+    limit = min(max(int(request.query_params.get("limit", "50")), 1), 100)
+    offset = max(int(request.query_params.get("offset", "0")), 0)
+
+    if not (q or from_filter or subject_filter or since or before):
+        return JSONResponse({"messages": [], "total": 0, "offset": offset, "limit": limit, "scope": scope})
+
+    criteria: list[str] = []
+    if q:
+        criteria += ["TEXT", _imap_quote_search(q)]
+    if from_filter:
+        criteria += ["HEADER", "FROM", _imap_quote_search(from_filter)]
+    if subject_filter:
+        criteria += ["HEADER", "SUBJECT", _imap_quote_search(subject_filter)]
+    if since:
+        criteria += ["SINCE", since]
+    if before:
+        criteria += ["BEFORE", before]
+
+    if scope == "all":
+        async def _folders(client):
+            return await _list_mailboxes_for_client(client)
+
+        try:
+            mailboxes = await with_imap_retry(session, _folders)
+        except Exception:
+            mailboxes = []
+        skip_roles = {"trash", "junk"}
+        folders_to_search = [
+            mb["path"] for mb in mailboxes
+            if _role_for_mailbox_name(mb.get("path") or mb.get("name") or "") not in skip_roles
+        ] or [current_folder]
+    else:
+        folders_to_search = [current_folder]
+
+    all_summaries: list[dict] = []
+    for folder in folders_to_search:
+        async def _search_one(client, _folder=folder, _criteria=criteria):
+            try:
+                sel = await client.select(_quote_imap_folder(_folder), readonly=True)
+                _require_imap_ok(sel, f"SELECT {_folder}")
+                search_resp = await client.uid("SEARCH", *_criteria)
+                _require_imap_ok(search_resp, "UID SEARCH")
+                uids: list[str] = []
+                for item in _imap_lines(search_resp):
+                    text = _imap_text(item).strip()
+                    if re.fullmatch(r"[\d\s]+", text):
+                        uids.extend(text.split())
+                if not uids:
+                    return []
+                uid_set = ",".join(uids[-200:])
+                fetch_resp = await client.uid(
+                    "FETCH", uid_set,
+                    "(UID FLAGS INTERNALDATE BODY.PEEK[HEADER.FIELDS (SUBJECT FROM TO DATE)])",
+                )
+                _require_imap_ok(fetch_resp, "UID FETCH search")
+                results = []
+                for meta, msg_data in _iter_fetch_literals(fetch_resp):
+                    try:
+                        uid = _fetch_uid(meta)
+                        if uid:
+                            s = _summary_from_header_source(uid, meta, msg_data)
+                            s["folder"] = _folder
+                            results.append(s)
+                    except Exception:
+                        pass
+                return results
+            except Exception:
+                return []
+
+        try:
+            all_summaries.extend(await with_imap_retry(session, _search_one))
+        except Exception:
+            pass
+
+    all_summaries.sort(key=lambda m: (m.get("date") or "", m["uid"]), reverse=True)
+    total = len(all_summaries)
+    page = all_summaries[offset: offset + limit]
+
+    return JSONResponse({"messages": page, "total": total, "offset": offset, "limit": limit, "scope": scope})
 
 
 @app.get("/api/messages/labels")
@@ -2765,35 +3219,82 @@ async def delete_message(request: Request, uid: int):
     folder = request.query_params.get("folder", "INBOX")
 
     async def _do(client):
-        select_resp = await client.select(_quote_imap_folder(folder))
-        _require_imap_ok(select_resp, f"SELECT {folder}")
-        store_resp = await client.uid("STORE", str(uid), "+FLAGS", "\\Deleted")
-        _require_imap_ok(store_resp, "UID STORE")
-        expunge_resp = await client.expunge()
-        _require_imap_ok(expunge_resp, "EXPUNGE")
+        await _delete_message_in_folder(client, folder, uid)
 
     await with_imap_retry(session, _do)
     return JSONResponse({"ok": True})
 
 
-# ── Send ───────────────────────────────────────────────────────────────────────
-
-@app.post("/api/messages/send")
-async def send_message(request: Request, body: dict):
+@app.post("/api/messages/draft")
+async def save_draft(request: Request, body: dict):
+    """
+    Save (or re-save) a compose-in-progress to the IMAP Drafts folder.
+    Recipients are optional. If replaceUid/replaceFolder are given, the
+    previous draft revision is discarded after the new one is appended,
+    so autosave does not pile up duplicate drafts.
+    """
     session = await require_session(request)
     email = session["email"]
 
-    # Parse recipients
-    def parse_recipients(value: str) -> list[str]:
-        if not value:
-            return []
-        emails = re.findall(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}", value, re.IGNORECASE)
-        return list(dict.fromkeys(e.lower() for e in emails))
+    message_id = (body.get("messageId") or "").strip() or make_msgid(domain=email.split("@")[-1])
+    mime_message, _, _, _ = _build_mime_message(email, body, require_recipients=False, message_id=message_id)
+    raw_bytes = mime_message.as_bytes()
 
-    to_recipients = parse_recipients(body.get("to", ""))
-    cc_recipients = parse_recipients(body.get("cc", ""))
-    bcc_recipients = parse_recipients(body.get("bcc", ""))
-    if not to_recipients:
+    async def _do(client):
+        target = await _ensure_mailbox(client, "Drafts", role="drafts")
+        append_resp = await client.append(raw_bytes, _quote_imap_folder(target), flags="\\Draft")
+        if not _imap_ok(append_resp) and "TRYCREATE" in _imap_response_detail(append_resp).upper():
+            target = await _create_mailbox_if_missing(client, target)
+            append_resp = await client.append(raw_bytes, _quote_imap_folder(target), flags="\\Draft")
+        _require_imap_ok(append_resp, f"APPEND {target}")
+
+        # Locate the UID of the message we just appended via its Message-ID
+        # (avoids depending on the optional UIDPLUS/APPENDUID extension).
+        sel = await client.select(_quote_imap_folder(target))
+        _require_imap_ok(sel, f"SELECT {target}")
+        search_resp = await client.uid("SEARCH", "HEADER", "Message-ID", _imap_quote_search(message_id))
+        _require_imap_ok(search_resp, "UID SEARCH Message-ID")
+        uids: list[str] = []
+        for item in _imap_lines(search_resp):
+            text = _imap_text(item).strip()
+            if re.fullmatch(r"[\d\s]+", text):
+                uids.extend(text.split())
+        new_uid = int(uids[-1]) if uids else None
+
+        # Discard the previous revision of this draft, if any.
+        replace_uid = body.get("replaceUid")
+        replace_folder = (body.get("replaceFolder") or "").strip()
+        if replace_uid and replace_folder and int(replace_uid) != new_uid:
+            try:
+                await _delete_message_in_folder(client, replace_folder, int(replace_uid))
+            except Exception as exc:
+                print(f"[DRAFT] Failed to discard previous draft revision: {exc}")
+
+        return target, new_uid
+
+    target, new_uid = await with_imap_retry(session, _do)
+    if new_uid is None:
+        raise HTTPException(502, "Draft saved but could not be located afterward.")
+    return JSONResponse({"ok": True, "uid": new_uid, "folder": target, "messageId": message_id})
+
+
+# ── Send ───────────────────────────────────────────────────────────────────────
+
+def _parse_recipients(value: str) -> list[str]:
+    if not value:
+        return []
+    emails = re.findall(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}", value, re.IGNORECASE)
+    return list(dict.fromkeys(e.lower() for e in emails))
+
+
+def _build_mime_message(
+    email: str, body: dict, *, require_recipients: bool = True, message_id: str | None = None
+) -> tuple[EmailMessage, list[str], list[str], list[str]]:
+    """Build an RFC 2047/UTF-8 MIME message from a compose payload. Shared by send and draft-save."""
+    to_recipients = _parse_recipients(body.get("to", ""))
+    cc_recipients = _parse_recipients(body.get("cc", ""))
+    bcc_recipients = _parse_recipients(body.get("bcc", ""))
+    if require_recipients and not to_recipients:
         raise HTTPException(400, "At least one recipient is required.")
 
     subject = body.get("subject", "(No subject)")
@@ -2802,13 +3303,15 @@ async def send_message(request: Request, body: dict):
     from_name = body.get("fromName", "")
     reply_to = body.get("replyTo", "")
 
-    # Build MIME email with proper RFC 2047/UTF-8 header encoding.
     mime_message = EmailMessage()
+    if message_id:
+        mime_message["Message-ID"] = message_id
     if from_name:
         mime_message["From"] = formataddr((str(Header(from_name, "utf-8")), email))
     else:
         mime_message["From"] = email
-    mime_message["To"] = ", ".join(to_recipients)
+    if to_recipients:
+        mime_message["To"] = ", ".join(to_recipients)
     if cc_recipients:
         mime_message["Cc"] = ", ".join(cc_recipients)
     mime_message["Subject"] = str(Header(subject, "utf-8"))
@@ -2870,6 +3373,26 @@ async def send_message(request: Request, body: dict):
             except Exception:
                 pass
 
+    return mime_message, to_recipients, cc_recipients, bcc_recipients
+
+
+async def _delete_message_in_folder(client, folder: str, uid: int) -> None:
+    """Mark a message \\Deleted and expunge it. Used for discarding stale drafts."""
+    select_resp = await client.select(_quote_imap_folder(folder))
+    _require_imap_ok(select_resp, f"SELECT {folder}")
+    store_resp = await client.uid("STORE", str(uid), "+FLAGS", "\\Deleted")
+    _require_imap_ok(store_resp, "UID STORE")
+    expunge_resp = await client.expunge()
+    _require_imap_ok(expunge_resp, "EXPUNGE")
+
+
+@app.post("/api/messages/send")
+async def send_message(request: Request, body: dict):
+    session = await require_session(request)
+    email = session["email"]
+
+    mime_message, to_recipients, cc_recipients, bcc_recipients = _build_mime_message(email, body)
+
     # Send via SMTP
     domain = _session_mail_domain(session)
     smtp_host, smtp_port = await _resolve_smtp_config(domain)
@@ -2898,6 +3421,9 @@ async def send_message(request: Request, body: dict):
         print(f"[SMTP] Failed: {e}")
         raise HTTPException(502, f"SMTP error: {e}")
 
+    for addr in to_recipients + cc_recipients + bcc_recipients:
+        _contacts_auto_add(email, addr)
+
     # Save copy to Sent folder. Do not fail the SMTP send if IMAP append fails,
     # but surface the warning to the UI so the user is not misled.
     sent_folder = (body.get("sentFolder") or "").strip()
@@ -2923,6 +3449,18 @@ async def send_message(request: Request, body: dict):
     except Exception as outer_ex:
         sent_error = str(outer_ex)
         print(f"[SENT] Failed to save sent copy: {sent_error}")
+
+    # If this send replaces an edited draft, discard the stale draft copy now.
+    replace_draft_uid = body.get("replaceDraftUid")
+    replace_draft_folder = (body.get("replaceDraftFolder") or "").strip()
+    if replace_draft_uid and replace_draft_folder:
+        try:
+            async def _discard_draft(client):
+                await _delete_message_in_folder(client, replace_draft_folder, int(replace_draft_uid))
+
+            await with_imap_retry(session, _discard_draft)
+        except Exception as exc:
+            print(f"[DRAFT] Failed to discard replaced draft: {exc}")
 
     return JSONResponse({"ok": True, "sentSaved": sent_saved, "sentFolder": sent_folder, "sentError": sent_error})
 
@@ -4384,6 +4922,24 @@ async def serve_favicon():
     fav = STATIC_DIR / "brand" / "bnix-favicon.png"
     if fav.exists():
         return FileResponse(str(fav), media_type="image/png")
+    raise HTTPException(404)
+
+
+@app.get("/manifest.json")
+async def serve_manifest():
+    """Serve the PWA web app manifest."""
+    path = STATIC_DIR / "manifest.json"
+    if path.exists():
+        return FileResponse(str(path), media_type="application/manifest+json")
+    raise HTTPException(404)
+
+
+@app.get("/sw.js")
+async def serve_service_worker():
+    """Serve the PWA service worker. Must be same-origin at root scope."""
+    path = STATIC_DIR / "sw.js"
+    if path.exists():
+        return FileResponse(str(path), media_type="application/javascript", headers={"Cache-Control": "no-cache"})
     raise HTTPException(404)
 
 

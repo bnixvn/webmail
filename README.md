@@ -4,11 +4,17 @@ Self-hosted webmail client built with Python FastAPI. Supports IMAP/SMTP email, 
 
 ## Features
 
-- 📧 Email — IMAP/SMTP with folders, search, attachments
+- 📧 Email — IMAP/SMTP with folders, real IMAP-side search (current folder or all mailboxes), attachments (click-to-browse or drag-and-drop)
+- 📝 Drafts — autosave while composing, saved straight to the IMAP Drafts folder
+- 🔔 New-mail polling — unread badge auto-refresh with optional browser notifications
+- ⌨️ Keyboard shortcuts — Gmail-style (c/j/k/r/a/f/e/#//)
+- 📊 Storage quota — shown in the sidebar when the mail server exposes IMAP QUOTA
+- 👤 Auto-saved contacts — recipients you email are quietly added to Contacts for faster autocomplete next time
+- 📲 Installable (PWA) — add-to-home-screen with an offline app shell (mail data itself always requires a live connection)
 - 📅 Calendar — CalDAV events with monthly grid view
 - 👥 Contacts — CardDAV with search and CRUD
 - ✍️ Signature — HTML editor with per-account settings
-- 🔒 Session encryption — AES-256-GCM with HttpOnly cookies
+- 🔒 Security — AES-256-GCM session encryption, HttpOnly cookies, CSP/HSTS headers, optional TOTP two-factor login
 - 📱 Responsive — Mobile-first design with Tailwind CSS
 
 ## Requirements
@@ -161,15 +167,23 @@ webmail/
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/api/auth/login` | Login with email + password |
+| POST | `/api/auth/login` | Login with email + password (returns `{twoFactorRequired: true}` if TOTP is enabled) |
+| POST | `/api/auth/verify-2fa` | Complete login with a TOTP or backup code |
 | POST | `/api/auth/logout` | Logout |
 | GET | `/api/auth/me` | Check session (public — returns `{authenticated: false}` if not logged in, no 401) |
+| GET | `/api/settings/2fa` | Get whether two-factor auth is enabled |
+| POST | `/api/settings/2fa/setup` | Start TOTP setup, returns secret + QR |
+| POST | `/api/settings/2fa/enable` | Confirm setup with a code, returns one-time backup codes |
+| POST | `/api/settings/2fa/disable` | Disable two-factor auth |
 | GET | `/api/mailboxes` | List mailboxes |
-| GET | `/api/messages` | List messages |
+| GET | `/api/quota` | Mailbox storage quota — `{supported: false}` when the server doesn't expose IMAP QUOTA |
+| GET | `/api/messages` | List messages (paginated) |
+| GET | `/api/messages/search` | Real IMAP search — `q`/`from`/`subject`/`since`/`before`, `scope=folder\|all` |
 | GET | `/api/messages/{uid}` | Get message |
 | DELETE | `/api/messages/{uid}` | Delete message |
 | PATCH | `/api/messages/{uid}/flags` | Update flags |
 | POST | `/api/messages/{uid}/move` | Move message |
+| POST | `/api/messages/draft` | Save/update a draft in the Drafts folder |
 | POST | `/api/messages/send` | Send email |
 | GET | `/api/calendar` | List events |
 | POST | `/api/calendar` | Create event |

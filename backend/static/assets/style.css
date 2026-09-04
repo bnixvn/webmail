@@ -689,3 +689,10 @@ input, textarea, [contenteditable] {
     grid-template-columns: 1fr;
   }
 }
+
+/* Drag-and-drop attachment highlight in the compose window */
+.compose-drop-active {
+  outline: 2px dashed #3d83bd;
+  outline-offset: -4px;
+  background-color: rgba(61, 131, 189, 0.06);
+}

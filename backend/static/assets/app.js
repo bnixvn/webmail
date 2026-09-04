@@ -162,6 +162,34 @@ const LOCALES = {
     invalidRecipient: (e) => `Invalid recipient: ${e}`,
     couldNotLoad: (e) => `Could not load mailbox: ${e || "Unknown error"}`,
     threadCount: (n) => `${n} messages`,
+    // Drafts
+    savingDraft: "Saving draft…", draftSaved: (time) => `Draft saved ${time}`, draftSaveFailed: "Could not save draft",
+    discardDraft: "Discard draft",
+    // Search
+    searchAllMailboxes: "Search all mailboxes", searchThisFolder: "Search this folder only",
+    searchResultsCount: (n) => `${n} result${n === 1 ? "" : "s"}`, searching: "Searching…",
+    noSearchResults: "No messages found",
+    // New mail notifications
+    enableNotifications: "Enable new-mail notifications", notificationsEnabled: "Notifications enabled",
+    notificationsBlocked: "Notifications are blocked in your browser settings",
+    newMailAvailable: (n) => `${n} new message${n === 1 ? "" : "s"}`, refresh: "Refresh",
+    newMailNotifTitle: (n) => `${n} new email${n === 1 ? "" : "s"}`,
+    // Security / 2FA
+    security: "Security", twoFactorAuth: "Two-factor authentication",
+    twoFactorDesc: "Require a code from an authenticator app when signing in.",
+    enable2FA: "Enable 2FA", disable2FA: "Disable 2FA", twoFactorEnabled: "Enabled", twoFactorDisabled: "Disabled",
+    scanQrCode: "Scan this QR code with your authenticator app (Google Authenticator, Aegis, etc.), or enter the code manually:",
+    enterCodeToConfirm: "Enter the 6-digit code to confirm", confirmAndEnable: "Confirm and enable",
+    enterCodeToDisable: "Enter your current code (or a backup code) to disable 2FA",
+    backupCodesTitle: "Backup codes", backupCodesWarning: "Save these codes somewhere safe. Each can be used once if you lose access to your authenticator app. They will not be shown again.",
+    twoFactorEnabledOk: "Two-factor authentication is now enabled.",
+    twoFactorDisabledOk: "Two-factor authentication has been disabled.",
+    twoFactorRequired: "Enter authentication code", enterAuthCode: "6-digit code or backup code",
+    verify: "Verify", invalidCode: "Invalid code. Please try again.",
+    backToLogin: "Back to sign in",
+    copySecret: "Copy secret", copied: "Copied",
+    // Quota
+    storageUsed: "Storage",
   },
   vi: {
     // Login
@@ -293,6 +321,34 @@ const LOCALES = {
     invalidRecipient: (e) => `Người nhận không hợp lệ: ${e}`,
     couldNotLoad: (e) => `Không thể tải hộp thư: ${e || "Lỗi không xác định"}`,
     threadCount: (n) => `${n} thư`,
+    // Nháp
+    savingDraft: "Đang lưu nháp…", draftSaved: (time) => `Đã lưu nháp ${time}`, draftSaveFailed: "Không thể lưu nháp",
+    discardDraft: "Hủy bản nháp",
+    // Tìm kiếm
+    searchAllMailboxes: "Tìm trong tất cả hộp thư", searchThisFolder: "Chỉ tìm trong thư mục này",
+    searchResultsCount: (n) => `${n} kết quả`, searching: "Đang tìm…",
+    noSearchResults: "Không tìm thấy thư nào",
+    // Thông báo thư mới
+    enableNotifications: "Bật thông báo thư mới", notificationsEnabled: "Đã bật thông báo",
+    notificationsBlocked: "Thông báo đang bị chặn trong cài đặt trình duyệt",
+    newMailAvailable: (n) => `${n} thư mới`, refresh: "Làm mới",
+    newMailNotifTitle: (n) => `${n} thư mới`,
+    // Bảo mật / 2FA
+    security: "Bảo mật", twoFactorAuth: "Xác thực 2 lớp",
+    twoFactorDesc: "Yêu cầu mã từ ứng dụng xác thực mỗi khi đăng nhập.",
+    enable2FA: "Bật 2FA", disable2FA: "Tắt 2FA", twoFactorEnabled: "Đang bật", twoFactorDisabled: "Đang tắt",
+    scanQrCode: "Quét mã QR bằng ứng dụng xác thực (Google Authenticator, Aegis, ...), hoặc nhập mã thủ công:",
+    enterCodeToConfirm: "Nhập mã 6 số để xác nhận", confirmAndEnable: "Xác nhận và bật",
+    enterCodeToDisable: "Nhập mã hiện tại (hoặc mã dự phòng) để tắt 2FA",
+    backupCodesTitle: "Mã dự phòng", backupCodesWarning: "Lưu các mã này ở nơi an toàn. Mỗi mã chỉ dùng được 1 lần khi bạn mất quyền truy cập ứng dụng xác thực. Mã sẽ không hiển thị lại lần nữa.",
+    twoFactorEnabledOk: "Đã bật xác thực 2 lớp.",
+    twoFactorDisabledOk: "Đã tắt xác thực 2 lớp.",
+    twoFactorRequired: "Nhập mã xác thực", enterAuthCode: "Mã 6 số hoặc mã dự phòng",
+    verify: "Xác nhận", invalidCode: "Mã không đúng. Vui lòng thử lại.",
+    backToLogin: "Quay lại đăng nhập",
+    copySecret: "Sao chép mã bí mật", copied: "Đã sao chép",
+    // Quota
+    storageUsed: "Dung lượng",
   },
 };
 
@@ -318,6 +374,7 @@ const I = {
   download:  `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>`,
   spam:      `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v4"/><path d="M12 16h.01"/><path d="M7.86 2h8.28L22 7.86v8.28L16.14 22H7.86L2 16.14V7.86z"/></svg>`,
   shield:    `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/></svg>`,
+  bell:      `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/></svg>`,
   trash:     `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>`,
   star:      `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`,
   starFill:  `<svg width="16" height="16" viewBox="0 0 24 24" fill="#f59e0b" stroke="#f59e0b" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`,
@@ -776,6 +833,18 @@ function classifyFolder(mailbox) {
 function folderDisplayName(info, fallback = "") {
   if (!info) return fallback;
   return info.labelKey ? t(info.labelKey) : (info.label || fallback);
+}
+
+// Special-use key ("inbox"/"drafts"/"sent"/...) of an arbitrary folder path.
+function folderSpecialFor(path) {
+  const mb = S.mailboxes.find(m => m.path === path);
+  if (mb) return classifyFolder(mb)?.special || null;
+  return (path || "").toUpperCase() === "INBOX" ? "inbox" : null;
+}
+
+// Special-use key of the currently open folder, if any.
+function currentFolderSpecial() {
+  return folderSpecialFor(S.folder);
 }
 
 function folderTarget(kind) {
@@ -1262,6 +1331,26 @@ const S = {
   msgTotal: 0,     // total messages in folder
   msgLimit: 60,    // page size
   loadingMore: false,
+  // Search (real IMAP search, layered on top of the client-side quick filter)
+  searchResults: null,   // { query, scope, folder, messages, total } or null
+  searching: false,
+  searchScope: "folder", // "folder" | "all"
+  // New-mail polling / notifications
+  newMailBanner: 0,       // count of newly-arrived unread messages in the open folder
+  notifPermission: (typeof Notification !== "undefined" ? Notification.permission : "unsupported"),
+  // Two-factor auth
+  pendingTwoFactor: null, // { email, domain } while awaiting the OTP step
+  twoFactorError: "",
+  twoFactorBusy: false,
+  showSecurity: false,
+  securityStatus: null,   // { enabled } for the current account
+  securitySetup: null,    // { secret, otpauthUri, qrSvg } while enabling
+  securityBackupCodes: null, // shown once right after enabling
+  securityBusy: false,
+  securityError: "",
+  securityCode: "",
+  // Mailbox storage quota (best-effort — null when the server doesn't expose it)
+  quota: null, // { usedKb, limitKb } or null
 };
 
 let _rendering = false;
@@ -1338,8 +1427,19 @@ function resetSessionState(loginError = "") {
     contactEditing: null,
     msgOffset: 0,
     msgTotal: 0,
+    searchResults: null,
+    searching: false,
+    newMailBanner: 0,
+    pendingTwoFactor: null,
+    twoFactorError: "",
+    showSecurity: false,
+    securityStatus: null,
+    securitySetup: null,
+    securityBackupCodes: null,
+    quota: null,
     loginError,
   });
+  stopMailPolling();
 }
 
 async function handleSessionExpired() {
@@ -1446,6 +1546,63 @@ function renderLogin() {
   );
 }
 
+function renderTwoFactorPrompt() {
+  const isDark = document.documentElement.classList.contains("dark");
+  const lang = getLang();
+
+  return h("main", { className: "login-page" },
+    h("div", { className: "login-panel-left" }),
+    h("div", { className: "login-panel-right" },
+      h("div", { className: "login-right-wrapper" },
+      h("div", { className: "login-topbar" },
+        h("div", { className: "login-lang-group" },
+          h("button", {
+            type: "button",
+            className: `login-lang-btn ${lang === "vi" ? "active" : ""}`,
+            onclick() { setLang("vi"); },
+          }, h("img", { src: "/brand/vietnam.png", alt: "Tiáº¿ng Viá»‡t", className: "login-flag-img" })),
+          h("button", {
+            type: "button",
+            className: `login-lang-btn ${lang === "en" ? "active" : ""}`,
+            onclick() { setLang("en"); },
+          }, h("img", { src: "/brand/united-states.png", alt: "English", className: "login-flag-img" })),
+        ),
+        h("button", {
+          type: "button",
+          className: "login-theme-btn",
+          onclick() {
+            const dark = document.documentElement.classList.toggle("dark");
+            localStorage.setItem("theme", dark ? "dark" : "light");
+            render();
+          },
+          title: isDark ? t("lightMode") : t("darkMode"),
+          innerHTML: isDark
+            ? `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>`
+            : `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`,
+        }),
+      ),
+      h("div", { className: "login-center" },
+        h("form", { className: "login-form", onsubmit: onVerifyTwoFactor },
+          h("div", { className: "login-field" },
+            h("label", {}, t("twoFactorRequired")),
+            h("input", {
+              name: "code", type: "text", inputmode: "numeric", autocomplete: "one-time-code",
+              placeholder: t("enterAuthCode"), required: "required", autofocus: "autofocus",
+            }),
+          ),
+          S.twoFactorError ? h("div", { className: "login-error" }, S.twoFactorError) : null,
+          h("button", { type: "submit", className: "login-submit", disabled: S.twoFactorBusy }, t("verify")),
+          h("button", {
+            type: "button", className: "login-lang-btn", style: { marginTop: "8px" },
+            onclick: cancelTwoFactor,
+          }, t("backToLogin")),
+        ),
+      ),
+      ),
+    ),
+  );
+}
+
 async function onLogin(e) {
   e.preventDefault();
   const form = e.target;
@@ -1459,12 +1616,11 @@ async function onLogin(e) {
       method: "POST",
       body: JSON.stringify({ email, password, remember }),
     });
-    S.account = { email: data.email, domain: data.domain };
-    S.ready = false;
-    _handlingSessionExpired = false;
-    // Show loading while bootstrap runs
-    render();
-    await bootstrap();
+    if (data.twoFactorRequired) {
+      set({ pendingTwoFactor: { email: data.email, domain: data.domain }, twoFactorError: "" });
+      return;
+    }
+    await completeLogin(data);
   } catch (err) {
     S.account = null;
     if (err.code === "LOGIN_TEMPORARILY_LOCKED") {
@@ -1476,6 +1632,48 @@ async function onLogin(e) {
       set({ loginError: err.message || t("loginFailed") });
     }
   }
+}
+
+async function completeLogin(data) {
+  S.account = { email: data.email, domain: data.domain };
+  S.ready = false;
+  S.pendingTwoFactor = null;
+  _handlingSessionExpired = false;
+  // Show loading while bootstrap runs
+  render();
+  await bootstrap();
+}
+
+async function onVerifyTwoFactor(e) {
+  e.preventDefault();
+  if (S.twoFactorBusy) return;
+  const form = e.target;
+  const code = form.code.value.trim();
+  set({ twoFactorBusy: true, twoFactorError: "" });
+  try {
+    const data = await api("/api/auth/verify-2fa", {
+      method: "POST",
+      body: JSON.stringify({ code }),
+    });
+    set({ twoFactorBusy: false });
+    await completeLogin(data);
+  } catch (err) {
+    let msg = t("invalidCode");
+    if (err.code === "LOGIN_TEMPORARILY_LOCKED") {
+      const minutes = Math.max(1, Math.ceil((err.retryAfter || 900) / 60));
+      msg = t("loginTemporarilyLocked", minutes);
+    } else if (err.status === 401 && !err.code) {
+      msg = t("sessionExpired");
+      set({ twoFactorBusy: false, pendingTwoFactor: null, twoFactorError: "" });
+      return;
+    }
+    set({ twoFactorBusy: false, twoFactorError: msg });
+  }
+}
+
+async function cancelTwoFactor() {
+  try { await api("/api/auth/logout", { method: "POST" }); } catch {}
+  set({ pendingTwoFactor: null, twoFactorError: "" });
 }
 
 // â”€â”€â”€ Bootstrap â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -1491,7 +1689,8 @@ async function bootstrap() {
       mailboxes: mbData.mailboxes || [],
       ready: true,
     });
-    await Promise.all([loadMessages(), loadTodayEvents(), loadLabels(), loadMailRules()]);
+    await Promise.all([loadMessages(), loadTodayEvents(), loadLabels(), loadMailRules(), loadContacts(), loadQuota()]);
+    startMailPolling();
   } catch (err) {
     if (err.authExpired || err.status === 401) {
       await handleSessionExpired();
@@ -1499,7 +1698,17 @@ async function bootstrap() {
       // IMAP/other error â€” stay logged in, show error
       set({ ready: true, error: t("couldNotLoad", err.message) });
       await loadMessages();
+      startMailPolling();
     }
+  }
+}
+
+async function loadQuota() {
+  try {
+    const data = await api("/api/quota");
+    set({ quota: data.supported ? data : null });
+  } catch {
+    set({ quota: null });
   }
 }
 
@@ -1508,6 +1717,64 @@ async function refreshMailboxes() {
     const data = await api("/api/mailboxes");
     set({ mailboxes: data.mailboxes || [] });
   } catch {}
+}
+
+// â”€â”€â”€ New-mail polling & notifications â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+let _mailPollTimer = null;
+const MAIL_POLL_INTERVAL_MS = 45000;
+
+function startMailPolling() {
+  stopMailPolling();
+  _mailPollTimer = setInterval(pollForNewMail, MAIL_POLL_INTERVAL_MS);
+}
+
+function stopMailPolling() {
+  if (_mailPollTimer) {
+    clearInterval(_mailPollTimer);
+    _mailPollTimer = null;
+  }
+}
+
+function inboxUnseenCount(mailboxes) {
+  const inbox = (mailboxes || []).find(mb => classifyFolder(mb)?.special === "inbox");
+  return inbox ? (inbox.unseen || 0) : 0;
+}
+
+async function pollForNewMail() {
+  if (!S.account) return;
+  const prevUnseen = inboxUnseenCount(S.mailboxes);
+  try {
+    const data = await api("/api/mailboxes");
+    const mailboxes = data.mailboxes || [];
+    const newUnseen = inboxUnseenCount(mailboxes);
+    set({ mailboxes });
+
+    const delta = newUnseen - prevUnseen;
+    if (delta > 0) {
+      if (currentFolderSpecial() === "inbox" && !S.selectedUid && !S.compose && !S.query) {
+        set({ newMailBanner: (S.newMailBanner || 0) + delta });
+      }
+      if (typeof document !== "undefined" && document.hidden && S.notifPermission === "granted") {
+        try {
+          const notif = new Notification(t("newMailNotifTitle", newUnseen), { tag: "bnix-new-mail" });
+          notif.onclick = () => { window.focus(); notif.close(); };
+        } catch {}
+      }
+    }
+  } catch {
+    // A failed poll should never disrupt the UI — just retry next tick.
+  }
+}
+
+async function enableMailNotifications() {
+  if (typeof Notification === "undefined") return;
+  try {
+    const perm = await Notification.requestPermission();
+    set({ notifPermission: perm });
+  } catch {
+    set({ notifPermission: Notification.permission });
+  }
 }
 
 async function loadMessages(append = false) {
@@ -1535,21 +1802,85 @@ async function loadMessages(append = false) {
   }
 }
 
-async function loadMessage(uid) {
-  navigate({ uid }); // update URL before loading (no full re-render)
+// â”€â”€â”€ Search (real IMAP search across the folder or every mailbox) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+let _searchDebounceTimer = null;
+
+function scheduleSearch() {
+  clearTimeout(_searchDebounceTimer);
+  if (!S.query.trim()) {
+    set({ searchResults: null, searching: false });
+    return;
+  }
+  _searchDebounceTimer = setTimeout(runSearch, 350);
+}
+
+async function runSearch() {
+  const q = S.query.trim();
+  if (!q) return;
+  const folder = S.folder;
+  const scope = S.searchScope;
+  set({ searching: true });
+  try {
+    const params = new URLSearchParams({ q, folder, scope, limit: "80" });
+    const data = await api(`/api/messages/search?${params.toString()}`);
+    if (S.query.trim() !== q) return; // query changed while the request was in flight
+    set({
+      searchResults: { query: q, scope, folder, messages: data.messages || [], total: data.total || 0 },
+      searching: false,
+    });
+  } catch (err) {
+    if (S.query.trim() !== q) return;
+    set({ searching: false });
+  }
+}
+
+function setSearchScope(scope) {
+  set({ searchScope: scope });
+  if (S.query.trim()) runSearch();
+}
+
+// folder: optional override, used when opening a cross-folder search result
+// (e.g. an "all mailboxes" search hit that lives in a different folder than
+// the one currently open) so the fetch targets the message's real UID namespace.
+async function loadMessage(uid, folder) {
+  const targetFolder = folder || S.folder;
+  const switchingFolder = targetFolder !== S.folder;
+  navigate({ uid, folder: targetFolder }); // update URL before loading (no full re-render)
   set({
     compose: null, showCc: false, showBcc: false,
     loadingMsg: true, selectedUid: uid, selectedMsg: null,
     quickReply: "", quickAttachments: [], threadMsgs: [], loadingThread: false,
+    folder: targetFolder,
+    ...(switchingFolder ? { query: "", searchResults: null } : {}),
   });
+  if (switchingFolder) loadMessages();
   try {
-    const data = await api(`/api/messages/${uid}?folder=${encodeURIComponent(S.folder)}`);
+    const data = await api(`/api/messages/${uid}?folder=${encodeURIComponent(targetFolder)}`);
     const msg = data.message;
     // Mark as read locally
     const msgs = S.messages.map(m => m.uid === uid ? { ...m, seen: true } : m);
     set({ selectedMsg: msg, loadingMsg: false, messages: msgs, threadMsgs: [], loadingThread: false });
   } catch (err) {
     set({ loadingMsg: false, error: err.message });
+  }
+}
+
+// Clicking a message while viewing the Drafts folder resumes editing it,
+// instead of opening the read-only message view.
+async function openDraftForEdit(msg, folder) {
+  const targetFolder = folder || msg.folder || S.folder;
+  const switchingFolder = targetFolder !== S.folder;
+  navigate({ uid: msg.uid, folder: targetFolder });
+  if (switchingFolder) {
+    set({ folder: targetFolder, query: "", searchResults: null });
+    loadMessages();
+  }
+  try {
+    const data = await api(`/api/messages/${msg.uid}?folder=${encodeURIComponent(targetFolder)}`);
+    openCompose({ editDraft: data.message, draftUid: msg.uid, draftFolder: targetFolder });
+  } catch (err) {
+    set({ error: err.message });
   }
 }
 
@@ -1561,6 +1892,30 @@ async function doLogout() {
 }
 
 // â”€â”€â”€ Sidebar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+function formatKb(kb) {
+  const mb = kb / 1024;
+  if (mb >= 1024) return `${(mb / 1024).toFixed(1)}GB`;
+  return `${Math.round(mb)}MB`;
+}
+
+// Best-effort storage bar — S.quota is null whenever the mail server doesn't
+// expose the IMAP QUOTA extension, in which case this renders nothing.
+function renderQuotaBar() {
+  if (!S.quota || !S.quota.limitKb) return null;
+  const pct = Math.min(100, Math.round((S.quota.usedKb / S.quota.limitKb) * 100));
+  const barColor = pct >= 90 ? "bg-red-500" : pct >= 75 ? "bg-amber-500" : "bg-brand";
+  return h("div", { className: "px-3 py-2" },
+    h("div", { className: "flex items-center justify-between text-[11px] text-slate-400 mb-1" },
+      h("span", {}, t("storageUsed")),
+      h("span", {}, `${pct}%`),
+    ),
+    h("div", { className: "h-1.5 rounded-full bg-slate-100 dark:bg-slate-700 overflow-hidden" },
+      h("div", { className: `h-full rounded-full ${barColor}`, style: { width: `${pct}%` } }),
+    ),
+    h("div", { className: "text-[11px] text-slate-400 mt-1" }, `${formatKb(S.quota.usedKb)} / ${formatKb(S.quota.limitKb)}`),
+  );
+}
 
 function renderSidebar() {
   const { mainFolders, customFolders } = splitMailboxes();
@@ -1813,6 +2168,21 @@ function renderSidebar() {
   }, icon("settings"), !collapsed ? h("span", {}, t("signature")) : null));
   footer.appendChild(h("button", {
     className: `folder-item w-full ${collapsed ? "justify-center" : ""} text-slate-500`,
+    onclick() { openSecurityModal(); },
+  }, icon("shield"), !collapsed ? h("span", {}, t("security")) : null));
+  if (typeof Notification !== "undefined" && S.notifPermission === "default") {
+    footer.appendChild(h("button", {
+      className: `folder-item w-full ${collapsed ? "justify-center" : ""} text-slate-500`,
+      title: t("enableNotifications"),
+      onclick: enableMailNotifications,
+    }, icon("bell"), !collapsed ? h("span", {}, t("enableNotifications")) : null));
+  }
+  if (!collapsed) {
+    const quotaBar = renderQuotaBar();
+    if (quotaBar) footer.appendChild(quotaBar);
+  }
+  footer.appendChild(h("button", {
+    className: `folder-item w-full ${collapsed ? "justify-center" : ""} text-slate-500`,
     onclick: doLogout,
   }, icon("logout"), !collapsed ? h("span", { className: "truncate text-xs" }, S.account?.email || t("signOut")) : null));
   items.push(footer);
@@ -1854,7 +2224,7 @@ function renderMobileSidebar() {
     placeholder: t("searchMsgsPh"),
     value: S.query,
   });
-  searchInput.addEventListener("input", e => set({ query: e.target.value }));
+  searchInput.addEventListener("input", e => { set({ query: e.target.value }); scheduleSearch(); });
   searchWrap.appendChild(searchInput);
   panel.appendChild(searchWrap);
 
@@ -2024,6 +2394,18 @@ function renderMobileSidebar() {
   }, icon("settings"), h("span", {}, t("signature"))));
   footer.appendChild(h("button", {
     className: "folder-item w-full text-slate-500",
+    onclick() { set({ mobileSidebar: false }); openSecurityModal(); },
+  }, icon("shield"), h("span", {}, t("security"))));
+  if (typeof Notification !== "undefined" && S.notifPermission === "default") {
+    footer.appendChild(h("button", {
+      className: "folder-item w-full text-slate-500",
+      onclick() { set({ mobileSidebar: false }); enableMailNotifications(); },
+    }, icon("bell"), h("span", {}, t("enableNotifications"))));
+  }
+  const mobileQuotaBar = renderQuotaBar();
+  if (mobileQuotaBar) footer.appendChild(mobileQuotaBar);
+  footer.appendChild(h("button", {
+    className: "folder-item w-full text-slate-500",
     onclick() { set({ mobileSidebar: false }); doLogout(); },
   }, icon("logout"), h("span", {}, t("signOut"))));
   panel.appendChild(footer);
@@ -2047,13 +2429,18 @@ async function createFolder() {
 
 function renderMessageList() {
   const q = S.query.trim().toLowerCase();
-  const filtered = S.messages.filter(m => {
-    if (!messageMatchesFilter(m)) return false;
-    if (!q) return true;
-    return (m.subject || "").toLowerCase().includes(q) ||
-      (m.snippet || "").toLowerCase().includes(q) ||
-      displayName(m.from).toLowerCase().includes(q);
-  });
+  const activeSearch = !!(q && S.searchResults && S.searchResults.query === S.query.trim()
+    && (S.searchResults.scope === "all" || S.searchResults.folder === S.folder));
+
+  const filtered = activeSearch
+    ? S.searchResults.messages.filter(messageMatchesFilter)
+    : S.messages.filter(m => {
+      if (!messageMatchesFilter(m)) return false;
+      if (!q) return true;
+      return (m.subject || "").toLowerCase().includes(q) ||
+        (m.snippet || "").toLowerCase().includes(q) ||
+        displayName(m.from).toLowerCase().includes(q);
+    });
 
   const section = h("section", { className: "flex flex-col h-full bg-white dark:bg-slate-800 border-r border-line shrink-0 w-full md:w-96" });
 
@@ -2067,14 +2454,16 @@ function renderMessageList() {
     innerHTML: I.menu,
   }));
 
-  // Select all / toolbar
+  // Select all / toolbar â€” batch actions act on the open folder, so cross-folder
+  // search hits (which render without a checkbox) are excluded from "select all".
+  const selectableUids = filtered.filter(m => !m.folder || m.folder === S.folder).map(m => m.uid);
   if (S.selectedUids.length > 0) {
     header.appendChild(h("label", { className: "flex items-center gap-2" },
       h("input", {
         type: "checkbox",
-        checked: S.selectedUids.length === filtered.length ? "checked" : undefined,
+        checked: selectableUids.length > 0 && S.selectedUids.length === selectableUids.length ? "checked" : undefined,
         onchange(e) {
-          if (e.target.checked) set({ selectedUids: filtered.map(m => m.uid) });
+          if (e.target.checked) set({ selectedUids: selectableUids });
           else set({ selectedUids: [] });
         },
       }),
@@ -2121,11 +2510,12 @@ function renderMessageList() {
   const searchBox = h("div", { className: "relative" });
   searchBox.appendChild(h("span", { className: "absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400", innerHTML: I.search }));
   const searchInput = h("input", {
+    id: "msg-search-input",
     className: "w-full pl-8 pr-3 py-1.5 text-sm border border-line rounded-lg bg-white dark:bg-slate-800",
     placeholder: t("searchPh"),
     value: S.query,
   });
-  searchInput.addEventListener("input", e => set({ query: e.target.value }));
+  searchInput.addEventListener("input", e => { set({ query: e.target.value }); scheduleSearch(); });
   tools.appendChild(searchBox);
   searchBox.appendChild(searchInput);
 
@@ -2144,7 +2534,36 @@ function renderMessageList() {
     }, f.label));
   }
   tools.appendChild(filters);
+
+  // Search status: scope toggle + result count (only while a query is active)
+  if (q) {
+    const searchStatus = h("div", { className: "flex items-center gap-2 text-xs" });
+    searchStatus.appendChild(h("span", { className: "text-slate-400" },
+      (S.searching || !activeSearch) ? t("searching") : t("searchResultsCount", S.searchResults.total),
+    ));
+    searchStatus.appendChild(h("button", {
+      type: "button",
+      className: `ml-auto px-2 py-0.5 rounded-full border ${S.searchScope === "folder" ? "border-brand text-brand" : "border-line text-slate-400"}`,
+      onclick() { setSearchScope("folder"); },
+    }, t("searchThisFolder")));
+    searchStatus.appendChild(h("button", {
+      type: "button",
+      className: `px-2 py-0.5 rounded-full border ${S.searchScope === "all" ? "border-brand text-brand" : "border-line text-slate-400"}`,
+      onclick() { setSearchScope("all"); },
+    }, t("searchAllMailboxes")));
+    tools.appendChild(searchStatus);
+  }
+
   section.appendChild(tools);
+
+  // New-mail banner (Gmail-style "N new messages" — click to refresh, never auto-injected)
+  if (S.newMailBanner > 0 && !q) {
+    section.appendChild(h("button", {
+      type: "button",
+      className: "w-full text-center text-sm text-brand bg-blue-50 dark:bg-blue-900/30 py-2 border-b border-line hover:bg-blue-100 dark:hover:bg-blue-900/50",
+      onclick() { set({ newMailBanner: 0 }); loadMessages(); },
+    }, `${t("newMailAvailable", S.newMailBanner)} — ${t("refresh")}`));
+  }
 
   // Error
   if (S.error) {
@@ -2154,22 +2573,22 @@ function renderMessageList() {
   // Message list
   const list = h("div", { className: "flex-1 overflow-y-auto" });
 
-  if (S.loadingMsgs) {
+  if (S.loadingMsgs || (q && S.searching && !activeSearch)) {
     list.appendChild(h("div", { className: "flex items-center justify-center py-12" },
       h("div", { className: "spinner" }),
     ));
   } else if (filtered.length === 0) {
     list.appendChild(h("div", { className: "flex flex-col items-center justify-center py-12 text-slate-400" },
       icon("mail"),
-      h("p", { className: "mt-2 text-sm" }, t("noConversations")),
+      h("p", { className: "mt-2 text-sm" }, q ? t("noSearchResults") : t("noConversations")),
     ));
   } else {
     for (const msg of filtered) {
       list.appendChild(renderMessageItem(msg));
     }
-    // Load More button
-    const hasMore = S.messages.length < S.msgTotal;
-    if (hasMore || S.loadingMore) {
+    // Load More button (pagination applies to the plain folder listing only)
+    const hasMore = !activeSearch && S.messages.length < S.msgTotal;
+    if (hasMore || (S.loadingMore && !activeSearch)) {
       const loadMoreBtn = h("button", {
         className: `w-full flex items-center justify-center gap-2 py-3 text-sm border-t border-line ${S.loadingMore ? "text-slate-400 cursor-default" : "text-brand hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer"}`,
         disabled: S.loadingMore || undefined,
@@ -2250,7 +2669,8 @@ function renderThreadItem(thread) {
         set({ expandedThreads: new Set(S.expandedThreads) });
         // Auto-open first unread or latest
         const toOpen = messages.find(m => !m.seen) || latest;
-        loadMessage(toOpen.uid);
+        if (currentFolderSpecial() === "drafts") openDraftForEdit(toOpen);
+        else loadMessage(toOpen.uid);
       }
     },
   });
@@ -2320,7 +2740,7 @@ function renderThreadItem(thread) {
       const subBg = subActive ? "bg-blue-100 dark:bg-blue-900/40" : subUnread ? "bg-emerald-50 dark:bg-emerald-900/20 hover:bg-emerald-100 dark:hover:bg-emerald-900/30" : "bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-blue-900/40";
       const subItem = h("div", {
         className: `flex items-start gap-3 pl-8 pr-3 py-2 border-b border-line cursor-pointer ${subBg}`,
-        onclick() { loadMessage(msg.uid); },
+        onclick() { if (currentFolderSpecial() === "drafts") openDraftForEdit(msg); else loadMessage(msg.uid); },
       });
       subItem.appendChild(avatarBadge(32, displayEmail(msg.from)));
       const subContent = h("div", { className: "flex-1 min-w-0" });
@@ -2343,13 +2763,20 @@ function renderMessageItem(msg, inThread, isReply) {
   const msgLabels = messageLabelsWithCurrentColors(msg.labels);
   const bg = active ? "bg-blue-100 dark:bg-blue-900/40" : unread ? "bg-emerald-50 dark:bg-emerald-900/20 hover:bg-emerald-100 dark:hover:bg-emerald-900/30" : "bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-blue-900/40";
   const indent = inThread ? "pl-8" : "px-3";
+  // Cross-folder search result (an "all mailboxes" hit from a folder other than
+  // the one currently open) — flag/label controls below assume the active
+  // folder's UID namespace, so they're hidden for these rows; click still opens
+  // the message correctly via the folder-aware loadMessage/openDraftForEdit.
+  const foreignFolder = !inThread && msg.folder && msg.folder !== S.folder;
 
   const item = h("div", {
     className: `msg-item grid gap-2 ${indent} pr-3 py-2.5 border-b border-line ${bg} cursor-pointer`,
     style: { gridTemplateColumns: inThread ? "28px 1fr auto" : "20px 40px 1fr auto" },
     onclick(e) {
       if (e.target.type === "checkbox") return;
-      loadMessage(msg.uid);
+      const folder = msg.folder || S.folder;
+      if (folderSpecialFor(folder) === "drafts") openDraftForEdit(msg, folder);
+      else loadMessage(msg.uid, folder);
     },
   });
 
@@ -2359,6 +2786,12 @@ function renderMessageItem(msg, inThread, isReply) {
       ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>`
       : `<svg width="8" height="8" viewBox="0 0 8 8"><circle cx="4" cy="4" r="3" fill="currentColor"/></svg>`;
     item.appendChild(h("div", { className: "flex items-center justify-center text-slate-400 pt-0.5", innerHTML: replyIcon }));
+  } else if (foreignFolder) {
+    item.appendChild(h("div", { className: "flex items-start justify-center pt-2 text-slate-300" }, icon("mail")));
+    const avatarWrap = h("div", { className: "relative" });
+    avatarWrap.appendChild(avatarBadge(40, displayEmail(msg.from)));
+    if (unread) avatarWrap.appendChild(h("div", { className: "absolute -left-2 top-6 w-2 h-2 rounded-full bg-blue-500" }));
+    item.appendChild(avatarWrap);
   } else {
     // Checkbox
     item.appendChild(h("div", { className: "flex items-start pt-2" },
@@ -2388,17 +2821,19 @@ function renderMessageItem(msg, inThread, isReply) {
   const content = h("div", { className: "min-w-0" });
   const fromRow = h("div", { className: "flex items-center gap-1" });
   fromRow.appendChild(h("span", { className: `truncate text-sm ${unread ? "font-semibold" : ""}` }, displayName(msg.from)));
-  // Star toggle button
-  const starBtn = h("button", {
-    className: "p-0.5 rounded hover:bg-amber-100 dark:hover:bg-amber-900/30 shrink-0",
-    title: msg.flagged ? t("unstar") : t("star"),
-    innerHTML: msg.flagged ? I.starFill : I.star,
-    onclick(e) {
-      e.stopPropagation();
-      toggleFlagFromList(msg.uid, "\\Flagged", !msg.flagged);
-    },
-  });
-  fromRow.appendChild(starBtn);
+  if (!foreignFolder) {
+    // Star toggle button
+    const starBtn = h("button", {
+      className: "p-0.5 rounded hover:bg-amber-100 dark:hover:bg-amber-900/30 shrink-0",
+      title: msg.flagged ? t("unstar") : t("star"),
+      innerHTML: msg.flagged ? I.starFill : I.star,
+      onclick(e) {
+        e.stopPropagation();
+        toggleFlagFromList(msg.uid, "\\Flagged", !msg.flagged);
+      },
+    });
+    fromRow.appendChild(starBtn);
+  }
   content.appendChild(fromRow);
   content.appendChild(h("div", { className: `text-sm truncate ${unread ? "font-medium text-ink" : "text-slate-700"}` }, msg.subject || t("noSubject")));
   if (!inThread) {
@@ -2408,9 +2843,12 @@ function renderMessageItem(msg, inThread, isReply) {
 
   // Time + label button
   const timeCol = h("div", { className: "flex flex-col items-end gap-1 pt-1" });
+  if (foreignFolder) {
+    timeCol.appendChild(h("div", { className: "text-[10px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-slate-500 whitespace-nowrap" }, msg.folder));
+  }
   timeCol.appendChild(h("div", { className: "text-xs text-slate-400 whitespace-nowrap" }, formatTime(msg.date)));
   // Label assignment button
-  if (!inThread) {
+  if (!inThread && !foreignFolder) {
     const hasLabels = msgLabels.length > 0;
     const primaryLabel = msgLabels[0];
     const labelBtn = h("button", {
@@ -2426,10 +2864,12 @@ function renderMessageItem(msg, inThread, isReply) {
   item.appendChild(timeCol);
 
   // Label dropdown
-  const labelDropdown = renderLabelDropdown(msg.uid, "labelMenuList");
-  if (labelDropdown) {
-    item.style.position = "relative";
-    item.appendChild(labelDropdown);
+  if (!foreignFolder) {
+    const labelDropdown = renderLabelDropdown(msg.uid, "labelMenuList");
+    if (labelDropdown) {
+      item.style.position = "relative";
+      item.appendChild(labelDropdown);
+    }
   }
 
   return item;
@@ -3366,6 +3806,35 @@ async function sendQuickReply() {
 // â”€â”€â”€ Compose â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function openCompose(opts = {}) {
+  S.composeId += 1;
+  const composeId = S.composeId;
+
+  if (opts.editDraft) {
+    const msg = opts.editDraft;
+    const draft = {
+      to: (msg.to || []).map(a => a.address).filter(Boolean).join(", "),
+      cc: (msg.cc || []).map(a => a.address).filter(Boolean).join(", "),
+      bcc: (msg.bcc || []).map(a => a.address).filter(Boolean).join(", "),
+      subject: msg.subject || "",
+      text: msg.text || "",
+      html: msg.html || (msg.text ? textToHtml(msg.text) : ""),
+      attachments: [],
+      fromName: S.signature?.displayName || "",
+      inReplyTo: msg.inReplyTo || "",
+      references: msg.references || "",
+      draftUid: opts.draftUid,
+      draftFolder: opts.draftFolder,
+      draftMessageId: msg.messageId || "",
+    };
+    set({ compose: draft, showCc: !!draft.cc, showBcc: !!draft.bcc, draftSavedAt: null });
+    goCompose();
+    startDraftAutosave();
+    if (msg.attachments && msg.attachments.length) {
+      loadOriginalAttachmentsIntoCompose(opts.draftFolder, opts.draftUid, msg.attachments, composeId);
+    }
+    return;
+  }
+
   const orig = opts.replyTo || opts.replyAll || opts.forward || null;
   let quotedText = "";
   const draft = {
@@ -3379,6 +3848,9 @@ function openCompose(opts = {}) {
     fromName: S.signature?.displayName || "",
     inReplyTo: (opts.replyTo || opts.replyAll) ? (orig?.messageId || "") : "",
     references: (opts.replyTo || opts.replyAll) ? ([orig?.references, orig?.inReplyTo, orig?.messageId].filter(Boolean).join(" ").trim()) : "",
+    draftUid: null,
+    draftFolder: null,
+    draftMessageId: "",
   };
 
   if (opts.replyTo || opts.replyAll) {
@@ -3391,12 +3863,130 @@ function openCompose(opts = {}) {
   }
   draft.html = htmlWithDefaultSignature("", quotedText ? textToHtml(quotedText) : "");
 
-  set({ compose: draft, showCc: !!draft.cc, showBcc: false });
+  set({ compose: draft, showCc: !!draft.cc, showBcc: false, draftSavedAt: null });
   goCompose();
+  startDraftAutosave();
+
+  if (opts.forward && opts.forward.attachments && opts.forward.attachments.length) {
+    loadOriginalAttachmentsIntoCompose(opts.forward.folder || S.folder, opts.forward.uid, opts.forward.attachments, composeId);
+  }
 }
 
 function closeCompose() {
+  stopDraftAutosave();
+  if (draftHasContent(S.compose)) {
+    saveDraftNow(); // fire-and-forget final save so nothing is lost silently
+  }
   set({ compose: null, showCc: false, showBcc: false });
+}
+
+// â”€â”€â”€ Draft autosave â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+let _draftAutosaveTimer = null;
+let _draftLastSavedSnapshot = "";
+const DRAFT_AUTOSAVE_INTERVAL_MS = 2500;
+
+function draftSnapshot(c) {
+  if (!c) return "";
+  const editor = document.querySelector(".compose-editor");
+  const html = editor ? editor.innerHTML : (c.html || "");
+  return JSON.stringify([c.to, c.cc, c.bcc, c.subject, html, (c.attachments || []).map(a => a.s3Key || a.name)]);
+}
+
+function draftHasContent(c) {
+  if (!c) return false;
+  const editor = document.querySelector(".compose-editor");
+  const html = editor ? editor.innerHTML : (c.html || "");
+  const textOnly = html.replace(/<[^>]*>/g, "").trim();
+  return !!((c.to || "").trim() || (c.cc || "").trim() || (c.bcc || "").trim() || (c.subject || "").trim() || textOnly || (c.attachments || []).length);
+}
+
+function startDraftAutosave() {
+  stopDraftAutosave();
+  _draftLastSavedSnapshot = draftSnapshot(S.compose);
+  _draftAutosaveTimer = setInterval(maybeAutosaveDraft, DRAFT_AUTOSAVE_INTERVAL_MS);
+}
+
+function stopDraftAutosave() {
+  if (_draftAutosaveTimer) {
+    clearInterval(_draftAutosaveTimer);
+    _draftAutosaveTimer = null;
+  }
+}
+
+async function maybeAutosaveDraft() {
+  if (!S.compose || S.sending) return;
+  if ((S.compose.attachments || []).some(a => a.uploading)) return; // wait for S3 uploads to settle
+  const snap = draftSnapshot(S.compose);
+  if (snap === _draftLastSavedSnapshot) return;
+  if (!draftHasContent(S.compose)) return;
+  await saveDraftNow();
+}
+
+async function saveDraftNow() {
+  const c = S.compose;
+  if (!c || !draftHasContent(c)) return null;
+  collectRecipientInputs();
+  const editor = document.querySelector(".compose-editor");
+  const html = editor ? editor.innerHTML : (c.html || "");
+  const snap = draftSnapshot(c);
+
+  const payload = {
+    to: c.to, cc: c.cc, bcc: c.bcc, subject: c.subject,
+    text: editor?.textContent || c.text || "", html,
+    inReplyTo: c.inReplyTo || "", references: c.references || "",
+    messageId: c.draftMessageId || "",
+  };
+  if (c.draftUid && c.draftFolder) {
+    payload.replaceUid = c.draftUid;
+    payload.replaceFolder = c.draftFolder;
+  }
+  if (c.attachments && c.attachments.length) {
+    payload.attachments = c.attachments.map(a => a.s3Key
+      ? { name: a.name, type: a.type, s3Key: a.s3Key }
+      : { name: a.name, type: a.type, data: (a.data || "").includes(",") ? a.data.split(",")[1] : a.data });
+  }
+
+  try {
+    const result = await api("/api/messages/draft", { method: "POST", body: JSON.stringify(payload) });
+    _draftLastSavedSnapshot = snap;
+    if (S.compose) {
+      S.compose.draftUid = result.uid;
+      S.compose.draftFolder = result.folder;
+      S.compose.draftMessageId = result.messageId;
+      set({ draftSavedAt: Date.now() });
+      refreshMailboxes();
+    }
+    return result;
+  } catch (err) {
+    console.error("Draft autosave failed", err);
+    return null;
+  }
+}
+
+async function fetchAttachmentBlob(folder, uid, index) {
+  const res = await fetch(`/api/messages/${uid}/attachments/${index}?folder=${encodeURIComponent(folder)}`, {
+    credentials: "include",
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.blob();
+}
+
+// Re-loads attachments from an existing IMAP message (a draft being edited, or a
+// message being forwarded) into the compose attachment list, reusing the same
+// inline/S3 threshold logic as picking a file from disk.
+async function loadOriginalAttachmentsIntoCompose(folder, uid, attachmentsMeta, composeId) {
+  for (const meta of attachmentsMeta) {
+    try {
+      const blob = await fetchAttachmentBlob(folder, uid, meta.index);
+      if (S.composeId !== composeId || !S.compose) return; // compose closed/replaced meanwhile
+      const file = new File([blob], meta.filename || "attachment", { type: meta.contentType || blob.type || "application/octet-stream" });
+      handleAttachmentFile(file, S.compose.attachments, render);
+    } catch (err) {
+      console.error("Failed to load attachment", meta, err);
+    }
+  }
 }
 
 function renderComposePage() {
@@ -3414,6 +4004,11 @@ function renderComposePage() {
     innerHTML: I.chevL,
   }));
   hdr.appendChild(h("span", { className: "text-base font-semibold" }, t("newMessage")));
+  if (S.draftSavedAt) {
+    hdr.appendChild(h("span", { className: "text-xs text-slate-400 flex-1 text-center hidden md:block" },
+      t("draftSaved", new Date(S.draftSavedAt).toLocaleTimeString(t("dateLocale"), { hour: "2-digit", minute: "2-digit" })),
+    ));
+  }
   hdr.appendChild(h("button", {
     className: "px-5 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand-hover disabled:opacity-50",
     onclick() { sendCompose(); },
@@ -3425,6 +4020,33 @@ function renderComposePage() {
   const form = h("form", {
     className: "flex-1 flex flex-col overflow-hidden",
     onsubmit: sendCompose,
+  });
+
+  // Drag-and-drop attachments (reuses the same inline/S3 threshold logic as the
+  // file-picker button below).
+  let dragDepth = 0;
+  form.addEventListener("dragover", e => {
+    if (!e.dataTransfer || !Array.from(e.dataTransfer.types || []).includes("Files")) return;
+    e.preventDefault();
+  });
+  form.addEventListener("dragenter", e => {
+    if (!e.dataTransfer || !Array.from(e.dataTransfer.types || []).includes("Files")) return;
+    e.preventDefault();
+    dragDepth++;
+    form.classList.add("compose-drop-active");
+  });
+  form.addEventListener("dragleave", () => {
+    dragDepth = Math.max(0, dragDepth - 1);
+    if (dragDepth === 0) form.classList.remove("compose-drop-active");
+  });
+  form.addEventListener("drop", e => {
+    if (!e.dataTransfer) return;
+    e.preventDefault();
+    dragDepth = 0;
+    form.classList.remove("compose-drop-active");
+    for (const file of e.dataTransfer.files) {
+      handleAttachmentFile(file, S.compose.attachments, render);
+    }
   });
 
   // Fields
@@ -3744,6 +4366,10 @@ async function sendCompose(e) {
       inReplyTo: c.inReplyTo || "",
       references: c.references || "",
     };
+    if (c.draftUid && c.draftFolder) {
+      payload.replaceDraftUid = c.draftUid;
+      payload.replaceDraftFolder = c.draftFolder;
+    }
     if (c.attachments && c.attachments.length > 0) {
       // Block send if any S3 upload is still in progress
       if (c.attachments.some(a => a.uploading)) {
@@ -3758,6 +4384,7 @@ async function sendCompose(e) {
         };
       });
     }
+    stopDraftAutosave();
     const result = await api("/api/messages/send", {
       method: "POST",
       body: JSON.stringify(payload),
@@ -4386,6 +5013,151 @@ function signatureImageHtml(src, name = "") {
   return `<img src="${esc(src)}" alt="${esc(name)}" style="max-width: 240px; height: auto;">`;
 }
 
+// â”€â”€â”€ Security (2FA) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+async function openSecurityModal() {
+  set({ showSecurity: true, securityError: "", securityCode: "", securitySetup: null, securityBackupCodes: null });
+  try {
+    const data = await api("/api/settings/2fa");
+    set({ securityStatus: data });
+  } catch (err) {
+    set({ securityError: err.message });
+  }
+}
+
+function closeSecurityModal() {
+  set({ showSecurity: false, securitySetup: null, securityBackupCodes: null, securityError: "", securityCode: "" });
+}
+
+async function startTwoFactorSetup() {
+  if (S.securityBusy) return;
+  set({ securityBusy: true, securityError: "" });
+  try {
+    const data = await api("/api/settings/2fa/setup", { method: "POST" });
+    set({ securitySetup: data, securityBusy: false });
+  } catch (err) {
+    set({ securityBusy: false, securityError: err.message });
+  }
+}
+
+async function confirmTwoFactorEnable(code) {
+  if (S.securityBusy) return;
+  set({ securityBusy: true, securityError: "" });
+  try {
+    const data = await api("/api/settings/2fa/enable", { method: "POST", body: JSON.stringify({ code }) });
+    set({
+      securityBusy: false, securitySetup: null,
+      securityBackupCodes: data.backupCodes, securityStatus: { enabled: true },
+    });
+    showToast(t("twoFactorEnabledOk"), "success");
+  } catch (err) {
+    set({ securityBusy: false, securityError: err.message || t("invalidCode") });
+  }
+}
+
+async function confirmTwoFactorDisable(code) {
+  if (S.securityBusy) return;
+  set({ securityBusy: true, securityError: "" });
+  try {
+    await api("/api/settings/2fa/disable", { method: "POST", body: JSON.stringify({ code }) });
+    set({ securityBusy: false, securityStatus: { enabled: false }, securitySetup: null });
+    showToast(t("twoFactorDisabledOk"), "success");
+  } catch (err) {
+    set({ securityBusy: false, securityError: err.message || t("invalidCode") });
+  }
+}
+
+function renderSecurityModal() {
+  if (!S.showSecurity) return h("div", { style: { display: "none" } });
+
+  const overlay = h("div", {
+    className: "fixed inset-0 z-50 flex items-center justify-center bg-black/30",
+    onclick(e) { if (e.target === overlay) closeSecurityModal(); },
+  });
+  const modal = h("div", {
+    className: "bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-md mx-4 max-h-[90vh] flex flex-col",
+    onclick(e) { e.stopPropagation(); },
+  });
+  modal.appendChild(h("div", { className: "flex items-center justify-between h-14 px-4 border-b border-line shrink-0" },
+    h("h2", { className: "text-lg font-semibold" }, t("twoFactorAuth")),
+    h("button", { className: "p-1 rounded hover:bg-slate-100", innerHTML: I.x, onclick: closeSecurityModal }),
+  ));
+
+  const body = h("div", { className: "flex-1 overflow-y-auto p-4 space-y-4" });
+
+  if (S.securityError) {
+    body.appendChild(h("div", { className: "text-sm text-red-600" }, S.securityError));
+  }
+
+  if (S.securityBackupCodes) {
+    body.appendChild(h("p", { className: "text-sm text-slate-600" }, t("backupCodesWarning")));
+    const list = h("div", { className: "grid grid-cols-2 gap-2 font-mono text-sm bg-slate-50 dark:bg-slate-900 rounded-lg p-3" });
+    for (const code of S.securityBackupCodes) list.appendChild(h("div", {}, code));
+    body.appendChild(list);
+    body.appendChild(h("button", {
+      className: "px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium",
+      onclick() { set({ securityBackupCodes: null }); },
+    }, t("save")));
+  } else if (!S.securityStatus) {
+    body.appendChild(h("div", { className: "spinner mx-auto" }));
+  } else if (!S.securityStatus.enabled) {
+    body.appendChild(h("p", { className: "text-sm text-slate-600" }, t("twoFactorDesc")));
+    if (!S.securitySetup) {
+      body.appendChild(h("button", {
+        className: "px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium disabled:opacity-50",
+        disabled: S.securityBusy,
+        onclick: startTwoFactorSetup,
+      }, t("enable2FA")));
+    } else {
+      body.appendChild(h("p", { className: "text-sm text-slate-600" }, t("scanQrCode")));
+      body.appendChild(h("div", { className: "flex justify-center bg-white p-2 rounded-lg [&_svg]:w-40 [&_svg]:h-40", innerHTML: S.securitySetup.qrSvg }));
+      body.appendChild(h("div", { className: "flex items-center gap-2" },
+        h("code", { className: "text-xs bg-slate-100 dark:bg-slate-900 px-2 py-1 rounded flex-1 break-all" }, S.securitySetup.secret),
+        h("button", {
+          type: "button", className: "text-xs text-brand shrink-0",
+          onclick() {
+            navigator.clipboard?.writeText(S.securitySetup.secret)
+              .then(() => showToast(t("copied"), "success")).catch(() => {});
+          },
+        }, t("copySecret")),
+      ));
+
+      const form = h("form", { className: "space-y-2" });
+      form.appendChild(h("label", { className: "text-sm text-slate-600 block" }, t("enterCodeToConfirm")));
+      const codeInput = h("input", {
+        className: "w-full px-3 py-2 border border-line rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-300 tracking-widest",
+        inputmode: "numeric", autocomplete: "one-time-code", maxlength: "6", placeholder: "000000",
+      });
+      form.appendChild(codeInput);
+      form.appendChild(h("button", {
+        type: "submit", className: "px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium disabled:opacity-50",
+        disabled: S.securityBusy,
+      }, t("confirmAndEnable")));
+      form.addEventListener("submit", e => { e.preventDefault(); confirmTwoFactorEnable(codeInput.value.trim()); });
+      body.appendChild(form);
+    }
+  } else {
+    body.appendChild(h("p", { className: "text-sm text-green-600 font-medium" }, t("twoFactorEnabled")));
+    body.appendChild(h("p", { className: "text-sm text-slate-600" }, t("enterCodeToDisable")));
+    const form = h("form", { className: "space-y-2" });
+    const codeInput = h("input", {
+      className: "w-full px-3 py-2 border border-line rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-300 tracking-widest",
+      inputmode: "numeric", autocomplete: "one-time-code", placeholder: t("enterAuthCode"),
+    });
+    form.appendChild(codeInput);
+    form.appendChild(h("button", {
+      type: "submit", className: "px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-medium disabled:opacity-50",
+      disabled: S.securityBusy,
+    }, t("disable2FA")));
+    form.addEventListener("submit", e => { e.preventDefault(); confirmTwoFactorDisable(codeInput.value.trim()); });
+    body.appendChild(form);
+  }
+
+  modal.appendChild(body);
+  overlay.appendChild(modal);
+  return overlay;
+}
+
 function renderSignatureModal() {
   if (!S.sigOpen) return h("div", { style: { display: "none" } });
 
@@ -4999,7 +5771,7 @@ function render() {
     }
 
     if (!S.account) {
-      app.appendChild(renderLogin());
+      app.appendChild(S.pendingTwoFactor ? renderTwoFactorPrompt() : renderLogin());
     } else if (!S.ready) {
       // Logged in but still loading data
       app.appendChild(h("div", { className: "flex items-center justify-center min-h-screen bg-slate-50 dark:bg-slate-900" },
@@ -5057,6 +5829,7 @@ function render() {
 
       app.appendChild(shell);
       app.appendChild(renderSignatureModal());
+      app.appendChild(renderSecurityModal());
       app.appendChild(renderLabelManagerModal());
       app.appendChild(renderRuleManagerModal());
 
@@ -5181,6 +5954,11 @@ function onPopState() {
       await bootstrap();
       return;
     }
+    if (data.twoFactorRequired) {
+      // Reloaded mid-login (2FA code not entered yet) â€” resume the OTP prompt
+      // instead of dropping back to the plain email/password form.
+      S.pendingTwoFactor = { email: data.email, domain: data.domain || "" };
+    }
   } catch {}
   // Not authenticated â€” show login
   S.ready = true;
@@ -5196,3 +5974,85 @@ window.addEventListener("resize", () => {
   clearTimeout(resizeTimer);
   resizeTimer = setTimeout(render, 100);
 });
+
+// â”€â”€â”€ Keyboard shortcuts (Gmail-style) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+function isTypingTarget(el) {
+  if (!el) return false;
+  if (["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName)) return true;
+  return !!el.isContentEditable;
+}
+
+// Move selection to the next/previous message in the currently loaded page,
+// reusing the same folder-aware open logic as clicking a row (see
+// renderMessageItem's onclick).
+function navigateMessage(direction) {
+  const list = S.messages;
+  if (!list.length) return;
+  const idx = list.findIndex(m => m.uid === S.selectedUid);
+  const nextIdx = idx === -1 ? (direction > 0 ? 0 : list.length - 1) : idx + direction;
+  if (nextIdx < 0 || nextIdx >= list.length) return;
+  const target = list[nextIdx];
+  if (currentFolderSpecial() === "drafts") openDraftForEdit(target);
+  else loadMessage(target.uid);
+}
+
+function handleGlobalKeydown(e) {
+  if (e.metaKey || e.ctrlKey || e.altKey) return; // never hijack OS/browser shortcuts
+  if (!S.account) return;
+  if (isTypingTarget(document.activeElement)) {
+    if (e.key === "Escape") document.activeElement.blur();
+    return;
+  }
+
+  switch (e.key) {
+    case "c":
+      e.preventDefault();
+      openCompose();
+      break;
+    case "j":
+      navigateMessage(1);
+      break;
+    case "k":
+      navigateMessage(-1);
+      break;
+    case "r":
+      if (S.selectedMsg) openCompose({ replyTo: S.selectedMsg });
+      break;
+    case "a":
+      if (S.selectedMsg) openCompose({ replyAll: S.selectedMsg });
+      break;
+    case "f":
+      if (S.selectedMsg) openCompose({ forward: S.selectedMsg });
+      break;
+    case "e":
+      if (S.selectedMsg) moveMsg(folderTarget("archive"));
+      break;
+    case "#":
+    case "Delete":
+    case "Backspace":
+      if (S.selectedMsg) { e.preventDefault(); deleteMsg(); }
+      break;
+    case "/": {
+      e.preventDefault();
+      const input = document.getElementById("msg-search-input");
+      if (input) input.focus();
+      break;
+    }
+    case "Escape":
+      if (S.compose) closeCompose();
+      else if (S.selectedUid) { set({ selectedUid: null, selectedMsg: null, threadMsgs: [] }); navigate({ uid: null }); }
+      else if (S.query) { set({ query: "", searchResults: null }); }
+      break;
+  }
+}
+
+document.addEventListener("keydown", handleGlobalKeydown);
+
+// â”€â”€â”€ PWA: install prompt support + service worker registration â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch(() => {});
+  });
+}
