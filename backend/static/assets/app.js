@@ -190,6 +190,17 @@ const LOCALES = {
     copySecret: "Copy secret", copied: "Copied",
     // Quota
     storageUsed: "Storage",
+    // Remote image blocking
+    imagesBlockedWarning: "Images are blocked to protect your privacy.",
+    showImages: "Show images",
+    // Unsubscribe
+    unsubscribe: "Unsubscribe", unsubscribeSent: "Unsubscribe request sent",
+    unsubscribeFailed: "Unsubscribe request failed",
+    // Block sender / not spam
+    blockSender: "Block sender", blockedOk: (e) => `Blocked ${e}`,
+    notSpam: "Not spam",
+    blockedSenders: "Blocked senders", noBlockedSenders: "No blocked senders",
+    unblock: "Unblock",
   },
   vi: {
     // Login
@@ -349,6 +360,17 @@ const LOCALES = {
     copySecret: "Sao chép mã bí mật", copied: "Đã sao chép",
     // Quota
     storageUsed: "Dung lượng",
+    // Chặn ảnh từ xa
+    imagesBlockedWarning: "Ảnh đã bị chặn để bảo vệ quyền riêng tư.",
+    showImages: "Hiện ảnh",
+    // Hủy đăng ký
+    unsubscribe: "Hủy đăng ký", unsubscribeSent: "Đã gửi yêu cầu hủy đăng ký",
+    unsubscribeFailed: "Gửi yêu cầu hủy đăng ký thất bại",
+    // Chặn người gửi / không phải rác
+    blockSender: "Chặn người gửi", blockedOk: (e) => `Đã chặn ${e}`,
+    notSpam: "Không phải rác",
+    blockedSenders: "Người gửi bị chặn", noBlockedSenders: "Chưa chặn ai",
+    unblock: "Bỏ chặn",
   },
 };
 
@@ -1069,6 +1091,10 @@ function renderLabelDropdown(uid, source) {
 }
 
 function messageMatchesFilter(msg) {
+  if (S.blocklist && S.blocklist.length) {
+    const from = (displayEmail(msg.from) || "").toLowerCase();
+    if (from && S.blocklist.includes(from)) return false;
+  }
   if (S.msgFilter === "unread") return !msg.seen;
   if (S.msgFilter === "starred") return !!msg.flagged;
   if (S.msgFilter === "labeled") {
@@ -1351,6 +1377,7 @@ const S = {
   securityCode: "",
   // Mailbox storage quota (best-effort — null when the server doesn't expose it)
   quota: null, // { usedKb, limitKb } or null
+  blocklist: [], // lowercased blocked sender emails (client-side visibility filter)
 };
 
 let _rendering = false;
@@ -1437,6 +1464,7 @@ function resetSessionState(loginError = "") {
     securitySetup: null,
     securityBackupCodes: null,
     quota: null,
+    blocklist: [],
     loginError,
   });
   stopMailPolling();
@@ -1689,7 +1717,7 @@ async function bootstrap() {
       mailboxes: mbData.mailboxes || [],
       ready: true,
     });
-    await Promise.all([loadMessages(), loadTodayEvents(), loadLabels(), loadMailRules(), loadContacts(), loadQuota()]);
+    await Promise.all([loadMessages(), loadTodayEvents(), loadLabels(), loadMailRules(), loadContacts(), loadQuota(), loadBlocklist()]);
     startMailPolling();
   } catch (err) {
     if (err.authExpired || err.status === 401) {
@@ -1709,6 +1737,15 @@ async function loadQuota() {
     set({ quota: data.supported ? data : null });
   } catch {
     set({ quota: null });
+  }
+}
+
+async function loadBlocklist() {
+  try {
+    const data = await api("/api/blocklist");
+    set({ blocklist: data.blocked || [] });
+  } catch {
+    set({ blocklist: [] });
   }
 }
 
@@ -3039,6 +3076,35 @@ function renderQuickReply(placeholder) {
   return outer;
 }
 
+// Wraps sanitized email HTML with a "Show images" banner when the server
+// blocked remote <img>/CSS backgrounds (see backend _sanitize_html). Restoring
+// images is pure DOM manipulation from the data-blocked-src the server left
+// behind — no re-fetch needed.
+function renderEmailHtmlWithImageGuard(msg) {
+  const wrap = h("div", { className: "email-html-wrap" });
+  if (msg.imagesBlocked) {
+    const banner = h("div", {
+      className: "flex items-center gap-2 mb-3 px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-200 text-xs",
+    },
+      h("span", { className: "flex-1" }, t("imagesBlockedWarning")),
+      h("button", {
+        type: "button",
+        className: "shrink-0 font-medium underline hover:no-underline",
+        onclick() {
+          wrap.querySelectorAll("[data-blocked-src]").forEach(el => {
+            el.src = el.getAttribute("data-blocked-src");
+            el.removeAttribute("data-blocked-src");
+          });
+          banner.remove();
+        },
+      }, t("showImages")),
+    );
+    wrap.appendChild(banner);
+  }
+  wrap.appendChild(h("div", { className: "email-html", innerHTML: msg.html }));
+  return wrap;
+}
+
 function renderThreadMsgBubble(m, isLast) {
   const msgKey = `${m.uid}|${m.folder || S.folder}`;
   const isCollapsed = S.collapsedMsgs.has(msgKey);
@@ -3094,7 +3160,7 @@ function renderThreadMsgBubble(m, isLast) {
     // Body
     const body = h("div", { className: "px-6 py-4" });
     if (m.html) {
-      body.appendChild(h("div", { className: "email-html", innerHTML: m.html }));
+      body.appendChild(renderEmailHtmlWithImageGuard(m));
     } else if (m.text) {
       body.appendChild(h("pre", { className: "whitespace-pre-wrap text-sm font-sans" }, m.text));
     } else {
@@ -3265,10 +3331,16 @@ function renderMessageView() {
     { label: t("forward"), fn() { openCompose({ forward: msg }); } },
     { label: msg.seen ? t("markUnread") : t("markRead"), fn() { toggleFlag("\\Seen", !msg.seen); } },
     { label: t("archive"), fn() { moveMsg(folderTarget("archive")); } },
-    { label: t("reportSpam"), fn() { moveMsg(folderTarget("spam")); } },
+    currentFolderSpecial() === "junk"
+      ? { label: t("notSpam"), fn() { moveMsg(folderTarget("inbox")); } }
+      : { label: t("reportSpam"), fn() { moveMsg(folderTarget("spam")); } },
+    { label: t("blockSender"), fn() { blockSenderFlow(displayEmail(msg.from)); } },
     { label: t("delete"), fn() { deleteMsg(); } },
     { label: t("mailRules"), iconName: "filter", fn() { set({ ruleManagerOpen: true, ruleEditing: null }); } },
   ];
+  if (msg.unsubscribe) {
+    messageMoreItems.push({ label: t("unsubscribe"), fn() { handleUnsubscribe(msg); } });
+  }
   actions.appendChild(moreMenuButton(messageMoreItems));
   row1.appendChild(actions);
   header.appendChild(row1);
@@ -3381,8 +3453,7 @@ function renderMessageView() {
   const article = h("article", { className: "bg-white dark:bg-slate-800 rounded-lg border border-line shadow-sm p-6" });
 
   if (msg.html) {
-    const htmlDiv = h("div", { className: "email-html", innerHTML: msg.html });
-    article.appendChild(htmlDiv);
+    article.appendChild(renderEmailHtmlWithImageGuard(msg));
   } else if (msg.text) {
     article.appendChild(h("pre", { className: "whitespace-pre-wrap text-sm font-sans" }, msg.text));
   }
@@ -3667,6 +3738,67 @@ async function deleteMsg() {
     await loadMessages();
   } catch (err) {
     set({ error: err.message });
+  }
+}
+
+// Blocking is a client-visibility filter, not a server-side quarantine (see
+// backend /api/blocklist docstring) — it hides the sender from this webmail's
+// list view and sweeps their existing mail here to Trash, but doesn't stop
+// new mail from actually landing in the real Inbox.
+async function blockSenderFlow(email) {
+  email = (email || "").trim().toLowerCase();
+  if (!email) return;
+  try {
+    await api("/api/blocklist", { method: "POST", body: JSON.stringify({ email }) });
+    set({ blocklist: [...new Set([...(S.blocklist || []), email])] });
+    showToast(t("blockedOk", email), "success");
+  } catch (err) {
+    set({ error: err.message });
+    return;
+  }
+  try {
+    const params = new URLSearchParams({ from: email, folder: S.folder, scope: "folder", limit: "100" });
+    const data = await api(`/api/messages/search?${params.toString()}`);
+    const uids = (data.messages || []).map(m => m.uid);
+    if (uids.length) {
+      await api("/api/messages/bulk/move", {
+        method: "POST",
+        body: bulkMoveBody(uids, folderTarget("trash")),
+      });
+    }
+  } catch {
+    // Best-effort cleanup only — the block itself already succeeded.
+  }
+  set({ selectedUid: null, selectedMsg: null, threadMsgs: [] });
+  navigate({ uid: null });
+  await refreshMailboxes();
+  await loadMessages();
+}
+
+async function unblockSender(email) {
+  try {
+    await api(`/api/blocklist/${encodeURIComponent(email)}`, { method: "DELETE" });
+    set({ blocklist: (S.blocklist || []).filter(e => e !== email) });
+  } catch (err) {
+    set({ error: err.message });
+  }
+}
+
+async function handleUnsubscribe(msg) {
+  const info = msg.unsubscribe;
+  if (!info) return;
+  if (info.oneClick && info.url) {
+    try {
+      await api("/api/unsubscribe", { method: "POST", body: JSON.stringify({ url: info.url }) });
+      showToast(t("unsubscribeSent"), "success");
+    } catch {
+      showToast(t("unsubscribeFailed"), "error");
+    }
+  } else if (info.url) {
+    window.open(info.url, "_blank", "noopener,noreferrer");
+  } else if (info.mailto) {
+    const address = info.mailto.replace(/^mailto:/i, "").split("?")[0].trim();
+    openCompose({ composeTo: address });
   }
 }
 
@@ -5595,6 +5727,24 @@ function renderRuleManagerModal() {
     }
     listPane.appendChild(ruleList);
   }
+
+  // Blocked senders â€” lives here alongside mail rules since both are
+  // sender-based mail handling, sparing a separate modal.
+  listPane.appendChild(h("div", { className: "pt-3 mt-3 border-t border-line" },
+    h("div", { className: "text-xs font-medium text-slate-500 mb-2" }, t("blockedSenders")),
+    !S.blocklist.length
+      ? h("div", { className: "text-xs text-slate-400" }, t("noBlockedSenders"))
+      : h("div", { className: "space-y-1 max-h-32 overflow-y-auto" },
+        ...S.blocklist.map(email => h("div", { className: "flex items-center gap-2 text-xs" },
+          h("span", { className: "truncate flex-1 text-slate-600" }, email),
+          h("button", {
+            type: "button",
+            className: "text-brand hover:underline shrink-0",
+            onclick() { unblockSender(email); },
+          }, t("unblock")),
+        )),
+      ),
+  ));
   body.appendChild(listPane);
 
   const editorPane = h("div", { className: "min-w-0" });

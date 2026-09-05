@@ -356,6 +356,62 @@ class SecurityHardeningTests(unittest.TestCase):
         self.assertIn('href="https://example.com/path?q=1"', sanitized)
         self.assertIn('src="cid:image001@example.com"', sanitized)
 
+    def test_sanitizer_blocks_remote_images_by_default(self):
+        html = '<img src="http://tracker.example/pixel.png">'
+        blocked = main._sanitize_html(html)
+        self.assertNotIn(html, blocked)
+        self.assertIn(f'src="{main._BLANK_PIXEL}"', blocked)
+        self.assertIn('data-blocked-src="http://tracker.example/pixel.png"', blocked)
+
+        shown = main._sanitize_html(html, show_images=True)
+        self.assertIn('src="http://tracker.example/pixel.png"', shown)
+        self.assertNotIn("data-blocked-src", shown)
+
+    def test_sanitizer_does_not_block_unquoted_or_cid_images(self):
+        blocked = main._sanitize_html('<img src=http://tracker.example/pixel.png>')
+        self.assertIn('data-blocked-src="http://tracker.example/pixel.png"', blocked)
+        self.assertIn(main._BLANK_PIXEL, blocked)
+
+        cid_html = main._sanitize_html('<img src="cid:abc@example.com">')
+        self.assertIn('src="cid:abc@example.com"', cid_html)
+        self.assertNotIn("data-blocked-src", cid_html)
+
+    def test_sanitizer_blocking_never_touches_links(self):
+        sanitized = main._sanitize_html('<a href="http://example.com">link</a>')
+        self.assertIn('href="http://example.com"', sanitized)
+        self.assertNotIn("data-blocked-src", sanitized)
+
+    def test_ssrf_guard_rejects_private_and_non_http_urls(self):
+        for url in (
+            "http://127.0.0.1/x",
+            "http://169.254.169.254/latest/meta-data/",
+            "http://10.0.0.5/internal",
+            "ftp://example.com/x",
+            "javascript:alert(1)",
+        ):
+            with self.subTest(url=url):
+                with self.assertRaises(main.HTTPException):
+                    main._assert_public_http_url(url)
+        main._assert_public_http_url("https://example.com/unsubscribe")  # should not raise
+
+    def test_list_unsubscribe_header_parsing(self):
+        parsed = main._parse_list_unsubscribe(
+            "<mailto:unsub@x.com>, <https://x.com/unsub?id=1>", "List-Unsubscribe=One-Click"
+        )
+        self.assertEqual(parsed, {"mailto": "mailto:unsub@x.com", "url": "https://x.com/unsub?id=1", "oneClick": True})
+        self.assertIsNone(main._parse_list_unsubscribe(None, None))
+        self.assertFalse(main._parse_list_unsubscribe("<https://x.com/unsub>", None)["oneClick"])
+
+    def test_totp_replay_is_rejected(self):
+        import pyotp
+
+        secret = pyotp.random_base32()
+        main._twofa_save_secret("replay-test@example.com", secret)
+        main._twofa_enable("replay-test@example.com", [])
+        code = pyotp.TOTP(secret).now()
+        self.assertTrue(main._twofa_verify_and_consume("replay-test@example.com", secret, code))
+        self.assertFalse(main._twofa_verify_and_consume("replay-test@example.com", secret, code))
+
 
 if __name__ == "__main__":
     unittest.main()

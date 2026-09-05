@@ -212,6 +212,30 @@ def _label_row(row: tuple) -> dict:
 
 _labels_init()
 
+# --- Blocked Senders Database -------------------------------------------------
+# Client-side filter list only — see /api/blocklist. There is no background
+# worker in this app, so blocking a sender hides their mail from the webmail
+# list view (and sweeps existing messages to Trash) rather than quarantining
+# it at the mail server; new mail from them still lands in the real Inbox.
+
+BLOCKLIST_DB = os.path.join(DATA_DIR, "db", "blocklist.db")
+
+
+def _blocklist_init():
+    import sqlite3
+
+    with sqlite3.connect(BLOCKLIST_DB) as db:
+        db.execute("""CREATE TABLE IF NOT EXISTS blocked_senders (
+            account    TEXT NOT NULL,
+            email      TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            PRIMARY KEY (account, email)
+        )""")
+        db.commit()
+
+
+_blocklist_init()
+
 # --- Mail Rule Database -----------------------------------------------------
 
 MAIL_RULES_DB = os.path.join(DATA_DIR, "db", "mail_rules.db")
@@ -359,13 +383,18 @@ def _twofa_init():
 
     with sqlite3.connect(TWOFA_DB) as db:
         db.execute("""CREATE TABLE IF NOT EXISTS twofa (
-            account      TEXT PRIMARY KEY,
-            secret       TEXT NOT NULL,
-            enabled      INTEGER NOT NULL DEFAULT 0,
-            backup_codes TEXT NOT NULL DEFAULT '[]',
-            created_at   TEXT NOT NULL,
-            confirmed_at TEXT
+            account        TEXT PRIMARY KEY,
+            secret         TEXT NOT NULL,
+            enabled        INTEGER NOT NULL DEFAULT 0,
+            backup_codes   TEXT NOT NULL DEFAULT '[]',
+            created_at     TEXT NOT NULL,
+            confirmed_at   TEXT,
+            last_used_step INTEGER
         )""")
+        try:
+            db.execute("ALTER TABLE twofa ADD COLUMN last_used_step INTEGER")
+        except sqlite3.OperationalError:
+            pass  # already present (older DB from before replay-prevention was added)
         db.commit()
 
 
@@ -438,6 +467,46 @@ def _twofa_consume_backup_code(account: str, code: str) -> bool:
         db.execute("UPDATE twofa SET backup_codes=? WHERE account=?", (json.dumps(remaining), account))
         db.commit()
     return True
+
+
+def _twofa_claim_step(account: str, step: int) -> bool:
+    """
+    Atomically record a TOTP time-step as used. Returns False if that step (or
+    a later one) was already claimed — i.e. the code is being replayed.
+    """
+    import sqlite3
+
+    try:
+        with sqlite3.connect(TWOFA_DB, timeout=5) as db:
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute("SELECT last_used_step FROM twofa WHERE account=?", (account,)).fetchone()
+            if row and row[0] is not None and int(row[0]) >= step:
+                db.commit()
+                return False
+            db.execute("UPDATE twofa SET last_used_step=? WHERE account=?", (step, account))
+            db.commit()
+        return True
+    except sqlite3.Error:
+        return False
+
+
+def _twofa_verify_and_consume(account: str, secret: str, code: str) -> bool:
+    """
+    Verify a TOTP code (±1 step, matching the existing valid_window=1) and
+    reject it if that step has already been used — a stolen/observed code
+    cannot be replayed to log in a second time within its validity window.
+    """
+    import pyotp
+
+    code = (code or "").strip()
+    if not code:
+        return False
+    totp = pyotp.TOTP(secret)
+    now_step = int(time.time()) // totp.interval
+    for step in (now_step - 1, now_step, now_step + 1):
+        if totp.at(step * totp.interval) == code:
+            return _twofa_claim_step(account, step)
+    return False
 
 
 def _twofa_generate_backup_codes() -> tuple[list[str], list[str]]:
@@ -1501,17 +1570,21 @@ def _normalized_url_scheme(value: str) -> str:
     return match.group(1).lower() if match else ""
 
 
-def _sanitize_url_attr(match: re.Match) -> str:
-    attr = match.group(1).lower()
-    quote = match.group(2) or '"'
-    value = match.group(3) or ""
-    if _normalized_url_scheme(value) not in _SAFE_HTML_URL_SCHEMES:
-        return f' {attr}="#"'
-    return f" {attr}={quote}{value}{quote}"
+# 1x1 transparent GIF — placeholder src for blocked remote images so the
+# browser never issues a request for them (an empty src can re-request the
+# current page in some browsers).
+_BLANK_PIXEL = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBTAA7"
 
 
-def _sanitize_html(html: str) -> str:
-    """Minimal sanitizer: removes XSS vectors, preserves CSS."""
+def _sanitize_html(html: str, show_images: bool = False) -> str:
+    """
+    Minimal sanitizer: removes XSS vectors, preserves CSS. Also blocks remote
+    (http/https) images and CSS backgrounds by default — the classic
+    tracking-pixel vector — unless show_images is True. A blocked <img> keeps
+    its original URL in data-blocked-src so the frontend can restore it
+    client-side when the user asks to see images; links (href/action) are
+    never blocked, only auto-loaded resources.
+    """
     out = html
     # Remove dangerous tags
     dangerous_tags = [
@@ -1535,13 +1608,18 @@ def _sanitize_html(html: str) -> str:
         css = re.sub(r"expression\s*\([^)]*\)", "", css, flags=re.IGNORECASE)
         css = re.sub(r"behavior\s*:", "", css, flags=re.IGNORECASE)
         css = re.sub(r"-moz-binding\s*:", "", css, flags=re.IGNORECASE)
+
+        def _clean_css_url(m2):
+            scheme = _normalized_url_scheme(m2.group(2))
+            if scheme not in _SAFE_HTML_URL_SCHEMES:
+                return "url(about:blank)"
+            if not show_images and scheme in ("http", "https"):
+                return "url(about:blank)"
+            return m2.group(0)
+
         css = re.sub(
             r"url\s*\(\s*(['\"]?)([^'\"\)]*)\1\s*\)",
-            lambda m: (
-                "url(about:blank)"
-                if _normalized_url_scheme(m.group(2)) not in _SAFE_HTML_URL_SCHEMES
-                else m.group(0)
-            ),
+            _clean_css_url,
             css,
             flags=re.IGNORECASE,
         )
@@ -1565,16 +1643,33 @@ def _sanitize_html(html: str) -> str:
     # Remove event handlers
     out = re.sub(r"\s+on[a-z]+\s*=\s*(?:\"[^\"]*\"|'[^']*'|[^\s>]+)", "", out, flags=re.IGNORECASE)
 
-    # Remove unsafe URL schemes, including entity/whitespace-obfuscated forms.
+    def _clean_url_attr(match: re.Match) -> str:
+        attr = match.group(1).lower()
+        quote = match.group(2) or '"'
+        value = match.group(3) or ""
+        scheme = _normalized_url_scheme(value)
+        if scheme not in _SAFE_HTML_URL_SCHEMES:
+            return f' {attr}="#"'
+        if attr == "src" and not show_images and scheme in ("http", "https"):
+            return f' src="{_BLANK_PIXEL}" data-blocked-src={quote}{value}{quote}'
+        return f" {attr}={quote}{value}{quote}"
+
+    # Remove unsafe URL schemes, including entity/whitespace-obfuscated forms,
+    # and block remote images unless show_images is set.
     out = re.sub(
         r"\s+(href|src|action)\s*=\s*([\"'])(.*?)\2",
-        _sanitize_url_attr,
+        _clean_url_attr,
         out,
         flags=re.IGNORECASE,
     )
+    # Genuinely unquoted attributes only (e.g. src=http://x). The negative
+    # lookahead keeps this pass from re-matching values the quoted pass above
+    # already rewrote — that rewrite (data-blocked-src, a data: pixel) isn't
+    # idempotent the way the old "#"-or-passthrough logic was, so a second
+    # pass over it would misread the data: URI as unsafe and clobber it.
     out = re.sub(
-        r"\s+(href|src|action)\s*=\s*([^\s>]+)",
-        lambda m: _sanitize_url_attr(
+        r"\s+(href|src|action)\s*=\s*(?![\"'])([^\s>]+)",
+        lambda m: _clean_url_attr(
             re.match(r"^(href|src|action)\s*=\s*([\"']?)(.*)$", m.group(0).strip(), re.IGNORECASE)
         ),
         out,
@@ -1585,6 +1680,24 @@ def _sanitize_html(html: str) -> str:
     out = re.sub(r"<a\s", '<a rel="noreferrer noopener" target="_blank" ', out)
 
     return out
+
+
+def _parse_list_unsubscribe(header_value, post_header_value) -> dict | None:
+    """
+    Parse RFC 2369 List-Unsubscribe (+ RFC 8058 List-Unsubscribe-Post) into a
+    structured hint for the client. oneClick is only true when the server can
+    safely POST on the user's behalf without a browser round-trip.
+    """
+    header_value = str(header_value or "")
+    if not header_value:
+        return None
+    urls = re.findall(r"<([^>]+)>", header_value)
+    mailto = next((u for u in urls if u.lower().startswith("mailto:")), None)
+    https_url = next((u for u in urls if u.lower().startswith("http")), None)
+    if not mailto and not https_url:
+        return None
+    one_click = bool(https_url) and "one-click" in str(post_header_value or "").lower()
+    return {"mailto": mailto, "url": https_url, "oneClick": one_click}
 
 
 async def _async_parse_email(raw_source: bytes, uid: int | None = None, folder: str = "INBOX") -> dict:
@@ -2441,9 +2554,8 @@ async def verify_2fa(request: Request, body: dict):
     info = _twofa_get(email)
 
     if info and info["enabled"]:
-        import pyotp
         valid = bool(code) and (
-            pyotp.TOTP(info["secret"]).verify(code, valid_window=1)
+            _twofa_verify_and_consume(email, info["secret"], code)
             or _twofa_consume_backup_code(email, code)
         )
     else:
@@ -3009,8 +3121,12 @@ async def get_message(request: Request, uid: int):
         summary["snippet"] = _clean_snippet(parsed.get("text", ""))
         html = parsed.get("html")
         summary["html"] = _sanitize_html(html) if html else None
+        summary["imagesBlocked"] = bool(summary["html"] and "data-blocked-src=" in summary["html"])
         summary["text"] = parsed.get("text")
         summary["attachments"] = parsed.get("attachments", [])
+        summary["unsubscribe"] = _parse_list_unsubscribe(
+            message.get("List-Unsubscribe"), message.get("List-Unsubscribe-Post")
+        )
 
         if "\\Seen" not in summary["flags"]:
             try:
@@ -3024,6 +3140,54 @@ async def get_message(request: Request, uid: int):
         raise HTTPException(502, f"Message parse failed: {e}")
 
     return JSONResponse({"message": summary})
+
+
+def _assert_public_http_url(url: str) -> None:
+    """
+    Reject a URL that resolves to a private/loopback/link-local address before
+    the server makes a request to it. The unsubscribe URL comes straight from
+    an email header, which an attacker fully controls — a classic SSRF vector.
+    """
+    parsed = urlsplit(url)
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        raise HTTPException(400, "Invalid unsubscribe URL.")
+    try:
+        infos = socket.getaddrinfo(parsed.hostname, None)
+    except socket.gaierror:
+        raise HTTPException(400, "Could not resolve unsubscribe host.")
+    if not infos:
+        raise HTTPException(400, "Could not resolve unsubscribe host.")
+    for info in infos:
+        addr = ipaddress.ip_address(info[4][0])
+        if not addr.is_global:
+            raise HTTPException(400, "Unsubscribe URL points to a private address.")
+
+
+@app.post("/api/unsubscribe")
+async def one_click_unsubscribe(request: Request, body: dict):
+    """
+    RFC 8058 one-click unsubscribe: POST List-Unsubscribe=One-Click to the
+    URL from a message's List-Unsubscribe header, server-side (a client-side
+    fetch would be blocked by our own CSP connect-src, and the request must
+    not carry the user's session/cookies to a third-party host anyway).
+    """
+    await require_session(request)
+    url = str(body.get("url") or "").strip()
+    if not url:
+        raise HTTPException(400, "url is required.")
+    _assert_public_http_url(url)
+
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.post(url, data={"List-Unsubscribe": "One-Click"})
+        if resp.status_code >= 400:
+            raise HTTPException(502, f"Unsubscribe request failed ({resp.status_code}).")
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(502, "Unsubscribe request failed.")
+
+    return JSONResponse({"ok": True})
 
 
 @app.get("/api/messages/{uid}/attachments/{index}")
@@ -5051,6 +5215,48 @@ async def remove_message_label(request: Request, uid: int, label_uid: str):
         db.execute(
             "DELETE FROM message_labels WHERE account = ? AND message_id = ? AND label_uid = ?",
             (session["email"], message_key, label_uid)
+        )
+        db.commit()
+    return JSONResponse({"ok": True})
+
+
+@app.get("/api/blocklist")
+async def list_blocked_senders(request: Request):
+    session = await require_session(request)
+    import sqlite3
+    with sqlite3.connect(BLOCKLIST_DB) as db:
+        rows = db.execute(
+            "SELECT email FROM blocked_senders WHERE account=? ORDER BY created_at DESC",
+            (session["email"],),
+        ).fetchall()
+    return JSONResponse({"blocked": [r[0] for r in rows]})
+
+
+@app.post("/api/blocklist")
+async def block_sender(request: Request, body: dict):
+    session = await require_session(request)
+    email_addr = (body.get("email") or "").strip().lower()
+    if not email_addr or "@" not in email_addr:
+        raise HTTPException(400, "A valid email is required.")
+    import sqlite3
+    now = datetime.utcnow().isoformat()
+    with sqlite3.connect(BLOCKLIST_DB) as db:
+        db.execute(
+            "INSERT OR IGNORE INTO blocked_senders (account, email, created_at) VALUES (?, ?, ?)",
+            (session["email"], email_addr, now),
+        )
+        db.commit()
+    return JSONResponse({"ok": True})
+
+
+@app.delete("/api/blocklist/{email_addr}")
+async def unblock_sender(request: Request, email_addr: str):
+    session = await require_session(request)
+    import sqlite3
+    with sqlite3.connect(BLOCKLIST_DB) as db:
+        db.execute(
+            "DELETE FROM blocked_senders WHERE account=? AND email=?",
+            (session["email"], email_addr.strip().lower()),
         )
         db.commit()
     return JSONResponse({"ok": True})
