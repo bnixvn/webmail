@@ -381,6 +381,80 @@ class SecurityHardeningTests(unittest.TestCase):
         self.assertIn('href="http://example.com"', sanitized)
         self.assertNotIn("data-blocked-src", sanitized)
 
+    def _signed_smime_message(self, from_header="Nguyen Van A <sender@bnix.vn>",
+                              cert_email="sender@bnix.vn", body=b"Signed body.\r\n"):
+        """Build a real S/MIME signed message with a throwaway certificate."""
+        import datetime
+        from cryptography import x509
+        from cryptography.x509.oid import NameOID
+        from cryptography.hazmat.primitives import hashes
+        from cryptography.hazmat.primitives.asymmetric import rsa
+        from cryptography.hazmat.primitives.serialization import Encoding, pkcs7
+
+        key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        subject = x509.Name([
+            x509.NameAttribute(NameOID.COMMON_NAME, "Nguyen Van A"),
+            x509.NameAttribute(NameOID.EMAIL_ADDRESS, cert_email),
+        ])
+        now = datetime.datetime.now(datetime.timezone.utc)
+        cert = (
+            x509.CertificateBuilder()
+            .subject_name(subject)
+            .issuer_name(subject)
+            .public_key(key.public_key())
+            .serial_number(x509.random_serial_number())
+            .not_valid_before(now - datetime.timedelta(days=1))
+            .not_valid_after(now + datetime.timedelta(days=365))
+            .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
+            .add_extension(x509.SubjectAlternativeName([x509.RFC822Name(cert_email)]), critical=False)
+            .sign(key, hashes.SHA256())
+        )
+        content = b"Content-Type: text/plain; charset=utf-8\r\n\r\n" + body
+        signed = (
+            pkcs7.PKCS7SignatureBuilder()
+            .set_data(content)
+            .add_signer(cert, key, hashes.SHA256())
+            .sign(Encoding.SMIME, [pkcs7.PKCS7Options.DetachedSignature])
+        )
+        return (f"From: {from_header}\r\nTo: me@bnix.vn\r\nSubject: Signed\r\n").encode() + signed
+
+    def test_smime_signed_message_is_recognised(self):
+        parsed = asyncio.run(main._async_parse_email(self._signed_smime_message()))
+        smime = parsed["smime"]
+        self.assertEqual(smime["type"], "signed")
+        self.assertEqual(smime["certificate"]["emails"], ["sender@bnix.vn"])
+        self.assertTrue(smime["signerMatchesFrom"])
+        self.assertFalse(smime["certificate"]["expired"])
+        # Self-signed: the signature holds but the chain is not trusted.
+        if smime["verification"]["checked"]:
+            self.assertTrue(smime["verification"]["signatureValid"])
+            self.assertFalse(smime["verification"]["chainTrusted"])
+
+    def test_smime_detects_tampered_body(self):
+        raw = self._signed_smime_message(body=b"Original body.\r\n")
+        tampered = raw.replace(b"Original body.", b"Rewritten body")
+        parsed = asyncio.run(main._async_parse_email(tampered))
+        verification = parsed["smime"]["verification"]
+        if verification["checked"]:
+            self.assertFalse(verification["signatureValid"])
+
+    def test_smime_flags_certificate_not_belonging_to_sender(self):
+        raw = self._signed_smime_message(from_header="Someone Else <attacker@evil.example>")
+        parsed = asyncio.run(main._async_parse_email(raw))
+        self.assertFalse(parsed["smime"]["signerMatchesFrom"])
+
+    def test_smime_detects_encrypted_message(self):
+        raw = (
+            b"From: a@b.com\r\nTo: c@d.com\r\nSubject: secret\r\n"
+            b'Content-Type: application/pkcs7-mime; smime-type=enveloped-data; name="smime.p7m"\r\n'
+            b"Content-Transfer-Encoding: base64\r\n\r\nMIIBOgYJKoZIhvcNAQcD\r\n"
+        )
+        self.assertEqual(asyncio.run(main._async_parse_email(raw))["smime"]["type"], "encrypted")
+
+    def test_plain_message_has_no_smime_block(self):
+        raw = b"From: a@b.com\r\nTo: c@d.com\r\nSubject: hi\r\nContent-Type: text/plain\r\n\r\nhello\r\n"
+        self.assertIsNone(asyncio.run(main._async_parse_email(raw))["smime"])
+
     def test_ssrf_guard_rejects_private_and_non_http_urls(self):
         for url in (
             "http://127.0.0.1/x",

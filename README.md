@@ -15,6 +15,7 @@ Self-hosted webmail client built with Python FastAPI. Supports IMAP/SMTP email, 
 - 👥 Contacts — CardDAV with search and CRUD
 - ✍️ Signature — HTML editor with per-account settings
 - 🔒 Security — AES-256-GCM session encryption, HttpOnly cookies, CSP/HSTS headers, remote-image blocking
+- 🪪 S/MIME — recognises signed and encrypted mail, shows the signer's certificate, and verifies the signature with openssl when available
 - 📱 Responsive — Mobile-first design with Tailwind CSS
 
 ## Requirements

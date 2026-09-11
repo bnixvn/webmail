@@ -188,6 +188,22 @@ const LOCALES = {
     notSpam: "Not spam",
     blockedSenders: "Blocked senders", noBlockedSenders: "No blocked senders",
     unblock: "Unblock",
+    // S/MIME
+    smimeVerified: "S/MIME signature verified",
+    smimeSigned: "S/MIME signed",
+    smimeUnverified: "The signature could not be checked on this server.",
+    smimeSignedUntrusted: "Signed, issuer not trusted",
+    smimeSignedUntrustedHint: "The signature is intact, but the certificate was not issued by an authority this server trusts (it may be self-signed or from a private CA).",
+    smimeSignerMismatch: "Signed by a different address",
+    smimeSignerMismatchHint: "The signature is intact, but the certificate does not belong to the sender of this message.",
+    smimeInvalid: "Invalid S/MIME signature",
+    smimeInvalidHint: "The signature does not match the content — the message may have been altered in transit.",
+    smimeEncrypted: "S/MIME encrypted",
+    smimeEncryptedHint: "This message is encrypted. Reading it needs the private key, which lives in your mail client, not here.",
+    smimeCertOnly: "Contains an S/MIME certificate",
+    smimeSubject: "Issued to", smimeEmail: "Email", smimeIssuer: "Issued by",
+    smimeValidity: "Valid", smimeSerial: "Serial",
+    smimeCertExpired: "This certificate has expired.",
   },
   vi: {
     // Login
@@ -345,6 +361,22 @@ const LOCALES = {
     notSpam: "Không phải rác",
     blockedSenders: "Người gửi bị chặn", noBlockedSenders: "Chưa chặn ai",
     unblock: "Bỏ chặn",
+    // S/MIME
+    smimeVerified: "Đã xác minh chữ ký S/MIME",
+    smimeSigned: "Có chữ ký S/MIME",
+    smimeUnverified: "Máy chủ không kiểm tra được chữ ký này.",
+    smimeSignedUntrusted: "Có chữ ký, nơi cấp chưa được tin cậy",
+    smimeSignedUntrustedHint: "Chữ ký còn nguyên vẹn, nhưng chứng chỉ không do tổ chức mà máy chủ này tin cậy cấp (có thể là chứng chỉ tự ký hoặc CA nội bộ).",
+    smimeSignerMismatch: "Chữ ký thuộc địa chỉ khác",
+    smimeSignerMismatchHint: "Chữ ký còn nguyên vẹn, nhưng chứng chỉ không thuộc về người gửi thư này.",
+    smimeInvalid: "Chữ ký S/MIME không hợp lệ",
+    smimeInvalidHint: "Chữ ký không khớp nội dung — thư có thể đã bị sửa trên đường truyền.",
+    smimeEncrypted: "Thư mã hoá S/MIME",
+    smimeEncryptedHint: "Thư này được mã hoá. Muốn đọc cần khoá riêng, khoá đó nằm ở ứng dụng mail của bạn chứ không phải ở đây.",
+    smimeCertOnly: "Có đính kèm chứng chỉ S/MIME",
+    smimeSubject: "Cấp cho", smimeEmail: "Email", smimeIssuer: "Nơi cấp",
+    smimeValidity: "Hiệu lực", smimeSerial: "Số sê-ri",
+    smimeCertExpired: "Chứng chỉ này đã hết hạn.",
   },
 };
 
@@ -1346,6 +1378,7 @@ const S = {
   // Mailbox storage quota (best-effort — null when the server doesn't expose it)
   quota: null, // { usedKb, limitKb } or null
   blocklist: [], // lowercased blocked sender emails (client-side visibility filter)
+  smimeDetailUid: null, // uid whose S/MIME certificate panel is expanded
 };
 
 let _rendering = false;
@@ -1427,6 +1460,7 @@ function resetSessionState(loginError = "") {
     newMailBanner: 0,
     quota: null,
     blocklist: [],
+    smimeDetailUid: null,
     loginError,
   });
   stopMailPolling();
@@ -3010,6 +3044,11 @@ function renderThreadMsgBubble(m, isLast) {
   if (!isCollapsed) {
     // Body
     const body = h("div", { className: "px-6 py-4" });
+    const bubbleSmime = renderSmimeBadge(m);
+    if (bubbleSmime) {
+      bubbleSmime.className = "mb-3";
+      body.appendChild(bubbleSmime);
+    }
     if (m.html) {
       body.appendChild(renderEmailHtmlWithImageGuard(m));
     } else if (m.text) {
@@ -3117,6 +3156,89 @@ function renderThreadView(section, threadMsgs) {
 }
 
 // â”€â”€â”€ Message View â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+// S/MIME status line. Deliberately distinguishes "signature is mathematically
+// valid" from "issued by a CA this machine trusts" from "the certificate
+// actually belongs to the sender" — a green tick for a signature that merely
+// parsed would be worse than showing nothing.
+function smimeStatus(smime) {
+  if (!smime) return null;
+  if (smime.type === "encrypted") {
+    return { tone: "info", label: t("smimeEncrypted"), detail: t("smimeEncryptedHint") };
+  }
+  if (smime.type === "certificate") {
+    return { tone: "info", label: t("smimeCertOnly"), detail: "" };
+  }
+
+  const v = smime.verification || {};
+  if (v.checked && v.signatureValid === false) {
+    return { tone: "bad", label: t("smimeInvalid"), detail: t("smimeInvalidHint") };
+  }
+  if (!v.checked) {
+    return { tone: "warn", label: t("smimeSigned"), detail: t("smimeUnverified") };
+  }
+  if (smime.signerMatchesFrom === false) {
+    return { tone: "warn", label: t("smimeSignerMismatch"), detail: t("smimeSignerMismatchHint") };
+  }
+  if (!v.chainTrusted) {
+    return { tone: "warn", label: t("smimeSignedUntrusted"), detail: t("smimeSignedUntrustedHint") };
+  }
+  return { tone: "good", label: t("smimeVerified"), detail: "" };
+}
+
+function renderSmimeBadge(msg) {
+  const status = smimeStatus(msg.smime);
+  if (!status) return null;
+
+  const tones = {
+    good: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-300",
+    warn: "bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-900/20 dark:text-amber-300",
+    bad: "bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-300",
+    info: "bg-slate-50 text-slate-600 border-line dark:bg-slate-900/40 dark:text-slate-300",
+  };
+
+  const wrap = h("div", { className: "mt-2" });
+  const cert = msg.smime.certificate;
+  const open = S.smimeDetailUid === msg.uid;
+
+  const badge = h("button", {
+    type: "button",
+    className: `inline-flex items-center gap-1.5 px-2 py-1 rounded-lg border text-xs ${tones[status.tone]}`,
+    onclick() { set({ smimeDetailUid: open ? null : msg.uid }); },
+  },
+    h("span", { innerHTML: I.shield }),
+    h("span", {}, status.label),
+    cert ? h("span", { className: "opacity-60" }, open ? "▴" : "▾") : null,
+  );
+  wrap.appendChild(badge);
+
+  if (status.detail) {
+    wrap.appendChild(h("div", { className: "text-[11px] text-slate-500 mt-1" }, status.detail));
+  }
+
+  if (open && cert) {
+    const rows = [
+      [t("smimeSubject"), cert.subject || "—"],
+      [t("smimeEmail"), (cert.emails || []).join(", ") || "—"],
+      [t("smimeIssuer"), cert.issuer || "—"],
+      [t("smimeValidity"), `${fullDate(cert.validFrom)} → ${fullDate(cert.validUntil)}`],
+      [t("smimeSerial"), cert.serial || "—"],
+    ];
+    const table = h("div", { className: "mt-2 p-2.5 rounded-lg border border-line bg-slate-50 dark:bg-slate-900/40 text-[11px] space-y-1" });
+    for (const [label, value] of rows) {
+      table.appendChild(h("div", { className: "flex gap-2" },
+        h("span", { className: "text-slate-400 w-28 shrink-0" }, label),
+        h("span", { className: "min-w-0 break-all" }, value),
+      ));
+    }
+    if (cert.expired) {
+      table.appendChild(h("div", { className: "text-red-600 font-medium" }, t("smimeCertExpired")));
+    }
+    wrap.appendChild(table);
+  }
+
+  return wrap;
+}
 
 function renderMessageView() {
   const section = h("section", { className: "flex-1 flex flex-col h-full bg-slate-50 min-w-0" });
@@ -3255,6 +3377,9 @@ function renderMessageView() {
   }, existingContact ? "View in Contacts" : "Add to Contacts");
   senderRow.appendChild(addContactBtn);
   header.appendChild(senderRow);
+
+  const smimeBadge = renderSmimeBadge(msg);
+  if (smimeBadge) header.appendChild(smimeBadge);
 
   // Labels row in message view
   const msgLabels = messageLabelsWithCurrentColors((S.messages.find(m => m.uid === msg.uid)?.labels) || []);

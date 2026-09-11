@@ -1542,6 +1542,194 @@ def _parse_list_unsubscribe(header_value, post_header_value) -> dict | None:
     return {"mailto": mailto, "url": https_url, "oneClick": one_click}
 
 
+# ── S/MIME ────────────────────────────────────────────────────────────────────
+# Recognises S/MIME messages and describes the sender's certificate. Signature
+# verification is delegated to the openssl binary when it is available; the
+# result always says which checks actually ran, so the UI never implies a
+# message was verified when it wasn't.
+
+_SMIME_SIGNATURE_TYPES = {"application/pkcs7-signature", "application/x-pkcs7-signature"}
+_SMIME_MIME_TYPES = {"application/pkcs7-mime", "application/x-pkcs7-mime"}
+
+
+def _cert_name_attr(name, oid) -> str:
+    try:
+        values = name.get_attributes_for_oid(oid)
+        return str(values[0].value) if values else ""
+    except Exception:
+        return ""
+
+
+def _cert_emails(cert) -> list[str]:
+    """Email addresses from the subject DN and the subjectAltName extension."""
+    from cryptography import x509
+    from cryptography.x509.oid import ExtensionOID, NameOID
+
+    emails: list[str] = []
+    try:
+        for attr in cert.subject.get_attributes_for_oid(NameOID.EMAIL_ADDRESS):
+            if attr.value:
+                emails.append(str(attr.value).strip().lower())
+    except Exception:
+        pass
+    try:
+        san = cert.extensions.get_extension_for_oid(ExtensionOID.SUBJECT_ALTERNATIVE_NAME)
+        for value in san.value.get_values_for_type(x509.RFC822Name):
+            emails.append(str(value).strip().lower())
+    except Exception:
+        pass
+    return list(dict.fromkeys(e for e in emails if e))
+
+
+def _cert_is_ca(cert) -> bool:
+    from cryptography.x509.oid import ExtensionOID
+
+    try:
+        return bool(cert.extensions.get_extension_for_oid(ExtensionOID.BASIC_CONSTRAINTS).value.ca)
+    except Exception:
+        return False
+
+
+def _cert_validity(cert) -> tuple[datetime, datetime]:
+    # not_valid_before/after are deprecated in cryptography 42+ in favour of the
+    # timezone-aware *_utc variants; support both so the >=41 floor still works.
+    try:
+        return cert.not_valid_before_utc, cert.not_valid_after_utc
+    except AttributeError:
+        return cert.not_valid_before, cert.not_valid_after
+
+
+def _describe_certificate(cert) -> dict:
+    from cryptography.x509.oid import NameOID
+
+    not_before, not_after = _cert_validity(cert)
+    now = datetime.now(not_before.tzinfo) if not_before.tzinfo else datetime.utcnow()
+    return {
+        "subject": _cert_name_attr(cert.subject, NameOID.COMMON_NAME),
+        "organization": _cert_name_attr(cert.subject, NameOID.ORGANIZATION_NAME),
+        "emails": _cert_emails(cert),
+        "issuer": _cert_name_attr(cert.issuer, NameOID.COMMON_NAME)
+                  or _cert_name_attr(cert.issuer, NameOID.ORGANIZATION_NAME),
+        "validFrom": not_before.isoformat(),
+        "validUntil": not_after.isoformat(),
+        "serial": format(cert.serial_number, "x"),
+        "expired": now > not_after,
+        "notYetValid": now < not_before,
+    }
+
+
+def _pick_signer_certificate(certs: list):
+    """The leaf certificate — the signer — rather than a bundled CA."""
+    leaves = [c for c in certs if not _cert_is_ca(c)]
+    with_email = [c for c in leaves if _cert_emails(c)]
+    return (with_email or leaves or certs)[0]
+
+
+def _smime_verify_with_openssl(raw_source: bytes) -> dict:
+    """
+    Verify a signed message with `openssl smime`. Two passes: the signature
+    itself, then whether the signer chains to a CA the system trusts.
+    """
+    import subprocess
+    import tempfile
+
+    result = {"checked": False, "signatureValid": False, "chainTrusted": False, "error": ""}
+    path = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".eml", delete=False) as handle:
+            handle.write(raw_source)
+            path = handle.name
+
+        def _run(args: list[str]):
+            return subprocess.run(
+                ["openssl", "smime", "-verify", "-in", path, "-inform", "SMIME", *args],
+                capture_output=True, timeout=15,
+            )
+
+        signature = _run(["-noverify", "-out", os.devnull])
+        result["checked"] = True
+        result["signatureValid"] = signature.returncode == 0
+        if not result["signatureValid"]:
+            result["error"] = signature.stderr.decode("utf-8", errors="replace").strip()[:200]
+            return result
+
+        chain = _run(["-out", os.devnull])
+        result["chainTrusted"] = chain.returncode == 0
+        if not result["chainTrusted"]:
+            result["error"] = chain.stderr.decode("utf-8", errors="replace").strip()[:200]
+    except FileNotFoundError:
+        result["error"] = "openssl not available"
+    except Exception as exc:
+        result["error"] = str(exc)[:200]
+    finally:
+        if path:
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+    return result
+
+
+def _smime_info(msg, raw_source: bytes, from_addresses: list[dict]) -> dict | None:
+    """Describe the S/MIME layer of a message, or None when there isn't one."""
+    from cryptography.hazmat.primitives.serialization import pkcs7
+
+    kind = None
+    blob = None
+
+    for part in msg.walk() if msg.is_multipart() else [msg]:
+        content_type = part.get_content_type().lower()
+
+        if content_type == "multipart/signed":
+            protocol = (part.get_param("protocol", header="content-type") or "").lower()
+            if "pkcs7-signature" in protocol:
+                kind = "signed"
+            continue
+
+        if content_type in _SMIME_SIGNATURE_TYPES:
+            kind = "signed"
+            blob = part.get_payload(decode=True)
+            break
+
+        if content_type in _SMIME_MIME_TYPES:
+            smime_type = (part.get_param("smime-type", header="content-type") or "").lower()
+            if "enveloped-data" in smime_type:       # covers authEnveloped-data too
+                kind = "encrypted"
+            elif "certs-only" in smime_type:
+                kind = "certificate"
+                blob = part.get_payload(decode=True)
+            else:                                     # signed-data, or unlabelled
+                kind = "signed"
+                blob = part.get_payload(decode=True)
+            break
+
+    if not kind:
+        return None
+
+    info = {"type": kind, "certificate": None, "signerMatchesFrom": None, "verification": None}
+
+    if blob:
+        try:
+            certs = pkcs7.load_der_pkcs7_certificates(blob)
+        except Exception:
+            certs = []
+        if certs:
+            cert = _pick_signer_certificate(certs)
+            info["certificate"] = _describe_certificate(cert)
+            info["chainLength"] = len(certs)
+
+            # A signature is only meaningful if it belongs to the sender.
+            sender = next((a.get("address") for a in from_addresses if a.get("address")), "")
+            cert_emails = info["certificate"]["emails"]
+            if sender and cert_emails:
+                info["signerMatchesFrom"] = sender.strip().lower() in cert_emails
+
+    if kind == "signed":
+        info["verification"] = _smime_verify_with_openssl(raw_source)
+
+    return info
+
+
 async def _async_parse_email(raw_source: bytes, uid: int | None = None, folder: str = "INBOX") -> dict:
     """Parse raw email source into structured dict (runs in executor to avoid blocking)."""
     def _parse():
@@ -1614,10 +1802,16 @@ async def _async_parse_email(raw_source: bytes, uid: int | None = None, folder: 
         if html:
             html = _replace_cid_urls(html)
 
+        try:
+            smime = _smime_info(msg, raw_source, _header_addresses(msg.get("From")))
+        except Exception:
+            smime = None
+
         return {
             "text": "\n".join(text_parts) or None,
             "html": html,
             "attachments": attachments,
+            "smime": smime,
         }
 
     loop = asyncio.get_event_loop()
@@ -2886,6 +3080,7 @@ async def get_message(request: Request, uid: int):
         summary["unsubscribe"] = _parse_list_unsubscribe(
             message.get("List-Unsubscribe"), message.get("List-Unsubscribe-Post")
         )
+        summary["smime"] = parsed.get("smime")
 
         if "\\Seen" not in summary["flags"]:
             try:
