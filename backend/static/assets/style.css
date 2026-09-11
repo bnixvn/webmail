@@ -31,15 +31,16 @@ input, textarea, [contenteditable] {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* Email HTML content */
-.email-html {
-  word-wrap: break-word;
-  overflow-wrap: break-word;
-  line-height: 1.5;
+/* Email HTML content renders inside a sandboxed iframe, so the sender's own
+   styling is left untouched. Only the frame itself is styled here. */
+.email-frame {
+  width: 100%;
+  min-height: 120px;
+  border: 0;
+  display: block;
+  background: #fff;
+  border-radius: 6px;
 }
-.email-html img { max-width: 100%; height: auto; }
-.email-html table { max-width: 100%; }
-.email-html a { color: #2563eb; text-decoration: underline; }
 
 /* Compose editor */
 .compose-editor {

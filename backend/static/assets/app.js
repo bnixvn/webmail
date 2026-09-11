@@ -2965,8 +2965,45 @@ function renderQuickReply(placeholder) {
 // blocked remote <img>/CSS backgrounds (see backend _sanitize_html). Restoring
 // images is pure DOM manipulation from the data-blocked-src the server left
 // behind — no re-fetch needed.
+// The message body renders inside a sandboxed iframe so the sender's own CSS
+// decides how their mail looks: nothing from the app's stylesheet (or dark
+// mode) reaches in, and the mail's CSS can't reach out into the app chrome.
+// sandbox without allow-scripts means no JS can run in there regardless of what
+// the sanitizer missed; allow-same-origin is only there so the height can be
+// measured and blocked images restored.
 function renderEmailHtmlWithImageGuard(msg) {
   const wrap = h("div", { className: "email-html-wrap" });
+
+  const frame = h("iframe", {
+    className: "email-frame w-full border-0 block",
+    sandbox: "allow-same-origin allow-popups allow-popups-to-escape-sandbox",
+    referrerpolicy: "no-referrer",
+    title: msg.subject || "",
+    srcdoc: emailFrameDocument(msg.html),
+  });
+
+  function fitHeight() {
+    try {
+      const doc = frame.contentDocument;
+      if (!doc || !doc.body) return;
+      const height = Math.max(doc.body.scrollHeight, doc.documentElement.scrollHeight);
+      if (height) frame.style.height = `${height + 8}px`;
+    } catch {
+      frame.style.height = "480px"; // cross-origin fallback, should not happen
+    }
+  }
+
+  frame.addEventListener("load", () => {
+    fitHeight();
+    // Images and webfonts land after load and change the height.
+    try {
+      frame.contentDocument.querySelectorAll("img").forEach(img => {
+        if (!img.complete) img.addEventListener("load", fitHeight, { once: true });
+      });
+    } catch {}
+    setTimeout(fitHeight, 300);
+  });
+
   if (msg.imagesBlocked) {
     const banner = h("div", {
       className: "flex items-center gap-2 mb-3 px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-200 text-xs",
@@ -2976,18 +3013,36 @@ function renderEmailHtmlWithImageGuard(msg) {
         type: "button",
         className: "shrink-0 font-medium underline hover:no-underline",
         onclick() {
-          wrap.querySelectorAll("[data-blocked-src]").forEach(el => {
-            el.src = el.getAttribute("data-blocked-src");
-            el.removeAttribute("data-blocked-src");
-          });
+          try {
+            frame.contentDocument.querySelectorAll("[data-blocked-src]").forEach(el => {
+              el.src = el.getAttribute("data-blocked-src");
+              el.removeAttribute("data-blocked-src");
+              el.addEventListener("load", fitHeight, { once: true });
+            });
+          } catch {}
           banner.remove();
         },
       }, t("showImages")),
     );
     wrap.appendChild(banner);
   }
-  wrap.appendChild(h("div", { className: "email-html", innerHTML: msg.html }));
+
+  wrap.appendChild(frame);
   return wrap;
+}
+
+// Minimal host document: sets a sane default font and a white canvas (mail is
+// authored for a white background), then gets out of the way.
+function emailFrameDocument(html) {
+  return `<!doctype html><html><head><meta charset="utf-8">`
+    + `<meta name="viewport" content="width=device-width, initial-scale=1">`
+    + `<base target="_blank" rel="noreferrer noopener">`
+    + `<style>`
+    + `html,body{margin:0;padding:0;background:#fff;color:#1e293b;`
+    + `font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;font-size:14px;line-height:1.5;}`
+    + `img{max-width:100%;height:auto;}`
+    + `table{max-width:100%;}`
+    + `</style></head><body>${html || ""}</body></html>`;
 }
 
 function renderThreadMsgBubble(m, isLast) {

@@ -1466,18 +1466,11 @@ def _sanitize_html(html: str, show_images: bool = False) -> str:
             flags=re.IGNORECASE,
         )
 
-        def _scope_selector(m) -> str:
-            sels = m.group(1) if hasattr(m, "group") else str(m)
-            scoped = []
-            for s in sels.split(","):
-                s = s.strip()
-                if not s or s.startswith("@") or re.match(r"^\d+%$", s):
-                    scoped.append(s)
-                else:
-                    scoped.append(f".email-html {s}")
-            return ", ".join(scoped)
-
-        css = re.sub(r"([^{}]+)\{", _scope_selector, css)
+        # Selectors are left exactly as the sender wrote them. They used to be
+        # rewritten to ".email-html <sel>" to stop email CSS leaking into the
+        # app, but that regex also swallowed the opening brace — "body{color:red}"
+        # came out as "bodycolor:red}" — which broke the styling of every message
+        # carrying a <style> block. Isolation is the iframe's job now.
         return f"<style>{css}</style>"
 
     out = re.sub(r"<style[^>]*>([\s\S]*?)</style>", _scope_style, out, flags=re.IGNORECASE)
