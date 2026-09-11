@@ -3389,6 +3389,45 @@ async def send_message(request: Request, body: dict):
 
 # ── Avatar ─────────────────────────────────────────────────────────────────────
 
+# Gravatar existence is checked here rather than in the browser: handing the
+# client a d=404 URL for every sender filled the network log with 404s, and it
+# also leaked each reader's IP plus the sender's email hash to Gravatar.
+_GRAVATAR_CACHE: dict[str, tuple[bool, float]] = {}
+_GRAVATAR_CACHE_TTL = 24 * 60 * 60
+_GRAVATAR_CACHE_MAX = 5000
+# Opening a message list checks many senders at once; a shared client keeps the
+# connection to Gravatar alive instead of doing a TLS handshake per sender.
+_gravatar_client: httpx.AsyncClient | None = None
+
+
+def _gravatar_http_client() -> httpx.AsyncClient:
+    global _gravatar_client
+    if _gravatar_client is None or _gravatar_client.is_closed:
+        _gravatar_client = httpx.AsyncClient(timeout=5, follow_redirects=True)
+    return _gravatar_client
+
+
+async def _gravatar_url_if_exists(email_hash: str) -> str | None:
+    url = f"https://www.gravatar.com/avatar/{email_hash}?s=128&d=404"
+    now = time.time()
+
+    cached = _GRAVATAR_CACHE.get(email_hash)
+    if cached and now - cached[1] < _GRAVATAR_CACHE_TTL:
+        return url if cached[0] else None
+
+    exists = False
+    try:
+        resp = await _gravatar_http_client().head(url)
+        exists = resp.status_code == 200
+    except Exception:
+        exists = False
+
+    if len(_GRAVATAR_CACHE) >= _GRAVATAR_CACHE_MAX:
+        _GRAVATAR_CACHE.clear()
+    _GRAVATAR_CACHE[email_hash] = (exists, now)
+    return url if exists else None
+
+
 @app.get("/api/avatar")
 async def get_avatar(request: Request):
     await require_session(request)
@@ -3396,10 +3435,10 @@ async def get_avatar(request: Request):
     if not email or "@" not in email:
         raise HTTPException(400, "Invalid email.")
 
-    # d=404 so Gravatar answers 404 instead of inventing an identicon for
-    # addresses with no real avatar — the client then keeps its initials badge.
+    # Returns None unless a real avatar exists, so the client shows initials
+    # without ever requesting (and 404ing on) a picture that isn't there.
     gravatar_hash = hashlib.md5(email.encode()).hexdigest()
-    gravatar_url = f"https://www.gravatar.com/avatar/{gravatar_hash}?s=128&d=404"
+    gravatar_url = await _gravatar_url_if_exists(gravatar_hash)
 
     # Try BIMI
     domain = email.split("@")[1].lower()
