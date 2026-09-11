@@ -134,19 +134,29 @@ create_user() {
 }
 
 copy_source() {
-  log "Copying source to ${SRC_DIR}"
   install -d -m 0755 "${APP_ROOT}" "${SRC_DIR}" "${DATA_DIR}"
-  rsync -a --delete \
-    --exclude '.git' \
-    --exclude 'node_modules' \
-    --exclude 'venv' \
-    --exclude '.venv' \
-    --exclude '__pycache__' \
-    "${SOURCE_DIR}/" "${SRC_DIR}/"
+
+  # The documented flow clones straight into SRC_DIR and runs the installer from
+  # there, in which case there is nothing to copy.
+  if [ "${SOURCE_DIR}" = "${SRC_DIR}" ]; then
+    log "Running from ${SRC_DIR}; skipping source copy"
+  else
+    log "Copying source to ${SRC_DIR}"
+    rsync -a --delete \
+      --exclude '.git' \
+      --exclude 'node_modules' \
+      --exclude 'venv' \
+      --exclude '.venv' \
+      --exclude '__pycache__' \
+      "${SOURCE_DIR}/" "${SRC_DIR}/"
+  fi
+
   chown -R "${APP_USER}:${APP_USER}" "${DATA_DIR}"
-  # Fix .git ownership so bnix-webmail user can git pull
+  # The app only ever reads the source and never runs git, so the checkout stays
+  # root-owned: chowning .git to the service user is what makes "git pull" as
+  # root fail with "detected dubious ownership".
   if [ -d "${SRC_DIR}/.git" ]; then
-    chown -R "${APP_USER}:${APP_USER}" "${SRC_DIR}/.git"
+    chown -R root:root "${SRC_DIR}/.git"
   fi
 }
 

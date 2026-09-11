@@ -215,10 +215,17 @@ sudo systemctl status bnix-webmail
 sudo systemctl restart bnix-webmail
 sudo journalctl -u bnix-webmail -f
 
-# Update
+# Update (run as root — the checkout is root-owned)
 cd /opt/bnix-webmail/src
-git pull
+sudo git pull
 sudo systemctl restart bnix-webmail
+```
+
+If an older install left the checkout owned by the service user, `git pull`
+fails with *detected dubious ownership*. Hand it back to root once:
+
+```bash
+sudo chown -R root:root /opt/bnix-webmail/src/.git
 ```
 
 ## License
