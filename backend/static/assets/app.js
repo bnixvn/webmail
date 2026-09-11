@@ -180,6 +180,9 @@ const LOCALES = {
     // Remote image blocking
     imagesBlockedWarning: "Images are blocked to protect your privacy.",
     showImages: "Show images",
+    imageTrustedSenders: "Images allowed from",
+    noImageTrustedSenders: "No senders allowed yet",
+    stopShowingImages: "Stop",
     // Unsubscribe
     unsubscribe: "Unsubscribe", unsubscribeSent: "Unsubscribe request sent",
     unsubscribeFailed: "Unsubscribe request failed",
@@ -353,6 +356,9 @@ const LOCALES = {
     // Chặn ảnh từ xa
     imagesBlockedWarning: "Ảnh đã bị chặn để bảo vệ quyền riêng tư.",
     showImages: "Hiện ảnh",
+    imageTrustedSenders: "Cho phép hiện ảnh từ",
+    noImageTrustedSenders: "Chưa cho phép người gửi nào",
+    stopShowingImages: "Bỏ",
     // Hủy đăng ký
     unsubscribe: "Hủy đăng ký", unsubscribeSent: "Đã gửi yêu cầu hủy đăng ký",
     unsubscribeFailed: "Gửi yêu cầu hủy đăng ký thất bại",
@@ -1379,6 +1385,7 @@ const S = {
   quota: null, // { usedKb, limitKb } or null
   blocklist: [], // lowercased blocked sender emails (client-side visibility filter)
   smimeDetailUid: null, // uid whose S/MIME certificate panel is expanded
+  imageTrust: [], // senders whose remote images the user chose to load
 };
 
 let _rendering = false;
@@ -1461,6 +1468,7 @@ function resetSessionState(loginError = "") {
     quota: null,
     blocklist: [],
     smimeDetailUid: null,
+    imageTrust: [],
     loginError,
   });
   stopMailPolling();
@@ -1619,7 +1627,7 @@ async function bootstrap() {
       mailboxes: mbData.mailboxes || [],
       ready: true,
     });
-    await Promise.all([loadMessages(), loadTodayEvents(), loadLabels(), loadMailRules(), loadContacts(), loadQuota(), loadBlocklist()]);
+    await Promise.all([loadMessages(), loadTodayEvents(), loadLabels(), loadMailRules(), loadContacts(), loadQuota(), loadBlocklist(), loadImageTrust()]);
     startMailPolling();
   } catch (err) {
     if (err.authExpired || err.status === 401) {
@@ -1639,6 +1647,35 @@ async function loadQuota() {
     set({ quota: data.supported ? data : null });
   } catch {
     set({ quota: null });
+  }
+}
+
+async function loadImageTrust() {
+  try {
+    const data = await api("/api/image-trust");
+    set({ imageTrust: data.trusted || [] });
+  } catch {
+    set({ imageTrust: [] });
+  }
+}
+
+async function trustSenderImages(email) {
+  email = (email || "").trim().toLowerCase();
+  if (!email || S.imageTrust.includes(email)) return;
+  try {
+    await api("/api/image-trust", { method: "POST", body: JSON.stringify({ email }) });
+    set({ imageTrust: [...S.imageTrust, email] });
+  } catch {
+    // Showing the images already worked; only the remembering failed.
+  }
+}
+
+async function untrustSenderImages(email) {
+  try {
+    await api(`/api/image-trust/${encodeURIComponent(email)}`, { method: "DELETE" });
+    set({ imageTrust: S.imageTrust.filter(e => e !== email) });
+  } catch (err) {
+    set({ error: err.message });
   }
 }
 
@@ -3021,6 +3058,8 @@ function renderEmailHtmlWithImageGuard(msg) {
             });
           } catch {}
           banner.remove();
+          // Remember the sender so their next message arrives with images already in.
+          trustSenderImages(displayEmail(msg.from));
         },
       }, t("showImages")),
     );
@@ -5632,6 +5671,23 @@ function renderRuleManagerModal() {
             className: "text-brand hover:underline shrink-0",
             onclick() { unblockSender(email); },
           }, t("unblock")),
+        )),
+      ),
+  ));
+
+  // Senders whose remote images the user allowed via "show images".
+  listPane.appendChild(h("div", { className: "pt-3 mt-3 border-t border-line" },
+    h("div", { className: "text-xs font-medium text-slate-500 mb-2" }, t("imageTrustedSenders")),
+    !S.imageTrust.length
+      ? h("div", { className: "text-xs text-slate-400" }, t("noImageTrustedSenders"))
+      : h("div", { className: "space-y-1 max-h-32 overflow-y-auto" },
+        ...S.imageTrust.map(email => h("div", { className: "flex items-center gap-2 text-xs" },
+          h("span", { className: "truncate flex-1 text-slate-600" }, email),
+          h("button", {
+            type: "button",
+            className: "text-brand hover:underline shrink-0",
+            onclick() { untrustSenderImages(email); },
+          }, t("stopShowingImages")),
         )),
       ),
   ));

@@ -455,6 +455,29 @@ class SecurityHardeningTests(unittest.TestCase):
         raw = b"From: a@b.com\r\nTo: c@d.com\r\nSubject: hi\r\nContent-Type: text/plain\r\n\r\nhello\r\n"
         self.assertIsNone(asyncio.run(main._async_parse_email(raw))["smime"])
 
+    def test_image_trust_is_per_account_and_gates_the_sanitizer(self):
+        import sqlite3
+
+        account, other, sender = "owner@bnix.vn", "someone@bnix.vn", "news@shop.com"
+        self.assertFalse(main._images_trusted_for(account, sender))
+
+        with sqlite3.connect(main.BLOCKLIST_DB) as db:
+            db.execute(
+                "INSERT OR IGNORE INTO image_trusted_senders (account, email, created_at) VALUES (?,?,?)",
+                (account, sender, "2026-01-01T00:00:00"),
+            )
+            db.commit()
+
+        self.assertTrue(main._images_trusted_for(account, sender))
+        self.assertTrue(main._images_trusted_for(account, "NEWS@Shop.com".lower()))
+        # One account trusting a sender must not affect anyone else.
+        self.assertFalse(main._images_trusted_for(other, sender))
+        self.assertIn(sender, main._image_trusted_senders(account))
+
+        html = '<img src="http://cdn.shop.com/banner.jpg">'
+        self.assertIn("data-blocked-src", main._sanitize_html(html))
+        self.assertNotIn("data-blocked-src", main._sanitize_html(html, show_images=True))
+
     def test_ssrf_guard_rejects_private_and_non_http_urls(self):
         for url in (
             "http://127.0.0.1/x",

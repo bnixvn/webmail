@@ -231,10 +231,49 @@ def _blocklist_init():
             created_at TEXT NOT NULL,
             PRIMARY KEY (account, email)
         )""")
+        # Senders the user chose to load remote images for. Images stay blocked
+        # by default; this records the ones explicitly allowed via "show images".
+        db.execute("""CREATE TABLE IF NOT EXISTS image_trusted_senders (
+            account    TEXT NOT NULL,
+            email      TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            PRIMARY KEY (account, email)
+        )""")
         db.commit()
 
 
 _blocklist_init()
+
+
+def _image_trusted_senders(account: str) -> list[str]:
+    import sqlite3
+
+    try:
+        with sqlite3.connect(BLOCKLIST_DB, timeout=5) as db:
+            rows = db.execute(
+                "SELECT email FROM image_trusted_senders WHERE account=? ORDER BY created_at DESC",
+                (account,),
+            ).fetchall()
+        return [r[0] for r in rows]
+    except sqlite3.Error:
+        return []
+
+
+def _images_trusted_for(account: str, sender: str) -> bool:
+    sender = (sender or "").strip().lower()
+    if not sender:
+        return False
+    import sqlite3
+
+    try:
+        with sqlite3.connect(BLOCKLIST_DB, timeout=5) as db:
+            row = db.execute(
+                "SELECT 1 FROM image_trusted_senders WHERE account=? AND email=?",
+                (account, sender),
+            ).fetchone()
+        return row is not None
+    except sqlite3.Error:
+        return False
 
 # --- Mail Rule Database -----------------------------------------------------
 
@@ -3066,7 +3105,12 @@ async def get_message(request: Request, uid: int):
         parsed = await _async_parse_email(source, uid=uid, folder=folder)
         summary["snippet"] = _clean_snippet(parsed.get("text", ""))
         html = parsed.get("html")
-        summary["html"] = _sanitize_html(html) if html else None
+        # Senders the user has already chosen to show images for get them
+        # straight away, instead of a blocked render the client has to patch up.
+        sender = next((a.get("address") for a in summary.get("from", []) if a.get("address")), "")
+        show_images = _images_trusted_for(session["email"], sender)
+        summary["html"] = _sanitize_html(html, show_images=show_images) if html else None
+        summary["imagesTrusted"] = show_images
         summary["imagesBlocked"] = bool(summary["html"] and "data-blocked-src=" in summary["html"])
         summary["text"] = parsed.get("text")
         summary["attachments"] = parsed.get("attachments", [])
@@ -5251,6 +5295,42 @@ async def unblock_sender(request: Request, email_addr: str):
     with sqlite3.connect(BLOCKLIST_DB) as db:
         db.execute(
             "DELETE FROM blocked_senders WHERE account=? AND email=?",
+            (session["email"], email_addr.strip().lower()),
+        )
+        db.commit()
+    return JSONResponse({"ok": True})
+
+
+@app.get("/api/image-trust")
+async def list_image_trusted_senders(request: Request):
+    session = await require_session(request)
+    return JSONResponse({"trusted": _image_trusted_senders(session["email"])})
+
+
+@app.post("/api/image-trust")
+async def trust_sender_images(request: Request, body: dict):
+    """Remember that this sender's remote images may load from now on."""
+    session = await require_session(request)
+    email_addr = (body.get("email") or "").strip().lower()
+    if not email_addr or "@" not in email_addr:
+        raise HTTPException(400, "A valid email is required.")
+    import sqlite3
+    with sqlite3.connect(BLOCKLIST_DB) as db:
+        db.execute(
+            "INSERT OR IGNORE INTO image_trusted_senders (account, email, created_at) VALUES (?, ?, ?)",
+            (session["email"], email_addr, datetime.utcnow().isoformat()),
+        )
+        db.commit()
+    return JSONResponse({"ok": True})
+
+
+@app.delete("/api/image-trust/{email_addr}")
+async def untrust_sender_images(request: Request, email_addr: str):
+    session = await require_session(request)
+    import sqlite3
+    with sqlite3.connect(BLOCKLIST_DB) as db:
+        db.execute(
+            "DELETE FROM image_trusted_senders WHERE account=? AND email=?",
             (session["email"], email_addr.strip().lower()),
         )
         db.commit()

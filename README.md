@@ -187,6 +187,7 @@ webmail/
 | POST | `/api/auth/logout` | Logout |
 | GET | `/api/auth/me` | Check session (public — returns `{authenticated: false}` if not logged in, no 401) |
 | GET | `/api/mailboxes` | List mailboxes |
+| GET/POST | `/api/image-trust` | Senders allowed to load remote images (DELETE `/api/image-trust/{email}` to revoke) |
 | GET | `/api/quota` | Mailbox storage quota — `{supported: false}` when the server doesn't expose IMAP QUOTA |
 | GET | `/api/messages` | List messages (paginated) |
 | GET | `/api/messages/search` | Real IMAP search — `q`/`from`/`subject`/`since`/`before`, `scope=folder\|all` |
