@@ -196,9 +196,13 @@ const LOCALES = {
       `Verified digital signature${signer ? ` from <${signer}>` : ""}.${issuer ? ` Issued by ${issuer}.` : ""}`,
     smimeSigned: (signer) => `Digital signature${signer ? ` from <${signer}>` : ""}.`,
     smimeUnverified: "The signature could not be checked on this server.",
-    smimeSignedUntrusted: (signer, issuer) =>
-      `Digital signature${signer ? ` from <${signer}>` : ""}, issuer not trusted${issuer ? `: ${issuer}` : ""}.`,
-    smimeSignedUntrustedHint: "The signature is intact, but the certificate was not issued by an authority this server trusts (it may be self-signed or from a private CA).",
+    smimeSelfSigned: "Untrusted digital signature (self-signed)",
+    smimeSelfSignedHint: (signer) =>
+      `The certificate vouches only for itself, so it does not prove the message came from ${signer ? `<${signer}>` : "the sender"}. Anyone can issue one.`,
+    smimeUntrustedIssuer: (issuer) =>
+      `Untrusted digital signature${issuer ? ` — issued by ${issuer}` : ""}`,
+    smimeUntrustedIssuerHint: (signer) =>
+      `That authority is not recognised by this server, so the signature does not prove the message came from ${signer ? `<${signer}>` : "the sender"}.`,
     smimeSignerMismatch: (signer) =>
       `Digital signature from <${signer || "another address"}>, which is not the sender.`,
     smimeSignerMismatchHint: "The signature is intact, but the certificate does not belong to the sender of this message.",
@@ -376,9 +380,13 @@ const LOCALES = {
       `Đã xác minh chữ ký số${signer ? ` từ <${signer}>` : ""}.${issuer ? ` Cấp bởi ${issuer}.` : ""}`,
     smimeSigned: (signer) => `Có chữ ký số${signer ? ` từ <${signer}>` : ""}.`,
     smimeUnverified: "Máy chủ không kiểm tra được chữ ký này.",
-    smimeSignedUntrusted: (signer, issuer) =>
-      `Có chữ ký số${signer ? ` từ <${signer}>` : ""}, nơi cấp chưa được tin cậy${issuer ? `: ${issuer}` : ""}.`,
-    smimeSignedUntrustedHint: "Chữ ký còn nguyên vẹn, nhưng chứng chỉ không do tổ chức mà máy chủ này tin cậy cấp (có thể là chứng chỉ tự ký hoặc CA nội bộ).",
+    smimeSelfSigned: "Chữ ký số không đáng tin (tự ký)",
+    smimeSelfSignedHint: (signer) =>
+      `Chứng chỉ tự xác nhận chính nó, nên không chứng minh được thư đến từ ${signer ? `<${signer}>` : "người gửi"}. Ai cũng tạo được một chứng chỉ như vậy.`,
+    smimeUntrustedIssuer: (issuer) =>
+      `Chữ ký số không đáng tin${issuer ? ` — cấp bởi ${issuer}` : ""}`,
+    smimeUntrustedIssuerHint: (signer) =>
+      `Máy chủ không công nhận nơi cấp này, nên chữ ký không chứng minh được thư đến từ ${signer ? `<${signer}>` : "người gửi"}.`,
     smimeSignerMismatch: (signer) =>
       `Chữ ký số từ <${signer || "địa chỉ khác"}>, không phải người gửi thư này.`,
     smimeSignerMismatchHint: "Chữ ký còn nguyên vẹn, nhưng chứng chỉ không thuộc về người gửi thư này.",
@@ -3288,8 +3296,14 @@ function smimeStatus(smime) {
   if (smime.signerMatchesFrom === false) {
     return { tone: "warn", label: t("smimeSignerMismatch", signer), detail: t("smimeSignerMismatchHint") };
   }
+  // A signature that doesn't chain to a recognised authority proves nothing —
+  // anyone can mint a self-signed certificate carrying someone else's address.
+  // It is shown as untrusted rather than as a weaker shade of verified, and
+  // without the "from <address>" phrasing that would imply the address checks out.
   if (!v.chainTrusted) {
-    return { tone: "warn", label: t("smimeSignedUntrusted", signer, issuer), detail: t("smimeSignedUntrustedHint") };
+    return cert.selfSigned
+      ? { tone: "bad", label: t("smimeSelfSigned"), detail: t("smimeSelfSignedHint", signer) }
+      : { tone: "bad", label: t("smimeUntrustedIssuer", issuer), detail: t("smimeUntrustedIssuerHint", signer) };
   }
   return { tone: "good", label: t("smimeVerified", signer, issuer), detail: "" };
 }

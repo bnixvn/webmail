@@ -1651,6 +1651,9 @@ def _describe_certificate(cert) -> dict:
         "serial": format(cert.serial_number, "x"),
         "expired": now > not_after,
         "notYetValid": now < not_before,
+        # Issuer == subject: nobody vouched for this but the sender themselves,
+        # so it says nothing about who they are.
+        "selfSigned": cert.issuer == cert.subject,
     }
 
 

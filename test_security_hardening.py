@@ -425,7 +425,9 @@ class SecurityHardeningTests(unittest.TestCase):
         self.assertEqual(smime["certificate"]["emails"], ["sender@bnix.vn"])
         self.assertTrue(smime["signerMatchesFrom"])
         self.assertFalse(smime["certificate"]["expired"])
-        # Self-signed: the signature holds but the chain is not trusted.
+        # Self-signed: the signature holds, but nothing vouches for the identity,
+        # so it must be reported as untrusted rather than merely "less verified".
+        self.assertTrue(smime["certificate"]["selfSigned"])
         if smime["verification"]["checked"]:
             self.assertTrue(smime["verification"]["signatureValid"])
             self.assertFalse(smime["verification"]["chainTrusted"])
