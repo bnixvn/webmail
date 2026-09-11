@@ -11,6 +11,11 @@ ENV_FILE="/etc/${APP_NAME}.env"
 SERVICE_FILE="/etc/systemd/system/${APP_NAME}.service"
 ADMIN_CREDENTIALS_FILE="/root/${APP_NAME}-admin.txt"
 CADDY_FRAGMENT_FILE="/etc/caddy/${APP_NAME}.conf"
+CADDYFILE="/etc/caddy/Caddyfile"
+# Marks the site block this installer owns, so re-running it updates that block
+# instead of appending a duplicate (alias domains live in CADDY_FRAGMENT_FILE,
+# which the app itself manages).
+CADDY_SITE_MARKER="# BNIX Webmail primary site (managed by install.sh)"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE_DIR="${SOURCE_DIR:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
@@ -63,6 +68,18 @@ prompt_optional() {
   fi
 
   printf '%s' "${value}"
+}
+
+upsert_env_var() {
+  local key="$1"
+  local value="$2"
+
+  [ -f "${ENV_FILE}" ] || return 0
+  if grep -q "^${key}=" "${ENV_FILE}"; then
+    sed -i "s#^${key}=.*#${key}=${value}#" "${ENV_FILE}"
+  else
+    printf '%s=%s\n' "${key}" "${value}" >> "${ENV_FILE}"
+  fi
 }
 
 require_root() {
@@ -141,22 +158,24 @@ prepare_env() {
 
   log "Creating environment file: ${ENV_FILE}"
   local auth_secret
-  local imap_host
-  local smtp_host
-
   auth_secret="${AUTH_SECRET:-$(generate_secret)}"
-  imap_host="$(prompt_optional "IMAP host (e.g. mail.example.com)" "${IMAP_HOST:-}")"
-  smtp_host="$(prompt_optional "SMTP host (e.g. mail.example.com)" "${SMTP_HOST:-}")"
 
   cat > "${ENV_FILE}" <<EOF
 AUTH_SECRET=${auth_secret}
-IMAP_HOST=${imap_host}
+
+# Mail servers are discovered per login domain (SRV -> mail.<domain> -> MX).
+# Only set IMAP_HOST/SMTP_HOST to force one fixed server for every domain.
+IMAP_HOST=
 IMAP_PORT=993
 IMAP_SECURE=true
 # Set IMAP_SECURE=false when the IMAP server only speaks plain IMAP on port 143.
-SMTP_HOST=${smtp_host}
+SMTP_HOST=
 SMTP_PORT=465
 SMTP_SECURE=true
+
+# Primary webmail domain, served from /etc/caddy/Caddyfile by the installer.
+# Extra domains are added in the admin panel and written to CADDY_ALIASES_PATH.
+PRIMARY_DOMAIN=
 ENABLE_CADDY_AUTOMATION=true
 CADDY_ALIASES_PATH=${CADDY_FRAGMENT_FILE}
 DAV_HOST=
@@ -223,19 +242,155 @@ EOF
   chown -R "${APP_USER}:${APP_USER}" "${DATA_DIR}"
 }
 
-setup_caddy_fragment() {
-  if [ ! -d /etc/caddy ]; then
-    log "Caddy directory not found; skipping Caddy fragment setup"
+install_caddy() {
+  if command -v caddy >/dev/null 2>&1; then
+    log "Caddy already installed: $(caddy version 2>/dev/null | head -n1)"
     return
   fi
 
-  log "Preparing Caddy fragment: ${CADDY_FRAGMENT_FILE}"
+  # A Caddy failure (blocked repo, no network) should not abort the whole
+  # install — the app still works behind any other reverse proxy.
+  log "Installing Caddy from the official repository"
+  if DEBIAN_FRONTEND=noninteractive apt-get install -y \
+       debian-keyring debian-archive-keyring apt-transport-https gnupg \
+     && curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
+        | gpg --batch --yes --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg \
+     && curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
+        > /etc/apt/sources.list.d/caddy-stable.list \
+     && apt-get update \
+     && DEBIAN_FRONTEND=noninteractive apt-get install -y caddy; then
+    log "Caddy installed"
+  else
+    log "WARNING: could not install Caddy. Continuing without a reverse proxy."
+    log "         The app will still listen on 127.0.0.1:8000."
+  fi
+}
+
+setup_caddy_fragment() {
+  install -d -m 0755 /etc/caddy
+
+  log "Preparing Caddy alias fragment: ${CADDY_FRAGMENT_FILE}"
   touch "${CADDY_FRAGMENT_FILE}"
   chown "${APP_USER}:${APP_USER}" "${CADDY_FRAGMENT_FILE}"
   chmod 0644 "${CADDY_FRAGMENT_FILE}"
+}
 
-  if [ -f /etc/caddy/Caddyfile ] && ! grep -Eq '^[[:space:]]*import[[:space:]]+/etc/caddy/\\*\\.conf' /etc/caddy/Caddyfile; then
-    printf '\nimport /etc/caddy/*.conf\n' >> /etc/caddy/Caddyfile
+ensure_caddy_import() {
+  [ -f "${CADDYFILE}" ] || return 0
+  # Pulls in /etc/caddy/bnix-webmail.conf, where the admin panel writes the
+  # extra webmail domains. Required for multi-domain setups — never remove it.
+  if ! grep -Eq '^[[:space:]]*import[[:space:]]+/etc/caddy/\*\.conf' "${CADDYFILE}"; then
+    printf '\nimport /etc/caddy/*.conf\n' >> "${CADDYFILE}"
+  fi
+}
+
+detect_existing_site_domain() {
+  [ -f "${CADDYFILE}" ] || return 0
+  grep -A1 -F "${CADDY_SITE_MARKER}" "${CADDYFILE}" 2>/dev/null \
+    | tail -n1 \
+    | sed -n 's/^[[:space:]]*\([^[:space:]{]\{1,\}\)[[:space:]]*{.*$/\1/p'
+}
+
+caddyfile_is_stock_default() {
+  [ -f "${CADDYFILE}" ] || return 1
+  grep -q 'root \* /usr/share/caddy' "${CADDYFILE}"
+}
+
+render_caddy_site() {
+  local domain="$1"
+  cat <<EOF
+${CADDY_SITE_MARKER}
+${domain} {
+    reverse_proxy 127.0.0.1:8000
+}
+EOF
+}
+
+configure_caddy_site() {
+  if ! command -v caddy >/dev/null 2>&1; then
+    log "Caddy is not installed; skipping reverse proxy configuration"
+    return
+  fi
+
+  local domain existing
+  existing="$(detect_existing_site_domain || true)"
+  domain="${WEBMAIL_DOMAIN:-}"
+
+  if [ -z "${domain}" ]; then
+    if [ -n "${existing}" ]; then
+      domain="$(prompt_default "Webmail URL/domain (blank to skip reverse proxy)" "${existing}")"
+    else
+      domain="$(prompt_optional "Webmail URL/domain for HTTPS, e.g. webmail.example.com (blank to skip)")"
+    fi
+  fi
+
+  # Accept a pasted URL as well as a bare hostname.
+  domain="$(printf '%s' "${domain}" | sed -e 's#^https\{0,1\}://##' -e 's#/.*$##')"
+
+  if [ -z "${domain}" ]; then
+    log "No webmail domain given; leaving ${CADDYFILE} untouched"
+    ensure_caddy_import
+    return
+  fi
+
+  PUBLIC_URL="https://${domain}"
+  # Let the app know which domain it must refuse as an admin-panel alias.
+  upsert_env_var "PRIMARY_DOMAIN" "${domain}"
+
+  if [ -n "${existing}" ] && [ "${existing}" = "${domain}" ]; then
+    log "Caddy already serves ${domain}; leaving ${CADDYFILE} unchanged"
+    ensure_caddy_import
+    reload_caddy
+    return
+  fi
+
+  log "Configuring Caddy site for ${domain}"
+
+  if [ ! -f "${CADDYFILE}" ] || caddyfile_is_stock_default; then
+    if [ -f "${CADDYFILE}" ]; then
+      cp -a "${CADDYFILE}" "${CADDYFILE}.bnix-backup.$(date +%Y%m%d%H%M%S)"
+      log "Replaced the stock Caddyfile (backup kept alongside it)"
+    fi
+    {
+      render_caddy_site "${domain}"
+      printf '\nimport /etc/caddy/*.conf\n'
+    } > "${CADDYFILE}"
+  else
+    cp -a "${CADDYFILE}" "${CADDYFILE}.bnix-backup.$(date +%Y%m%d%H%M%S)"
+    local tmp
+    tmp="$(mktemp)"
+    # Drop the block we previously managed (if any), then re-add it.
+    awk -v marker="${CADDY_SITE_MARKER}" '
+      index($0, marker) { skip = 1; next }
+      skip && /^}/      { skip = 0; next }
+      skip              { next }
+                        { print }
+    ' "${CADDYFILE}" > "${tmp}"
+    {
+      # cat -s collapses the blank lines left behind by removing the old block
+      cat -s "${tmp}"
+      printf '\n'
+      render_caddy_site "${domain}"
+    } > "${CADDYFILE}"
+    rm -f "${tmp}"
+    ensure_caddy_import
+  fi
+
+  chmod 0644 "${CADDYFILE}"
+  reload_caddy
+}
+
+reload_caddy() {
+  if ! caddy validate --config "${CADDYFILE}" --adapter caddyfile >/dev/null 2>&1; then
+    log "WARNING: ${CADDYFILE} did not validate; leaving Caddy running as-is. Check it manually."
+    return
+  fi
+
+  systemctl enable caddy >/dev/null 2>&1 || true
+  if systemctl is-active --quiet caddy; then
+    systemctl reload caddy || systemctl restart caddy || log "WARNING: could not reload Caddy"
+  else
+    systemctl start caddy || log "WARNING: could not start Caddy"
   fi
 }
 
@@ -258,18 +413,26 @@ main() {
   require_root
   require_supported_os
   install_packages
+  install_caddy
   create_user
   copy_source
   prepare_env
   setup_python
   provision_admin
   setup_caddy_fragment
+  configure_caddy_site
   install_service
 
   log "Done."
   log "Service: systemctl status ${APP_NAME}"
   log "Environment: ${ENV_FILE}"
-  log "Loopback URL: http://127.0.0.1:8000"
+  if [ -n "${PUBLIC_URL:-}" ]; then
+    log "Webmail: ${PUBLIC_URL}"
+    log "Admin:   ${PUBLIC_URL}/admin  (credentials in ${ADMIN_CREDENTIALS_FILE})"
+    log "HTTPS is issued automatically by Caddy once the domain's DNS A/AAAA record points here."
+  else
+    log "Loopback URL: http://127.0.0.1:8000 (no domain configured; put a reverse proxy in front)"
+  fi
 }
 
 main "$@"

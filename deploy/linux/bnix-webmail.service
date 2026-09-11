@@ -18,7 +18,9 @@ Restart=always
 RestartSec=5
 PrivateTmp=true
 ProtectSystem=full
-ReadWritePaths=/opt/bnix-webmail/data /etc/caddy/bnix-webmail.conf
+# The "-" prefix keeps the unit startable if the Caddy fragment is absent
+# (e.g. Caddy removed later); without it systemd refuses to start the service.
+ReadWritePaths=/opt/bnix-webmail/data -/etc/caddy/bnix-webmail.conf
 
 [Install]
 WantedBy=multi-user.target

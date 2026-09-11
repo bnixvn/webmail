@@ -542,6 +542,11 @@ CADDY_ALIASES_PATH = os.environ.get(
     "CADDY_ALIASES_PATH", "/etc/caddy/bnix-webmail.conf"
 )
 CADDY_AUTOMATION_ENABLED = os.environ.get("ENABLE_CADDY_AUTOMATION", "").lower() == "true"
+# The domain the installer wrote into /etc/caddy/Caddyfile. Extra webmail
+# domains are added from the admin panel and land in CADDY_ALIASES_PATH; adding
+# this one there too would give Caddy two site blocks for the same host, which
+# makes every later alias reload fail.
+PRIMARY_DOMAIN = os.environ.get("PRIMARY_DOMAIN", "").strip().lower()
 LOGIN_MAX_ATTEMPTS = max(1, int(os.environ.get("LOGIN_MAX_ATTEMPTS", "10")))
 LOGIN_ATTEMPT_WINDOW = max(1, int(os.environ.get("LOGIN_ATTEMPT_WINDOW", "600")))
 LOGIN_BLOCK_SECONDS = max(1, int(os.environ.get("LOGIN_BLOCK_SECONDS", "900")))
@@ -4760,6 +4765,13 @@ async def admin_add_domain(request: Request, body: dict):
 
     if not target_domain:
         target_domain = _default_target_domain(alias_domain)
+
+    if PRIMARY_DOMAIN and alias_domain == PRIMARY_DOMAIN:
+        raise HTTPException(
+            409,
+            "This domain is already served as the primary webmail domain "
+            "(configured at install time). Adding it here would break the Caddy config.",
+        )
 
     now = datetime.utcnow().isoformat()
     import sqlite3

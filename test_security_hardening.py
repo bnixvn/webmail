@@ -402,6 +402,32 @@ class SecurityHardeningTests(unittest.TestCase):
         self.assertIsNone(main._parse_list_unsubscribe(None, None))
         self.assertFalse(main._parse_list_unsubscribe("<https://x.com/unsub>", None)["oneClick"])
 
+    def test_primary_domain_is_rejected_as_admin_alias(self):
+        # Adding the installer-configured primary domain as an alias would put a
+        # second site block for the same host into the Caddy include file, which
+        # breaks every later alias reload.
+        with patch.object(main, "PRIMARY_DOMAIN", "webmail.example.com"):
+            with patch.object(main, "require_admin", new=AsyncMock(return_value=None)):
+                with self.assertRaises(main.HTTPException) as ctx:
+                    asyncio.run(main.admin_add_domain(_request(), {"aliasDomain": "WebMail.Example.com."}))
+        self.assertEqual(ctx.exception.status_code, 409)
+
+    def test_other_domains_still_allowed_as_admin_alias(self):
+        calls = {}
+
+        def _fake_sync(alias_domain):
+            calls["alias"] = alias_domain
+            return True
+
+        with patch.object(main, "PRIMARY_DOMAIN", "webmail.example.com"):
+            with patch.object(main, "require_admin", new=AsyncMock(return_value=None)):
+                with patch.object(main, "_add_caddy_domain", new=_fake_sync):
+                    response = asyncio.run(
+                        main.admin_add_domain(_request(), {"aliasDomain": "mail.other.com"})
+                    )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(calls.get("alias"), "mail.other.com")
+
     def test_totp_replay_is_rejected(self):
         import pyotp
 

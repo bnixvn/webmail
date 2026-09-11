@@ -48,11 +48,20 @@ sudo bash deploy/linux/install.sh
 ```
 
 The installer will:
-- Install Python 3 + system packages
+- Install Python 3, Caddy + system packages
 - Create `bnix-webmail` system user
 - Setup Python venv and install dependencies
 - Generate environment file at `/etc/bnix-webmail.env`
+- Ask for your webmail domain and configure Caddy as an HTTPS reverse proxy
 - Install and start systemd service
+
+It only asks one question — the webmail domain (e.g. `webmail.example.com`).
+IMAP/SMTP hosts are not asked for: they are discovered per login domain.
+For an unattended install, pass it in instead:
+
+```bash
+sudo WEBMAIL_DOMAIN=webmail.example.com bash deploy/linux/install.sh
+```
 
 ### Post-Install Configuration
 
@@ -98,20 +107,16 @@ The installer creates a random initial admin password in `/root/bnix-webmail-adm
 
 ### Caddy Reverse Proxy
 
-Install Caddy and configure:
+The installer handles this: it installs Caddy, writes the site block for the
+domain you entered, and reloads it. HTTPS certificates are issued automatically
+once the domain's DNS points at the server.
 
-```bash
-sudo apt install -y caddy
+Two files are involved, and only the first is yours to edit:
+
 ```
-
-Copy the Caddyfile:
-
-```bash
-sudo cp backend/Caddyfile /etc/caddy/Caddyfile
-sudo systemctl reload caddy
+/etc/caddy/Caddyfile            # primary site block + import, written by the installer
+/etc/caddy/bnix-webmail.conf    # extra domains, written by the app — do not edit
 ```
-
-Or create `/etc/caddy/Caddyfile` manually:
 
 ```
 webmail.yourdomain.com {
@@ -121,6 +126,15 @@ webmail.yourdomain.com {
 import /etc/caddy/*.conf
 ```
 
+The `import` line is what powers multi-domain: every domain added under
+**Admin → Domains** is written to `/etc/caddy/bnix-webmail.conf` and loaded
+through it. The primary domain is stored as `PRIMARY_DOMAIN` in the env file and
+is rejected (409) if you try to add it there as well, since duplicate site
+blocks would make Caddy reject the config and freeze all other domains.
+
+Re-running the installer with the same domain changes nothing; a different
+domain replaces the managed block and backs up the previous Caddyfile.
+
 ## Local Development
 
 ```bash
@@ -129,11 +143,12 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r backend/requirements.txt
 
-# Create .env
+# Create .env (AUTH_SECRET is required; mail servers are auto-discovered)
 cp .env.example .env
-# Edit .env with your IMAP/SMTP settings
+sed -i "s/^AUTH_SECRET=.*/AUTH_SECRET=$(python3 -c 'import secrets;print(secrets.token_urlsafe(32))')/" .env
 
-# Run
+# Run — the app reads plain environment variables, so export .env first
+set -a; source .env; set +a
 cd backend
 python main.py
 ```
