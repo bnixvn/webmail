@@ -382,7 +382,8 @@ class SecurityHardeningTests(unittest.TestCase):
         self.assertNotIn("data-blocked-src", sanitized)
 
     def _signed_smime_message(self, from_header="Nguyen Van A <sender@bnix.vn>",
-                              cert_email="sender@bnix.vn", body=b"Signed body.\r\n"):
+                              cert_email="sender@bnix.vn", body=b"Signed body.\r\n",
+                              issuer_org=None):
         """Build a real S/MIME signed message with a throwaway certificate."""
         import datetime
         from cryptography import x509
@@ -396,11 +397,15 @@ class SecurityHardeningTests(unittest.TestCase):
             x509.NameAttribute(NameOID.COMMON_NAME, "Nguyen Van A"),
             x509.NameAttribute(NameOID.EMAIL_ADDRESS, cert_email),
         ])
+        issuer = subject if issuer_org is None else x509.Name([
+            x509.NameAttribute(NameOID.ORGANIZATION_NAME, issuer_org),
+            x509.NameAttribute(NameOID.COMMON_NAME, f"{issuer_org} Secure Email CA"),
+        ])
         now = datetime.datetime.now(datetime.timezone.utc)
         cert = (
             x509.CertificateBuilder()
             .subject_name(subject)
-            .issuer_name(subject)
+            .issuer_name(issuer)
             .public_key(key.public_key())
             .serial_number(x509.random_serial_number())
             .not_valid_before(now - datetime.timedelta(days=1))
@@ -515,6 +520,31 @@ class SecurityHardeningTests(unittest.TestCase):
 
         named = build(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "BNIX Support")]))
         self.assertEqual(main._describe_certificate(named)["subject"], "BNIX Support")
+
+    def test_each_message_reports_its_own_signer_and_issuer(self):
+        """Signatures are per message: different senders, different authorities."""
+        senders = [
+            ("hotro@bnix.vn", "Sectigo Limited"),
+            ("billing@bank.example", "DigiCert Inc"),
+            ("noreply@github.example", "GlobalSign nv-sa"),
+        ]
+        for sender, issuer_org in senders:
+            with self.subTest(sender=sender):
+                raw = self._signed_smime_message(
+                    from_header=sender, cert_email=sender, issuer_org=issuer_org
+                )
+                cert = asyncio.run(main._async_parse_email(raw))["smime"]["certificate"]
+                self.assertEqual(cert["emails"], [sender])
+                self.assertEqual(cert["issuerOrganization"], issuer_org)
+
+    def test_certificate_pem_is_exported_for_download(self):
+        cert = asyncio.run(main._async_parse_email(self._signed_smime_message()))["smime"]["certificate"]
+        pem = cert["pem"]
+        self.assertTrue(pem.startswith("-----BEGIN CERTIFICATE-----"))
+        # Must load back as the very certificate it describes.
+        from cryptography import x509
+        reloaded = x509.load_pem_x509_certificate(pem.encode())
+        self.assertEqual(format(reloaded.serial_number, "x"), cert["serial"])
 
     def test_ssrf_guard_rejects_private_and_non_http_urls(self):
         for url in (

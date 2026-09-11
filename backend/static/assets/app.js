@@ -215,6 +215,7 @@ const LOCALES = {
     smimeSubject: "Issued to", smimeEmail: "Email", smimeIssuer: "Issued by",
     smimeValidity: "Valid", smimeSerial: "Serial",
     smimeCertExpired: "This certificate has expired.",
+    smimeDownloadCert: "Download certificate",
   },
   vi: {
     // Login
@@ -399,6 +400,7 @@ const LOCALES = {
     smimeSubject: "Cấp cho", smimeEmail: "Email", smimeIssuer: "Nơi cấp",
     smimeValidity: "Hiệu lực", smimeSerial: "Số sê-ri",
     smimeCertExpired: "Chứng chỉ này đã hết hạn.",
+    smimeDownloadCert: "Tải chứng chỉ",
   },
 };
 
@@ -3271,6 +3273,21 @@ function renderThreadView(section, threadMsgs) {
 // valid" from "issued by a CA this machine trusts" from "the certificate
 // actually belongs to the sender" — a green tick for a signature that merely
 // parsed would be worse than showing nothing.
+// Saves the signer's certificate as a PEM file. The bytes are already in the
+// message payload, so no extra request is needed.
+function downloadCertificate(cert) {
+  const name = ((cert.emails || [])[0] || cert.subject || cert.serial || "certificate")
+    .replace(/[^a-z0-9._@-]+/gi, "_");
+  const url = URL.createObjectURL(new Blob([cert.pem], { type: "application/x-pem-file" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${name}.pem`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 function smimeStatus(smime) {
   if (!smime) return null;
   if (smime.type === "encrypted") {
@@ -3359,6 +3376,13 @@ function renderSmimeBadge(msg) {
     }
     if (cert.expired) {
       table.appendChild(h("div", { className: "text-red-600 font-medium" }, t("smimeCertExpired")));
+    }
+    if (cert.pem) {
+      table.appendChild(h("button", {
+        type: "button",
+        className: "mt-1 inline-flex items-center gap-1.5 text-brand hover:underline",
+        onclick() { downloadCertificate(cert); },
+      }, icon("download"), t("smimeDownloadCert")));
     }
     wrap.appendChild(table);
   }

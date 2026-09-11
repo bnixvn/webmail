@@ -1632,6 +1632,7 @@ def _cert_validity(cert) -> tuple[datetime, datetime]:
 
 
 def _describe_certificate(cert) -> dict:
+    from cryptography.hazmat.primitives import serialization
     from cryptography.x509.oid import NameOID
 
     not_before, not_after = _cert_validity(cert)
@@ -1669,6 +1670,9 @@ def _describe_certificate(cert) -> dict:
         # Issuer == subject: nobody vouched for this but the sender themselves,
         # so it says nothing about who they are.
         "selfSigned": cert.issuer == cert.subject,
+        # Carried inline (a couple of KB) so the client can offer a download
+        # without a second fetch of the whole message.
+        "pem": cert.public_bytes(serialization.Encoding.PEM).decode("ascii"),
     }
 
 
