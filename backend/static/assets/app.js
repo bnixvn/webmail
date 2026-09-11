@@ -175,19 +175,6 @@ const LOCALES = {
     newMailAvailable: (n) => `${n} new message${n === 1 ? "" : "s"}`, refresh: "Refresh",
     newMailNotifTitle: (n) => `${n} new email${n === 1 ? "" : "s"}`,
     // Security / 2FA
-    security: "Security", twoFactorAuth: "Two-factor authentication",
-    twoFactorDesc: "Require a code from an authenticator app when signing in.",
-    enable2FA: "Enable 2FA", disable2FA: "Disable 2FA", twoFactorEnabled: "Enabled", twoFactorDisabled: "Disabled",
-    scanQrCode: "Scan this QR code with your authenticator app (Google Authenticator, Aegis, etc.), or enter the code manually:",
-    enterCodeToConfirm: "Enter the 6-digit code to confirm", confirmAndEnable: "Confirm and enable",
-    enterCodeToDisable: "Enter your current code (or a backup code) to disable 2FA",
-    backupCodesTitle: "Backup codes", backupCodesWarning: "Save these codes somewhere safe. Each can be used once if you lose access to your authenticator app. They will not be shown again.",
-    twoFactorEnabledOk: "Two-factor authentication is now enabled.",
-    twoFactorDisabledOk: "Two-factor authentication has been disabled.",
-    twoFactorRequired: "Enter authentication code", enterAuthCode: "6-digit code or backup code",
-    verify: "Verify", invalidCode: "Invalid code. Please try again.",
-    backToLogin: "Back to sign in",
-    copySecret: "Copy secret", copied: "Copied",
     // Quota
     storageUsed: "Storage",
     // Remote image blocking
@@ -345,19 +332,6 @@ const LOCALES = {
     newMailAvailable: (n) => `${n} thư mới`, refresh: "Làm mới",
     newMailNotifTitle: (n) => `${n} thư mới`,
     // Bảo mật / 2FA
-    security: "Bảo mật", twoFactorAuth: "Xác thực 2 lớp",
-    twoFactorDesc: "Yêu cầu mã từ ứng dụng xác thực mỗi khi đăng nhập.",
-    enable2FA: "Bật 2FA", disable2FA: "Tắt 2FA", twoFactorEnabled: "Đang bật", twoFactorDisabled: "Đang tắt",
-    scanQrCode: "Quét mã QR bằng ứng dụng xác thực (Google Authenticator, Aegis, ...), hoặc nhập mã thủ công:",
-    enterCodeToConfirm: "Nhập mã 6 số để xác nhận", confirmAndEnable: "Xác nhận và bật",
-    enterCodeToDisable: "Nhập mã hiện tại (hoặc mã dự phòng) để tắt 2FA",
-    backupCodesTitle: "Mã dự phòng", backupCodesWarning: "Lưu các mã này ở nơi an toàn. Mỗi mã chỉ dùng được 1 lần khi bạn mất quyền truy cập ứng dụng xác thực. Mã sẽ không hiển thị lại lần nữa.",
-    twoFactorEnabledOk: "Đã bật xác thực 2 lớp.",
-    twoFactorDisabledOk: "Đã tắt xác thực 2 lớp.",
-    twoFactorRequired: "Nhập mã xác thực", enterAuthCode: "Mã 6 số hoặc mã dự phòng",
-    verify: "Xác nhận", invalidCode: "Mã không đúng. Vui lòng thử lại.",
-    backToLogin: "Quay lại đăng nhập",
-    copySecret: "Sao chép mã bí mật", copied: "Đã sao chép",
     // Quota
     storageUsed: "Dung lượng",
     // Chặn ảnh từ xa
@@ -1365,16 +1339,6 @@ const S = {
   newMailBanner: 0,       // count of newly-arrived unread messages in the open folder
   notifPermission: (typeof Notification !== "undefined" ? Notification.permission : "unsupported"),
   // Two-factor auth
-  pendingTwoFactor: null, // { email, domain } while awaiting the OTP step
-  twoFactorError: "",
-  twoFactorBusy: false,
-  showSecurity: false,
-  securityStatus: null,   // { enabled } for the current account
-  securitySetup: null,    // { secret, otpauthUri, qrSvg } while enabling
-  securityBackupCodes: null, // shown once right after enabling
-  securityBusy: false,
-  securityError: "",
-  securityCode: "",
   // Mailbox storage quota (best-effort — null when the server doesn't expose it)
   quota: null, // { usedKb, limitKb } or null
   blocklist: [], // lowercased blocked sender emails (client-side visibility filter)
@@ -1457,12 +1421,6 @@ function resetSessionState(loginError = "") {
     searchResults: null,
     searching: false,
     newMailBanner: 0,
-    pendingTwoFactor: null,
-    twoFactorError: "",
-    showSecurity: false,
-    securityStatus: null,
-    securitySetup: null,
-    securityBackupCodes: null,
     quota: null,
     blocklist: [],
     loginError,
@@ -1574,63 +1532,6 @@ function renderLogin() {
   );
 }
 
-function renderTwoFactorPrompt() {
-  const isDark = document.documentElement.classList.contains("dark");
-  const lang = getLang();
-
-  return h("main", { className: "login-page" },
-    h("div", { className: "login-panel-left" }),
-    h("div", { className: "login-panel-right" },
-      h("div", { className: "login-right-wrapper" },
-      h("div", { className: "login-topbar" },
-        h("div", { className: "login-lang-group" },
-          h("button", {
-            type: "button",
-            className: `login-lang-btn ${lang === "vi" ? "active" : ""}`,
-            onclick() { setLang("vi"); },
-          }, h("img", { src: "/brand/vietnam.png", alt: "Tiáº¿ng Viá»‡t", className: "login-flag-img" })),
-          h("button", {
-            type: "button",
-            className: `login-lang-btn ${lang === "en" ? "active" : ""}`,
-            onclick() { setLang("en"); },
-          }, h("img", { src: "/brand/united-states.png", alt: "English", className: "login-flag-img" })),
-        ),
-        h("button", {
-          type: "button",
-          className: "login-theme-btn",
-          onclick() {
-            const dark = document.documentElement.classList.toggle("dark");
-            localStorage.setItem("theme", dark ? "dark" : "light");
-            render();
-          },
-          title: isDark ? t("lightMode") : t("darkMode"),
-          innerHTML: isDark
-            ? `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>`
-            : `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`,
-        }),
-      ),
-      h("div", { className: "login-center" },
-        h("form", { className: "login-form", onsubmit: onVerifyTwoFactor },
-          h("div", { className: "login-field" },
-            h("label", {}, t("twoFactorRequired")),
-            h("input", {
-              name: "code", type: "text", inputmode: "numeric", autocomplete: "one-time-code",
-              placeholder: t("enterAuthCode"), required: "required", autofocus: "autofocus",
-            }),
-          ),
-          S.twoFactorError ? h("div", { className: "login-error" }, S.twoFactorError) : null,
-          h("button", { type: "submit", className: "login-submit", disabled: S.twoFactorBusy }, t("verify")),
-          h("button", {
-            type: "button", className: "login-lang-btn", style: { marginTop: "8px" },
-            onclick: cancelTwoFactor,
-          }, t("backToLogin")),
-        ),
-      ),
-      ),
-    ),
-  );
-}
-
 async function onLogin(e) {
   e.preventDefault();
   const form = e.target;
@@ -1644,10 +1545,6 @@ async function onLogin(e) {
       method: "POST",
       body: JSON.stringify({ email, password, remember }),
     });
-    if (data.twoFactorRequired) {
-      set({ pendingTwoFactor: { email: data.email, domain: data.domain }, twoFactorError: "" });
-      return;
-    }
     await completeLogin(data);
   } catch (err) {
     S.account = null;
@@ -1665,43 +1562,10 @@ async function onLogin(e) {
 async function completeLogin(data) {
   S.account = { email: data.email, domain: data.domain };
   S.ready = false;
-  S.pendingTwoFactor = null;
   _handlingSessionExpired = false;
   // Show loading while bootstrap runs
   render();
   await bootstrap();
-}
-
-async function onVerifyTwoFactor(e) {
-  e.preventDefault();
-  if (S.twoFactorBusy) return;
-  const form = e.target;
-  const code = form.code.value.trim();
-  set({ twoFactorBusy: true, twoFactorError: "" });
-  try {
-    const data = await api("/api/auth/verify-2fa", {
-      method: "POST",
-      body: JSON.stringify({ code }),
-    });
-    set({ twoFactorBusy: false });
-    await completeLogin(data);
-  } catch (err) {
-    let msg = t("invalidCode");
-    if (err.code === "LOGIN_TEMPORARILY_LOCKED") {
-      const minutes = Math.max(1, Math.ceil((err.retryAfter || 900) / 60));
-      msg = t("loginTemporarilyLocked", minutes);
-    } else if (err.status === 401 && !err.code) {
-      msg = t("sessionExpired");
-      set({ twoFactorBusy: false, pendingTwoFactor: null, twoFactorError: "" });
-      return;
-    }
-    set({ twoFactorBusy: false, twoFactorError: msg });
-  }
-}
-
-async function cancelTwoFactor() {
-  try { await api("/api/auth/logout", { method: "POST" }); } catch {}
-  set({ pendingTwoFactor: null, twoFactorError: "" });
 }
 
 // â”€â”€â”€ Bootstrap â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -1939,8 +1803,20 @@ function formatKb(kb) {
 // Best-effort storage bar — S.quota is null whenever the mail server doesn't
 // expose the IMAP QUOTA extension, in which case this renders nothing.
 function renderQuotaBar() {
-  if (!S.quota || !S.quota.limitKb) return null;
-  const pct = Math.min(100, Math.round((S.quota.usedKb / S.quota.limitKb) * 100));
+  if (!S.quota) return null;
+  const usedKb = S.quota.usedKb || 0;
+  const limitKb = S.quota.limitKb || 0;
+  if (!usedKb && !limitKb) return null;
+
+  // Without a server-side limit there is no ratio to draw — just show usage.
+  if (!limitKb) {
+    return h("div", { className: "px-3 py-2 text-[11px] text-slate-400 flex items-center justify-between" },
+      h("span", {}, t("storageUsed")),
+      h("span", {}, formatKb(usedKb)),
+    );
+  }
+
+  const pct = Math.min(100, Math.round((usedKb / limitKb) * 100));
   const barColor = pct >= 90 ? "bg-red-500" : pct >= 75 ? "bg-amber-500" : "bg-brand";
   return h("div", { className: "px-3 py-2" },
     h("div", { className: "flex items-center justify-between text-[11px] text-slate-400 mb-1" },
@@ -1950,7 +1826,7 @@ function renderQuotaBar() {
     h("div", { className: "h-1.5 rounded-full bg-slate-100 dark:bg-slate-700 overflow-hidden" },
       h("div", { className: `h-full rounded-full ${barColor}`, style: { width: `${pct}%` } }),
     ),
-    h("div", { className: "text-[11px] text-slate-400 mt-1" }, `${formatKb(S.quota.usedKb)} / ${formatKb(S.quota.limitKb)}`),
+    h("div", { className: "text-[11px] text-slate-400 mt-1" }, `${formatKb(usedKb)} / ${formatKb(limitKb)}`),
   );
 }
 
@@ -1962,42 +1838,32 @@ function renderSidebar() {
 
   const items = [];
 
-  // Header
-  items.push(h("div", { className: "flex items-center gap-2 p-3 border-b border-line" },
+  // Header — same height as the message list header so both columns line up
+  items.push(h("div", { className: "flex items-center gap-2 h-14 md:h-12 px-3 border-b border-line shrink-0" },
     h("button", {
-      className: "p-1.5 rounded-lg hover:bg-slate-100 text-slate-600",
+      className: "p-1.5 rounded-lg hover:bg-slate-100 text-slate-600 shrink-0",
       onclick() { set({ sidebarOpen: !S.sidebarOpen }); },
       innerHTML: I.menu,
     }),
     !collapsed && S.view === "mail" ? h("button", {
-      className: "flex-1 flex items-center justify-center gap-2 py-2 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand-hover",
+      className: "flex-1 flex items-center justify-center gap-2 py-1.5 rounded-lg bg-brand text-white text-sm font-medium hover:bg-brand-hover",
       onclick() { openCompose(); },
     }, icon("edit"), t("compose")) : null,
   ));
 
-  // View nav
-  const views = [
-    { key: "mail", icon: "mail", get label() { return t("mail"); } },
-    { key: "contacts", icon: "contact", get label() { return t("contacts"); } },
-    { key: "calendar", icon: "calendar", get label() { return t("calendar"); } },
-  ];
-  const viewNav = h("div", { className: "px-2 py-2 space-y-0.5" });
-  for (const v of views) {
-    const active = S.view === v.key;
-    viewNav.appendChild(h("button", {
-      className: `folder-item w-full ${active ? "active" : ""} ${collapsed ? "justify-center" : ""}`,
+  // Contacts and calendar now live in the footer row; keep a way back to mail
+  // when one of those views is open.
+  if (S.view !== "mail") {
+    const backNav = h("div", { className: "px-2 py-2" });
+    backNav.appendChild(h("button", {
+      className: `folder-item w-full ${collapsed ? "justify-center" : ""}`,
       onclick() {
-        navigate({ view: v.key, uid: null });
-        set({ view: v.key, selectedUid: null, selectedMsg: null, threadMsgs: [] });
-        if (v.key === "contacts") loadContacts();
-        if (v.key === "calendar" && !S.calendarEvents.length) loadCalendarEvents();
+        navigate({ view: "mail", uid: null });
+        set({ view: "mail", selectedUid: null, selectedMsg: null, threadMsgs: [] });
       },
-    },
-      icon(v.icon),
-      !collapsed ? h("span", {}, v.label) : null,
-    ));
+    }, icon("mail"), !collapsed ? h("span", {}, t("mail")) : null));
+    items.push(backNav);
   }
-  items.push(viewNav);
 
   // Folder nav (mail view only)
   if (S.view === "mail") {
@@ -2165,63 +2031,65 @@ function renderSidebar() {
   // Footer spacer
   items.push(h("div", { className: "flex-1" }));
 
-  // Footer
-  const footer = h("div", { className: "border-t border-line p-2 space-y-1" });
-  // Language switcher
-  if (!collapsed) {
-    const langGroup = h("div", { className: "flex items-center gap-1 px-2" });
-    langGroup.appendChild(h("button", {
-      className: "login-lang-btn",
-      onclick() { setLang("vi"); },
-    }, h("img", { src: "/brand/vietnam.png", alt: "Tiáº¿ng Viá»‡t", className: "login-flag-img" })));
-    langGroup.appendChild(h("button", {
-      className: "login-lang-btn",
-      onclick() { setLang("en"); },
-    }, h("img", { src: "/brand/united-states.png", alt: "English", className: "login-flag-img" })));
-    footer.appendChild(langGroup);
-  } else {
-    footer.appendChild(h("button", {
-      className: "login-lang-btn",
-      title: "Tiáº¿ng Viá»‡t",
-      onclick() { setLang("vi"); },
-    }, h("img", { src: "/brand/vietnam.png", alt: "Tiáº¿ng Viá»‡t", className: "login-flag-img" })));
-    footer.appendChild(h("button", {
-      className: "login-lang-btn",
-      title: "English",
-      onclick() { setLang("en"); },
-    }, h("img", { src: "/brand/united-states.png", alt: "English", className: "login-flag-img" })));
-  }
-  footer.appendChild(h("button", {
-    className: `folder-item w-full ${collapsed ? "justify-center" : ""} text-slate-500`,
-    onclick() {
-      const isDark = document.documentElement.classList.toggle("dark");
-      localStorage.setItem("theme", isDark ? "dark" : "light");
-      render();
-    },
-  }, h("span", { style: { fontSize: "14px" } }, document.documentElement.classList.contains("dark") ? "☀️" : "🌙"), !collapsed ? h("span", {}, document.documentElement.classList.contains("dark") ? t("lightMode") : t("darkMode")) : null));
-  footer.appendChild(h("button", {
-    className: `folder-item w-full ${collapsed ? "justify-center" : ""} text-slate-500`,
-    onclick() { set({ sigOpen: true }); },
-  }, icon("settings"), !collapsed ? h("span", {}, t("signature")) : null));
-  footer.appendChild(h("button", {
-    className: `folder-item w-full ${collapsed ? "justify-center" : ""} text-slate-500`,
-    onclick() { openSecurityModal(); },
-  }, icon("shield"), !collapsed ? h("span", {}, t("security")) : null));
-  if (typeof Notification !== "undefined" && S.notifPermission === "default") {
-    footer.appendChild(h("button", {
-      className: `folder-item w-full ${collapsed ? "justify-center" : ""} text-slate-500`,
-      title: t("enableNotifications"),
-      onclick: enableMailNotifications,
-    }, icon("bell"), !collapsed ? h("span", {}, t("enableNotifications")) : null));
-  }
+  // Footer: quota bar + one compact row of utility actions
+  const footer = h("div", { className: "border-t border-line" });
+
   if (!collapsed) {
     const quotaBar = renderQuotaBar();
     if (quotaBar) footer.appendChild(quotaBar);
   }
-  footer.appendChild(h("button", {
-    className: `folder-item w-full ${collapsed ? "justify-center" : ""} text-slate-500`,
-    onclick: doLogout,
-  }, icon("logout"), !collapsed ? h("span", { className: "truncate text-xs" }, S.account?.email || t("signOut")) : null));
+
+  const utilRow = h("div", {
+    className: `flex items-center ${collapsed ? "flex-col gap-1" : "justify-between gap-0.5"} px-1.5 py-1.5`,
+  });
+
+  const utilBtn = (title, active, onclick, ...children) => h("button", {
+    className: `p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 shrink-0 ${active ? "text-brand bg-blue-50 dark:bg-blue-900/30" : "text-slate-500"}`,
+    title,
+    onclick,
+  }, ...children);
+
+  const lang = getLang();
+  utilRow.appendChild(utilBtn(
+    lang === "vi" ? "Tiếng Việt → English" : "English → Tiếng Việt",
+    false,
+    () => setLang(lang === "vi" ? "en" : "vi"),
+    h("img", {
+      src: lang === "vi" ? "/brand/vietnam.png" : "/brand/united-states.png",
+      alt: lang,
+      className: "login-flag-img",
+    }),
+  ));
+
+  const isDark = document.documentElement.classList.contains("dark");
+  utilRow.appendChild(utilBtn(isDark ? t("lightMode") : t("darkMode"), false, () => {
+    const dark = document.documentElement.classList.toggle("dark");
+    localStorage.setItem("theme", dark ? "dark" : "light");
+    render();
+  }, h("span", { style: { fontSize: "14px", lineHeight: "18px", display: "block" } }, isDark ? "☀️" : "🌙")));
+
+  // Contacts / calendar toggle back to mail when already open, so the row stays
+  // the only navigation control needed.
+  for (const v of [{ key: "contacts", icon: "contact" }, { key: "calendar", icon: "calendar" }]) {
+    const active = S.view === v.key;
+    utilRow.appendChild(utilBtn(t(v.key), active, () => {
+      const target = active ? "mail" : v.key;
+      navigate({ view: target, uid: null });
+      set({ view: target, selectedUid: null, selectedMsg: null, threadMsgs: [] });
+      if (target === "contacts") loadContacts();
+      if (target === "calendar" && !S.calendarEvents.length) loadCalendarEvents();
+    }, icon(v.icon)));
+  }
+
+  utilRow.appendChild(utilBtn(t("signature"), false, () => set({ sigOpen: true }), icon("settings")));
+
+  if (typeof Notification !== "undefined" && S.notifPermission === "default") {
+    utilRow.appendChild(utilBtn(t("enableNotifications"), false, enableMailNotifications, icon("bell")));
+  }
+
+  utilRow.appendChild(utilBtn(S.account?.email || t("signOut"), false, doLogout, icon("logout")));
+
+  footer.appendChild(utilRow);
   items.push(footer);
 
   return h("aside", { className: `sidebar-panel ${w} h-full bg-white dark:bg-slate-800 border-r border-line flex flex-col shrink-0 desktop-only` }, ...items);
@@ -2429,10 +2297,6 @@ function renderMobileSidebar() {
     className: "folder-item w-full text-slate-500",
     onclick() { set({ sigOpen: true, mobileSidebar: false }); },
   }, icon("settings"), h("span", {}, t("signature"))));
-  footer.appendChild(h("button", {
-    className: "folder-item w-full text-slate-500",
-    onclick() { set({ mobileSidebar: false }); openSecurityModal(); },
-  }, icon("shield"), h("span", {}, t("security"))));
   if (typeof Notification !== "undefined" && S.notifPermission === "default") {
     footer.appendChild(h("button", {
       className: "folder-item w-full text-slate-500",
@@ -5147,149 +5011,6 @@ function signatureImageHtml(src, name = "") {
 
 // â”€â”€â”€ Security (2FA) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-async function openSecurityModal() {
-  set({ showSecurity: true, securityError: "", securityCode: "", securitySetup: null, securityBackupCodes: null });
-  try {
-    const data = await api("/api/settings/2fa");
-    set({ securityStatus: data });
-  } catch (err) {
-    set({ securityError: err.message });
-  }
-}
-
-function closeSecurityModal() {
-  set({ showSecurity: false, securitySetup: null, securityBackupCodes: null, securityError: "", securityCode: "" });
-}
-
-async function startTwoFactorSetup() {
-  if (S.securityBusy) return;
-  set({ securityBusy: true, securityError: "" });
-  try {
-    const data = await api("/api/settings/2fa/setup", { method: "POST" });
-    set({ securitySetup: data, securityBusy: false });
-  } catch (err) {
-    set({ securityBusy: false, securityError: err.message });
-  }
-}
-
-async function confirmTwoFactorEnable(code) {
-  if (S.securityBusy) return;
-  set({ securityBusy: true, securityError: "" });
-  try {
-    const data = await api("/api/settings/2fa/enable", { method: "POST", body: JSON.stringify({ code }) });
-    set({
-      securityBusy: false, securitySetup: null,
-      securityBackupCodes: data.backupCodes, securityStatus: { enabled: true },
-    });
-    showToast(t("twoFactorEnabledOk"), "success");
-  } catch (err) {
-    set({ securityBusy: false, securityError: err.message || t("invalidCode") });
-  }
-}
-
-async function confirmTwoFactorDisable(code) {
-  if (S.securityBusy) return;
-  set({ securityBusy: true, securityError: "" });
-  try {
-    await api("/api/settings/2fa/disable", { method: "POST", body: JSON.stringify({ code }) });
-    set({ securityBusy: false, securityStatus: { enabled: false }, securitySetup: null });
-    showToast(t("twoFactorDisabledOk"), "success");
-  } catch (err) {
-    set({ securityBusy: false, securityError: err.message || t("invalidCode") });
-  }
-}
-
-function renderSecurityModal() {
-  if (!S.showSecurity) return h("div", { style: { display: "none" } });
-
-  const overlay = h("div", {
-    className: "fixed inset-0 z-50 flex items-center justify-center bg-black/30",
-    onclick(e) { if (e.target === overlay) closeSecurityModal(); },
-  });
-  const modal = h("div", {
-    className: "bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-md mx-4 max-h-[90vh] flex flex-col",
-    onclick(e) { e.stopPropagation(); },
-  });
-  modal.appendChild(h("div", { className: "flex items-center justify-between h-14 px-4 border-b border-line shrink-0" },
-    h("h2", { className: "text-lg font-semibold" }, t("twoFactorAuth")),
-    h("button", { className: "p-1 rounded hover:bg-slate-100", innerHTML: I.x, onclick: closeSecurityModal }),
-  ));
-
-  const body = h("div", { className: "flex-1 overflow-y-auto p-4 space-y-4" });
-
-  if (S.securityError) {
-    body.appendChild(h("div", { className: "text-sm text-red-600" }, S.securityError));
-  }
-
-  if (S.securityBackupCodes) {
-    body.appendChild(h("p", { className: "text-sm text-slate-600" }, t("backupCodesWarning")));
-    const list = h("div", { className: "grid grid-cols-2 gap-2 font-mono text-sm bg-slate-50 dark:bg-slate-900 rounded-lg p-3" });
-    for (const code of S.securityBackupCodes) list.appendChild(h("div", {}, code));
-    body.appendChild(list);
-    body.appendChild(h("button", {
-      className: "px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium",
-      onclick() { set({ securityBackupCodes: null }); },
-    }, t("save")));
-  } else if (!S.securityStatus) {
-    body.appendChild(h("div", { className: "spinner mx-auto" }));
-  } else if (!S.securityStatus.enabled) {
-    body.appendChild(h("p", { className: "text-sm text-slate-600" }, t("twoFactorDesc")));
-    if (!S.securitySetup) {
-      body.appendChild(h("button", {
-        className: "px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium disabled:opacity-50",
-        disabled: S.securityBusy,
-        onclick: startTwoFactorSetup,
-      }, t("enable2FA")));
-    } else {
-      body.appendChild(h("p", { className: "text-sm text-slate-600" }, t("scanQrCode")));
-      body.appendChild(h("div", { className: "flex justify-center bg-white p-2 rounded-lg [&_svg]:w-40 [&_svg]:h-40", innerHTML: S.securitySetup.qrSvg }));
-      body.appendChild(h("div", { className: "flex items-center gap-2" },
-        h("code", { className: "text-xs bg-slate-100 dark:bg-slate-900 px-2 py-1 rounded flex-1 break-all" }, S.securitySetup.secret),
-        h("button", {
-          type: "button", className: "text-xs text-brand shrink-0",
-          onclick() {
-            navigator.clipboard?.writeText(S.securitySetup.secret)
-              .then(() => showToast(t("copied"), "success")).catch(() => {});
-          },
-        }, t("copySecret")),
-      ));
-
-      const form = h("form", { className: "space-y-2" });
-      form.appendChild(h("label", { className: "text-sm text-slate-600 block" }, t("enterCodeToConfirm")));
-      const codeInput = h("input", {
-        className: "w-full px-3 py-2 border border-line rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-300 tracking-widest",
-        inputmode: "numeric", autocomplete: "one-time-code", maxlength: "6", placeholder: "000000",
-      });
-      form.appendChild(codeInput);
-      form.appendChild(h("button", {
-        type: "submit", className: "px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium disabled:opacity-50",
-        disabled: S.securityBusy,
-      }, t("confirmAndEnable")));
-      form.addEventListener("submit", e => { e.preventDefault(); confirmTwoFactorEnable(codeInput.value.trim()); });
-      body.appendChild(form);
-    }
-  } else {
-    body.appendChild(h("p", { className: "text-sm text-green-600 font-medium" }, t("twoFactorEnabled")));
-    body.appendChild(h("p", { className: "text-sm text-slate-600" }, t("enterCodeToDisable")));
-    const form = h("form", { className: "space-y-2" });
-    const codeInput = h("input", {
-      className: "w-full px-3 py-2 border border-line rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-300 tracking-widest",
-      inputmode: "numeric", autocomplete: "one-time-code", placeholder: t("enterAuthCode"),
-    });
-    form.appendChild(codeInput);
-    form.appendChild(h("button", {
-      type: "submit", className: "px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-medium disabled:opacity-50",
-      disabled: S.securityBusy,
-    }, t("disable2FA")));
-    form.addEventListener("submit", e => { e.preventDefault(); confirmTwoFactorDisable(codeInput.value.trim()); });
-    body.appendChild(form);
-  }
-
-  modal.appendChild(body);
-  overlay.appendChild(modal);
-  return overlay;
-}
-
 function renderSignatureModal() {
   if (!S.sigOpen) return h("div", { style: { display: "none" } });
 
@@ -5921,7 +5642,7 @@ function render() {
     }
 
     if (!S.account) {
-      app.appendChild(S.pendingTwoFactor ? renderTwoFactorPrompt() : renderLogin());
+      app.appendChild(renderLogin());
     } else if (!S.ready) {
       // Logged in but still loading data
       app.appendChild(h("div", { className: "flex items-center justify-center min-h-screen bg-slate-50 dark:bg-slate-900" },
@@ -5979,7 +5700,6 @@ function render() {
 
       app.appendChild(shell);
       app.appendChild(renderSignatureModal());
-      app.appendChild(renderSecurityModal());
       app.appendChild(renderLabelManagerModal());
       app.appendChild(renderRuleManagerModal());
 
@@ -6103,11 +5823,6 @@ function onPopState() {
       if (view === "compose") openCompose();
       await bootstrap();
       return;
-    }
-    if (data.twoFactorRequired) {
-      // Reloaded mid-login (2FA code not entered yet) â€” resume the OTP prompt
-      // instead of dropping back to the plain email/password form.
-      S.pendingTwoFactor = { email: data.email, domain: data.domain || "" };
     }
   } catch {}
   // Not authenticated â€” show login

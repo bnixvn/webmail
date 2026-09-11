@@ -371,167 +371,6 @@ def _normalize_mail_rule(account: str, body: dict, existing: dict | None = None)
 
 _mail_rules_init()
 
-# ─── Two-Factor Authentication (TOTP) ────────────────────────────────────────
-
-TWOFA_DB = os.path.join(DATA_DIR, "db", "twofa.db")
-TWOFA_BACKUP_CODE_COUNT = 8
-
-
-def _twofa_init():
-    """Init per-account TOTP schema once per process."""
-    import sqlite3
-
-    with sqlite3.connect(TWOFA_DB) as db:
-        db.execute("""CREATE TABLE IF NOT EXISTS twofa (
-            account        TEXT PRIMARY KEY,
-            secret         TEXT NOT NULL,
-            enabled        INTEGER NOT NULL DEFAULT 0,
-            backup_codes   TEXT NOT NULL DEFAULT '[]',
-            created_at     TEXT NOT NULL,
-            confirmed_at   TEXT,
-            last_used_step INTEGER
-        )""")
-        try:
-            db.execute("ALTER TABLE twofa ADD COLUMN last_used_step INTEGER")
-        except sqlite3.OperationalError:
-            pass  # already present (older DB from before replay-prevention was added)
-        db.commit()
-
-
-_twofa_init()
-
-
-def _twofa_get(account: str) -> dict | None:
-    import sqlite3
-
-    with sqlite3.connect(TWOFA_DB, timeout=5) as db:
-        row = db.execute(
-            "SELECT secret, enabled, backup_codes FROM twofa WHERE account=?", (account,)
-        ).fetchone()
-    if not row:
-        return None
-    return {"secret": row[0], "enabled": bool(row[1]), "backup_codes": _json_list(row[2])}
-
-
-def _twofa_is_enabled(account: str) -> bool:
-    info = _twofa_get(account)
-    return bool(info and info["enabled"])
-
-
-def _twofa_save_secret(account: str, secret: str):
-    import sqlite3
-
-    now = datetime.utcnow().isoformat()
-    with sqlite3.connect(TWOFA_DB, timeout=5) as db:
-        db.execute(
-            """INSERT INTO twofa (account, secret, enabled, backup_codes, created_at)
-               VALUES (?, ?, 0, '[]', ?)
-               ON CONFLICT(account) DO UPDATE SET secret=excluded.secret, enabled=0, backup_codes='[]'""",
-            (account, secret, now),
-        )
-        db.commit()
-
-
-def _twofa_enable(account: str, backup_code_hashes: list[str]):
-    import sqlite3
-
-    now = datetime.utcnow().isoformat()
-    with sqlite3.connect(TWOFA_DB, timeout=5) as db:
-        db.execute(
-            "UPDATE twofa SET enabled=1, backup_codes=?, confirmed_at=? WHERE account=?",
-            (json.dumps(backup_code_hashes), now, account),
-        )
-        db.commit()
-
-
-def _twofa_disable(account: str):
-    import sqlite3
-
-    with sqlite3.connect(TWOFA_DB, timeout=5) as db:
-        db.execute("DELETE FROM twofa WHERE account=?", (account,))
-        db.commit()
-
-
-def _twofa_consume_backup_code(account: str, code: str) -> bool:
-    """Check and burn a single-use backup code. Returns True if it matched."""
-    import sqlite3
-
-    info = _twofa_get(account)
-    if not info or not code.strip():
-        return False
-    code_hash = hashlib.sha256(code.strip().lower().encode()).hexdigest()
-    remaining = [h for h in info["backup_codes"] if h != code_hash]
-    if len(remaining) == len(info["backup_codes"]):
-        return False
-    with sqlite3.connect(TWOFA_DB, timeout=5) as db:
-        db.execute("UPDATE twofa SET backup_codes=? WHERE account=?", (json.dumps(remaining), account))
-        db.commit()
-    return True
-
-
-def _twofa_claim_step(account: str, step: int) -> bool:
-    """
-    Atomically record a TOTP time-step as used. Returns False if that step (or
-    a later one) was already claimed — i.e. the code is being replayed.
-    """
-    import sqlite3
-
-    try:
-        with sqlite3.connect(TWOFA_DB, timeout=5) as db:
-            db.execute("BEGIN IMMEDIATE")
-            row = db.execute("SELECT last_used_step FROM twofa WHERE account=?", (account,)).fetchone()
-            if row and row[0] is not None and int(row[0]) >= step:
-                db.commit()
-                return False
-            db.execute("UPDATE twofa SET last_used_step=? WHERE account=?", (step, account))
-            db.commit()
-        return True
-    except sqlite3.Error:
-        return False
-
-
-def _twofa_verify_and_consume(account: str, secret: str, code: str) -> bool:
-    """
-    Verify a TOTP code (±1 step, matching the existing valid_window=1) and
-    reject it if that step has already been used — a stolen/observed code
-    cannot be replayed to log in a second time within its validity window.
-    """
-    import pyotp
-
-    code = (code or "").strip()
-    if not code:
-        return False
-    totp = pyotp.TOTP(secret)
-    now_step = int(time.time()) // totp.interval
-    for step in (now_step - 1, now_step, now_step + 1):
-        if totp.at(step * totp.interval) == code:
-            return _twofa_claim_step(account, step)
-    return False
-
-
-def _twofa_generate_backup_codes() -> tuple[list[str], list[str]]:
-    """Return (plaintext_codes_to_show_once, sha256_hashes_to_store)."""
-    codes, hashes = [], []
-    for _ in range(TWOFA_BACKUP_CODE_COUNT):
-        raw = secrets.token_hex(5)  # 10 hex chars
-        code = f"{raw[:5]}-{raw[5:]}"
-        codes.append(code)
-        hashes.append(hashlib.sha256(code.strip().lower().encode()).hexdigest())
-    return codes, hashes
-
-
-def _totp_qr_svg(otpauth_uri: str) -> str:
-    import io
-
-    import qrcode
-    import qrcode.image.svg
-
-    img = qrcode.make(otpauth_uri, image_factory=qrcode.image.svg.SvgPathImage)
-    buf = io.BytesIO()
-    img.save(buf)
-    return buf.getvalue().decode("utf-8")
-
-
 # ─── Admin Database ──────────────────────────────────────────────────────────
 
 ADMIN_DB = os.path.join(DATA_DIR, "db", "admin.db")
@@ -1482,8 +1321,6 @@ async def require_session(request: Request) -> dict:
     session = decrypt_session(token)
     if not session:
         raise HTTPException(401, "Not authenticated.")
-    if session.get("pending2fa"):
-        raise HTTPException(401, "Two-factor verification required.")
     return session
 
 
@@ -2512,23 +2349,6 @@ async def login(request: Request, body: dict):
         "smtp_port": smtp_port,
     }
 
-    if _twofa_is_enabled(email):
-        # Credentials are correct but a second factor is still required.
-        # Stash the verified session behind a short-lived "pending2fa" cookie —
-        # require_session() rejects it until /api/auth/verify-2fa clears the flag.
-        pending_session = {**session, "pending2fa": True, "remember": remember}
-        response = JSONResponse({"email": email, "domain": domain, "twoFactorRequired": True})
-        response.set_cookie(
-            key=SESSION_COOKIE,
-            value=encrypt_session(pending_session),
-            httponly=True,
-            secure=True,
-            samesite="lax",
-            path="/",
-            max_age=300,
-        )
-        return response
-
     response = JSONResponse({"email": email, "domain": domain, "mailDomain": mail_domain})
     response.set_cookie(
         key=SESSION_COOKIE,
@@ -2540,115 +2360,6 @@ async def login(request: Request, body: dict):
         max_age=SESSION_MAX_AGE if remember else None,
     )
     return response
-
-
-@app.post("/api/auth/verify-2fa")
-async def verify_2fa(request: Request, body: dict):
-    """Second step of login when the account has TOTP enabled."""
-    session = decrypt_session(request.cookies.get(SESSION_COOKIE))
-    if not session or not session.get("pending2fa"):
-        raise HTTPException(401, "No pending two-factor login.")
-
-    client_ip = _login_client_ip(request)
-    retry_after = _login_block_remaining("webmail_2fa", client_ip)
-    if retry_after:
-        _raise_login_blocked(retry_after)
-
-    email = session["email"]
-    code = str(body.get("code") or "").strip()
-    info = _twofa_get(email)
-
-    if info and info["enabled"]:
-        valid = bool(code) and (
-            _twofa_verify_and_consume(email, info["secret"], code)
-            or _twofa_consume_backup_code(email, code)
-        )
-    else:
-        # 2FA was disabled between login and this step — nothing left to check.
-        valid = True
-
-    if not valid:
-        _raise_invalid_login("webmail_2fa", client_ip, "Invalid authentication code.")
-
-    _reset_login_failures("webmail_2fa", client_ip)
-
-    remember = session.pop("remember", True)
-    session.pop("pending2fa", None)
-
-    response = JSONResponse({"email": email, "domain": email.split("@")[1]})
-    response.set_cookie(
-        key=SESSION_COOKIE,
-        value=encrypt_session(session),
-        httponly=True,
-        secure=True,
-        samesite="lax",
-        path="/",
-        max_age=SESSION_MAX_AGE if remember else None,
-    )
-    return response
-
-
-@app.get("/api/settings/2fa")
-async def get_2fa_status(request: Request):
-    session = await require_session(request)
-    return JSONResponse({"enabled": _twofa_is_enabled(session["email"])})
-
-
-@app.post("/api/settings/2fa/setup")
-async def setup_2fa(request: Request):
-    session = await require_session(request)
-    email = session["email"]
-    if _twofa_is_enabled(email):
-        raise HTTPException(400, "Two-factor authentication is already enabled.")
-
-    import pyotp
-    secret = pyotp.random_base32()
-    _twofa_save_secret(email, secret)
-    otpauth_uri = pyotp.TOTP(secret).provisioning_uri(name=email, issuer_name="BNIX Webmail")
-    return JSONResponse({"secret": secret, "otpauthUri": otpauth_uri, "qrSvg": _totp_qr_svg(otpauth_uri)})
-
-
-@app.post("/api/settings/2fa/enable")
-async def enable_2fa(request: Request, body: dict):
-    session = await require_session(request)
-    email = session["email"]
-    code = str(body.get("code") or "").strip()
-
-    info = _twofa_get(email)
-    if not info:
-        raise HTTPException(400, "Start setup first.")
-    if info["enabled"]:
-        raise HTTPException(400, "Two-factor authentication is already enabled.")
-
-    import pyotp
-    if not code or not pyotp.TOTP(info["secret"]).verify(code, valid_window=1):
-        raise HTTPException(400, "Invalid code.")
-
-    codes, hashes = _twofa_generate_backup_codes()
-    _twofa_enable(email, hashes)
-    return JSONResponse({"ok": True, "backupCodes": codes})
-
-
-@app.post("/api/settings/2fa/disable")
-async def disable_2fa(request: Request, body: dict):
-    session = await require_session(request)
-    email = session["email"]
-    code = str(body.get("code") or "").strip()
-
-    info = _twofa_get(email)
-    if not info or not info["enabled"]:
-        raise HTTPException(400, "Two-factor authentication is not enabled.")
-
-    import pyotp
-    valid = bool(code) and (
-        pyotp.TOTP(info["secret"]).verify(code, valid_window=1)
-        or _twofa_consume_backup_code(email, code)
-    )
-    if not valid:
-        raise HTTPException(400, "Invalid code.")
-
-    _twofa_disable(email)
-    return JSONResponse({"ok": True})
 
 
 @app.post("/api/auth/logout")
@@ -2668,8 +2379,6 @@ async def me(request: Request):
     session = await _load_session(request)
     if not session:
         return {"authenticated": False}
-    if session.get("pending2fa"):
-        return {"authenticated": False, "twoFactorRequired": True, "email": session["email"]}
     return {
         "authenticated": True,
         "email": session["email"],
@@ -2699,6 +2408,39 @@ async def list_mailboxes(request: Request):
     return JSONResponse({"mailboxes": mailboxes})
 
 
+async def _mailbox_used_kb(client) -> int | None:
+    """
+    Sum the size of every selectable mailbox via STATUS (SIZE) (RFC 8438).
+    Used when the server advertises a quota limit but reports usage as 0,
+    which is what a Dovecot quota rule without usage tracking looks like.
+    """
+    try:
+        mailboxes = await _list_mailboxes_for_client(client)
+    except Exception:
+        return None
+
+    total_bytes = 0
+    measured = False
+    for mailbox in mailboxes:
+        path = mailbox.get("path") or ""
+        if not path or "\\noselect" in " ".join(mailbox.get("flags", [])).lower():
+            continue
+        try:
+            resp = await client.status(_quote_imap_folder(path), "(SIZE)")
+        except Exception:
+            continue
+        if not _imap_ok(resp):
+            continue
+        for line in _imap_lines(resp):
+            m = re.search(r"SIZE\s+(\d+)", _imap_text(line))
+            if m:
+                total_bytes += int(m.group(1))
+                measured = True
+                break
+
+    return total_bytes // 1024 if measured else None
+
+
 @app.get("/api/quota")
 async def get_quota(request: Request):
     """
@@ -2709,19 +2451,30 @@ async def get_quota(request: Request):
     session = await require_session(request)
 
     async def _do(client):
-        if not client.has_capability("QUOTA"):
+        used_kb = None
+        limit_kb = None
+
+        if client.has_capability("QUOTA"):
+            try:
+                resp = await client.getquotaroot("INBOX")
+                if _imap_ok(resp):
+                    for line in _imap_lines(resp):
+                        m = re.search(r"STORAGE\s+(\d+)\s+(\d+)", _imap_text(line))
+                        if m:
+                            used_kb, limit_kb = int(m.group(1)), int(m.group(2))
+                            break
+            except Exception:
+                pass
+
+        # A limit with no usage reported is useless in the UI, so measure it.
+        if not used_kb:
+            measured = await _mailbox_used_kb(client)
+            if measured is not None:
+                used_kb = measured
+
+        if used_kb is None and limit_kb is None:
             return None
-        try:
-            resp = await client.getquotaroot("INBOX")
-        except Exception:
-            return None
-        if not _imap_ok(resp):
-            return None
-        for line in _imap_lines(resp):
-            m = re.search(r"STORAGE\s+(\d+)\s+(\d+)", _imap_text(line))
-            if m:
-                return {"usedKb": int(m.group(1)), "limitKb": int(m.group(2))}
-        return None
+        return {"usedKb": used_kb or 0, "limitKb": limit_kb or 0}
 
     try:
         quota = await with_imap_retry(session, _do)

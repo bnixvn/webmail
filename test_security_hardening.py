@@ -428,16 +428,3 @@ class SecurityHardeningTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(calls.get("alias"), "mail.other.com")
 
-    def test_totp_replay_is_rejected(self):
-        import pyotp
-
-        secret = pyotp.random_base32()
-        main._twofa_save_secret("replay-test@example.com", secret)
-        main._twofa_enable("replay-test@example.com", [])
-        code = pyotp.TOTP(secret).now()
-        self.assertTrue(main._twofa_verify_and_consume("replay-test@example.com", secret, code))
-        self.assertFalse(main._twofa_verify_and_consume("replay-test@example.com", secret, code))
-
-
-if __name__ == "__main__":
-    unittest.main()
