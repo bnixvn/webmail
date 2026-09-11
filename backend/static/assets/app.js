@@ -192,14 +192,18 @@ const LOCALES = {
     blockedSenders: "Blocked senders", noBlockedSenders: "No blocked senders",
     unblock: "Unblock",
     // S/MIME
-    smimeVerified: "S/MIME signature verified",
-    smimeSigned: "S/MIME signed",
+    smimeVerified: (signer, issuer) =>
+      `Verified digital signature${signer ? ` from <${signer}>` : ""}.${issuer ? ` Issued by ${issuer}.` : ""}`,
+    smimeSigned: (signer) => `Digital signature${signer ? ` from <${signer}>` : ""}.`,
     smimeUnverified: "The signature could not be checked on this server.",
-    smimeSignedUntrusted: "Signed, issuer not trusted",
+    smimeSignedUntrusted: (signer, issuer) =>
+      `Digital signature${signer ? ` from <${signer}>` : ""}, issuer not trusted${issuer ? `: ${issuer}` : ""}.`,
     smimeSignedUntrustedHint: "The signature is intact, but the certificate was not issued by an authority this server trusts (it may be self-signed or from a private CA).",
-    smimeSignerMismatch: "Signed by a different address",
+    smimeSignerMismatch: (signer) =>
+      `Digital signature from <${signer || "another address"}>, which is not the sender.`,
     smimeSignerMismatchHint: "The signature is intact, but the certificate does not belong to the sender of this message.",
-    smimeInvalid: "Invalid S/MIME signature",
+    smimeInvalid: (signer) =>
+      `Invalid digital signature${signer ? ` from <${signer}>` : ""}.`,
     smimeInvalidHint: "The signature does not match the content — the message may have been altered in transit.",
     smimeEncrypted: "S/MIME encrypted",
     smimeEncryptedHint: "This message is encrypted. Reading it needs the private key, which lives in your mail client, not here.",
@@ -368,14 +372,18 @@ const LOCALES = {
     blockedSenders: "Người gửi bị chặn", noBlockedSenders: "Chưa chặn ai",
     unblock: "Bỏ chặn",
     // S/MIME
-    smimeVerified: "Đã xác minh chữ ký S/MIME",
-    smimeSigned: "Có chữ ký S/MIME",
+    smimeVerified: (signer, issuer) =>
+      `Đã xác minh chữ ký số${signer ? ` từ <${signer}>` : ""}.${issuer ? ` Cấp bởi ${issuer}.` : ""}`,
+    smimeSigned: (signer) => `Có chữ ký số${signer ? ` từ <${signer}>` : ""}.`,
     smimeUnverified: "Máy chủ không kiểm tra được chữ ký này.",
-    smimeSignedUntrusted: "Có chữ ký, nơi cấp chưa được tin cậy",
+    smimeSignedUntrusted: (signer, issuer) =>
+      `Có chữ ký số${signer ? ` từ <${signer}>` : ""}, nơi cấp chưa được tin cậy${issuer ? `: ${issuer}` : ""}.`,
     smimeSignedUntrustedHint: "Chữ ký còn nguyên vẹn, nhưng chứng chỉ không do tổ chức mà máy chủ này tin cậy cấp (có thể là chứng chỉ tự ký hoặc CA nội bộ).",
-    smimeSignerMismatch: "Chữ ký thuộc địa chỉ khác",
+    smimeSignerMismatch: (signer) =>
+      `Chữ ký số từ <${signer || "địa chỉ khác"}>, không phải người gửi thư này.`,
     smimeSignerMismatchHint: "Chữ ký còn nguyên vẹn, nhưng chứng chỉ không thuộc về người gửi thư này.",
-    smimeInvalid: "Chữ ký S/MIME không hợp lệ",
+    smimeInvalid: (signer) =>
+      `Chữ ký số không hợp lệ${signer ? ` từ <${signer}>` : ""}.`,
     smimeInvalidHint: "Chữ ký không khớp nội dung — thư có thể đã bị sửa trên đường truyền.",
     smimeEncrypted: "Thư mã hoá S/MIME",
     smimeEncryptedHint: "Thư này được mã hoá. Muốn đọc cần khoá riêng, khoá đó nằm ở ứng dụng mail của bạn chứ không phải ở đây.",
@@ -3264,20 +3272,26 @@ function smimeStatus(smime) {
     return { tone: "info", label: t("smimeCertOnly"), detail: "" };
   }
 
+  // Name the signer and the authority in the label itself — "verified" on its
+  // own says nothing about who was verified or who vouched for them.
+  const cert = smime.certificate || {};
+  const signer = (cert.emails || [])[0] || "";
+  const issuer = cert.issuerOrganization || cert.issuer || "";
+
   const v = smime.verification || {};
   if (v.checked && v.signatureValid === false) {
-    return { tone: "bad", label: t("smimeInvalid"), detail: t("smimeInvalidHint") };
+    return { tone: "bad", label: t("smimeInvalid", signer), detail: t("smimeInvalidHint") };
   }
   if (!v.checked) {
-    return { tone: "warn", label: t("smimeSigned"), detail: t("smimeUnverified") };
+    return { tone: "warn", label: t("smimeSigned", signer), detail: t("smimeUnverified") };
   }
   if (smime.signerMatchesFrom === false) {
-    return { tone: "warn", label: t("smimeSignerMismatch"), detail: t("smimeSignerMismatchHint") };
+    return { tone: "warn", label: t("smimeSignerMismatch", signer), detail: t("smimeSignerMismatchHint") };
   }
   if (!v.chainTrusted) {
-    return { tone: "warn", label: t("smimeSignedUntrusted"), detail: t("smimeSignedUntrustedHint") };
+    return { tone: "warn", label: t("smimeSignedUntrusted", signer, issuer), detail: t("smimeSignedUntrustedHint") };
   }
-  return { tone: "good", label: t("smimeVerified"), detail: "" };
+  return { tone: "good", label: t("smimeVerified", signer, issuer), detail: "" };
 }
 
 function renderSmimeBadge(msg) {

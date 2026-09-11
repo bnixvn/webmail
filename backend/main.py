@@ -1640,8 +1640,12 @@ def _describe_certificate(cert) -> dict:
         "subject": _cert_name_attr(cert.subject, NameOID.COMMON_NAME),
         "organization": _cert_name_attr(cert.subject, NameOID.ORGANIZATION_NAME),
         "emails": _cert_emails(cert),
+        # "Sectigo Limited" lives in the issuer's O; its CN is the much longer
+        # "… RSA Client Authentication and Secure Email CA", so keep both and
+        # let the UI lead with the organisation.
         "issuer": _cert_name_attr(cert.issuer, NameOID.COMMON_NAME)
                   or _cert_name_attr(cert.issuer, NameOID.ORGANIZATION_NAME),
+        "issuerOrganization": _cert_name_attr(cert.issuer, NameOID.ORGANIZATION_NAME),
         "validFrom": not_before.isoformat(),
         "validUntil": not_after.isoformat(),
         "serial": format(cert.serial_number, "x"),
