@@ -142,13 +142,22 @@ copy_source() {
     log "Running from ${SRC_DIR}; skipping source copy"
   else
     log "Copying source to ${SRC_DIR}"
-    rsync -a --delete \
-      --exclude '.git' \
-      --exclude 'node_modules' \
-      --exclude 'venv' \
-      --exclude '.venv' \
-      --exclude '__pycache__' \
-      "${SOURCE_DIR}/" "${SRC_DIR}/"
+    local rsync_args=(-a --delete
+      --exclude 'node_modules'
+      --exclude 'venv'
+      --exclude '.venv'
+      --exclude '__pycache__')
+
+    # Copy .git along with the files when the source is a checkout. Excluding it
+    # used to leave SRC_DIR with new files on top of an old .git, so a later
+    # "git pull" reported every updated file as a local modification and
+    # refused to merge. Without a source checkout, keep (and protect from
+    # --delete) whatever is already in SRC_DIR.
+    if [ ! -d "${SOURCE_DIR}/.git" ]; then
+      rsync_args+=(--exclude '.git')
+    fi
+
+    rsync "${rsync_args[@]}" "${SOURCE_DIR}/" "${SRC_DIR}/"
   fi
 
   chown -R "${APP_USER}:${APP_USER}" "${DATA_DIR}"

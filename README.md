@@ -221,11 +221,17 @@ sudo git pull
 sudo systemctl restart bnix-webmail
 ```
 
-If an older install left the checkout owned by the service user, `git pull`
-fails with *detected dubious ownership*. Hand it back to root once:
+Two things an older installer left behind can block that pull, both one-time fixes:
 
 ```bash
+# "detected dubious ownership" — the checkout was chowned to the service user
 sudo chown -R root:root /opt/bnix-webmail/src/.git
+
+# "local changes would be overwritten" — files were copied in over a stale .git,
+# so every updated file looks locally modified. Back up, then resync:
+sudo tar czf /root/bnix-src-backup-$(date +%F).tar.gz -C /opt/bnix-webmail src
+cd /opt/bnix-webmail/src
+sudo git fetch origin && sudo git reset --hard origin/main && sudo git clean -fd
 ```
 
 ## License
