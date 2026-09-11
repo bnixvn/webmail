@@ -3396,8 +3396,10 @@ async def get_avatar(request: Request):
     if not email or "@" not in email:
         raise HTTPException(400, "Invalid email.")
 
+    # d=404 so Gravatar answers 404 instead of inventing an identicon for
+    # addresses with no real avatar — the client then keeps its initials badge.
     gravatar_hash = hashlib.md5(email.encode()).hexdigest()
-    gravatar_url = f"https://www.gravatar.com/avatar/{gravatar_hash}?s=128&d=identicon"
+    gravatar_url = f"https://www.gravatar.com/avatar/{gravatar_hash}?s=128&d=404"
 
     # Try BIMI
     domain = email.split("@")[1].lower()

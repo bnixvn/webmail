@@ -1149,29 +1149,33 @@ async function getAvatarSources(email) {
   return promise;
 }
 
+// Avatar URLs that 404'd once (the common case: no Gravatar for that address).
+// The whole DOM is rebuilt on every render, so without this the same dead URL
+// would be requested again for every repaint.
+const failedAvatarUrls = new Set();
+
 function avatarBadge(size, email, sources) {
   const el = h("div", { className: "avatar-badge", style: { width: size + "px", height: size + "px", fontSize: (size * 0.38) + "px", background: "#a3e635" } });
   el.textContent = initialsOf(email);
+
+  // Only shows a picture when there really is one — otherwise the initials stay.
+  function showImage(src) {
+    if (!src || failedAvatarUrls.has(src)) return;
+    const img = document.createElement("img");
+    img.alt = "";
+    img.onload = () => { el.textContent = ""; el.appendChild(img); };
+    img.onerror = () => { failedAvatarUrls.add(src); img.remove(); };
+    img.src = src;
+  }
 
   function applySources(sources) {
     // vCard PHOTO takes priority over BIMI/Gravatar
     const contact = getContactByEmail(email);
     if (contact?.photo) {
-      const img = document.createElement("img");
-      img.src = contact.photo;
-      img.alt = "";
-      img.onload = () => { el.textContent = ""; el.appendChild(img); };
-      img.onerror = () => { img.remove(); };
+      showImage(contact.photo);
       return;
     }
-    const src = sources.bimiUrl || sources.gravatarUrl;
-    if (src) {
-      const img = document.createElement("img");
-      img.src = src;
-      img.alt = "";
-      img.onload = () => { el.textContent = ""; el.appendChild(img); };
-      img.onerror = () => { img.remove(); };
-    }
+    showImage(sources.bimiUrl || sources.gravatarUrl);
   }
 
   if (sources) {
