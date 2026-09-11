@@ -1636,10 +1636,25 @@ def _describe_certificate(cert) -> dict:
 
     not_before, not_after = _cert_validity(cert)
     now = datetime.now(not_before.tzinfo) if not_before.tzinfo else datetime.utcnow()
+    emails = _cert_emails(cert)
+
+    # Personal email certificates often carry no common name at all — Sectigo's
+    # "Public Email Protection" ones put nothing but emailAddress in the subject —
+    # so fall back through the other name attributes before giving up.
+    given = _cert_name_attr(cert.subject, NameOID.GIVEN_NAME)
+    surname = _cert_name_attr(cert.subject, NameOID.SURNAME)
+    subject = (
+        _cert_name_attr(cert.subject, NameOID.COMMON_NAME)
+        or " ".join(p for p in (given, surname) if p)
+        or _cert_name_attr(cert.subject, NameOID.PSEUDONYM)
+        or _cert_name_attr(cert.subject, NameOID.ORGANIZATION_NAME)
+        or (emails[0] if emails else "")
+    )
+
     return {
-        "subject": _cert_name_attr(cert.subject, NameOID.COMMON_NAME),
+        "subject": subject,
         "organization": _cert_name_attr(cert.subject, NameOID.ORGANIZATION_NAME),
-        "emails": _cert_emails(cert),
+        "emails": emails,
         # "Sectigo Limited" lives in the issuer's O; its CN is the much longer
         # "… RSA Client Authentication and Secure Email CA", so keep both and
         # let the UI lead with the organisation.

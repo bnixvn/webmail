@@ -3339,13 +3339,17 @@ function renderSmimeBadge(msg) {
   }
 
   if (open && cert) {
+    const emails = (cert.emails || []).join(", ");
+    // A certificate whose subject is only an email address would otherwise
+    // repeat it on two rows; drop anything empty or duplicated instead of
+    // printing a dash.
     const rows = [
-      [t("smimeSubject"), cert.subject || "—"],
-      [t("smimeEmail"), (cert.emails || []).join(", ") || "—"],
-      [t("smimeIssuer"), cert.issuer || "—"],
-      [t("smimeValidity"), `${fullDate(cert.validFrom)} → ${fullDate(cert.validUntil)}`],
-      [t("smimeSerial"), cert.serial || "—"],
-    ];
+      [t("smimeSubject"), cert.subject === emails ? "" : cert.subject],
+      [t("smimeEmail"), emails],
+      [t("smimeIssuer"), cert.issuer],
+      [t("smimeValidity"), cert.validFrom ? `${fullDate(cert.validFrom)} → ${fullDate(cert.validUntil)}` : ""],
+      [t("smimeSerial"), cert.serial],
+    ].filter(([, value]) => value);
     const table = h("div", { className: "mt-2 p-2.5 rounded-lg border border-line bg-slate-50 dark:bg-slate-900/40 text-[11px] space-y-1" });
     for (const [label, value] of rows) {
       table.appendChild(h("div", { className: "flex gap-2" },

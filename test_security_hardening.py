@@ -480,6 +480,42 @@ class SecurityHardeningTests(unittest.TestCase):
         self.assertIn("data-blocked-src", main._sanitize_html(html))
         self.assertNotIn("data-blocked-src", main._sanitize_html(html, show_images=True))
 
+    def test_certificate_subject_falls_back_when_there_is_no_common_name(self):
+        """Sectigo's email certificates carry only emailAddress in the subject."""
+        import datetime
+        from cryptography import x509
+        from cryptography.x509.oid import NameOID
+        from cryptography.hazmat.primitives import hashes
+        from cryptography.hazmat.primitives.asymmetric import rsa
+
+        key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        issuer = x509.Name([x509.NameAttribute(NameOID.ORGANIZATION_NAME, "Sectigo Limited")])
+        now = datetime.datetime.now(datetime.timezone.utc)
+
+        def build(subject):
+            return (
+                x509.CertificateBuilder()
+                .subject_name(subject)
+                .issuer_name(issuer)
+                .public_key(key.public_key())
+                .serial_number(x509.random_serial_number())
+                .not_valid_before(now)
+                .not_valid_after(now + datetime.timedelta(days=365))
+                .add_extension(
+                    x509.SubjectAlternativeName([x509.RFC822Name("hotro@bnix.vn")]), critical=False
+                )
+                .sign(key, hashes.SHA256())
+            )
+
+        only_email = build(x509.Name([x509.NameAttribute(NameOID.EMAIL_ADDRESS, "hotro@bnix.vn")]))
+        self.assertEqual(main._describe_certificate(only_email)["subject"], "hotro@bnix.vn")
+
+        empty_subject = build(x509.Name([]))
+        self.assertEqual(main._describe_certificate(empty_subject)["subject"], "hotro@bnix.vn")
+
+        named = build(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "BNIX Support")]))
+        self.assertEqual(main._describe_certificate(named)["subject"], "BNIX Support")
+
     def test_ssrf_guard_rejects_private_and_non_http_urls(self):
         for url in (
             "http://127.0.0.1/x",
