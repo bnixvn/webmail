@@ -2467,14 +2467,15 @@ async def get_quota(request: Request):
                 pass
 
         # A limit with no usage reported is useless in the UI, so measure it.
+        # usedKb stays None when usage genuinely can't be determined, which the
+        # client treats differently from a measured zero: reporting "0MB / 1GB"
+        # for an account that simply doesn't track usage is worse than nothing.
         if not used_kb:
-            measured = await _mailbox_used_kb(client)
-            if measured is not None:
-                used_kb = measured
+            used_kb = await _mailbox_used_kb(client)
 
-        if used_kb is None and limit_kb is None:
+        if used_kb is None and not limit_kb:
             return None
-        return {"usedKb": used_kb or 0, "limitKb": limit_kb or 0}
+        return {"usedKb": used_kb, "limitKb": limit_kb or 0}
 
     try:
         quota = await with_imap_retry(session, _do)

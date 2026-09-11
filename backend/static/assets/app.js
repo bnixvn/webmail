@@ -1799,17 +1799,21 @@ async function doLogout() {
 // â”€â”€â”€ Sidebar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function formatKb(kb) {
+  if (kb < 1024) return `${Math.round(kb)}KB`;
   const mb = kb / 1024;
   if (mb >= 1024) return `${(mb / 1024).toFixed(1)}GB`;
-  return `${Math.round(mb)}MB`;
+  return `${mb < 10 ? mb.toFixed(1) : Math.round(mb)}MB`;
 }
 
 // Best-effort storage bar — S.quota is null whenever the mail server doesn't
 // expose the IMAP QUOTA extension, in which case this renders nothing.
 function renderQuotaBar() {
   if (!S.quota) return null;
-  const usedKb = S.quota.usedKb || 0;
+  const usedKb = S.quota.usedKb;
   const limitKb = S.quota.limitKb || 0;
+  // Usage unknown (server reports neither quota usage nor STATUS SIZE) — a bar
+  // stuck at 0% would just be wrong, so show nothing at all.
+  if (usedKb === null || usedKb === undefined) return null;
   if (!usedKb && !limitKb) return null;
 
   // Without a server-side limit there is no ratio to draw — just show usage.
