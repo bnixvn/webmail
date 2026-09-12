@@ -3035,7 +3035,9 @@ function renderEmailHtmlWithImageGuard(msg) {
   // The frame keeps the mail's natural width and is scaled down visually, so
   // the sizer carries the scaled-down size that page layout actually sees.
   const box = h("div", { className: "email-frame-box" });
-  const sizer = h("div", { className: "email-frame-sizer" });
+  // The frame is positioned by the sizer, so until the first measurement the
+  // sizer would have no height of its own. Overwritten by fitHeight.
+  const sizer = h("div", { className: "email-frame-sizer", style: { height: "120px" } });
 
   const frame = h("iframe", {
     className: "email-frame border-0 block",
@@ -3083,7 +3085,13 @@ function renderEmailHtmlWithImageGuard(msg) {
       sizer.style.width = `${Math.ceil(natural * scale)}px`;
       sizer.style.height = `${Math.ceil(height * scale)}px`;
     } catch {
-      frame.style.height = "480px"; // cross-origin fallback, should not happen
+      // Cross-origin fallback, should not happen. The frame is positioned by
+      // the sizer, so the sizer has to be given a size too or nothing shows.
+      frame.style.width = "";
+      frame.style.transform = "";
+      frame.style.height = "480px";
+      sizer.style.width = "";
+      sizer.style.height = "480px";
     }
   }
 
@@ -3098,18 +3106,10 @@ function renderEmailHtmlWithImageGuard(msg) {
     setTimeout(fitHeight, 300);
   });
 
-  // Rotating the phone changes the available width; re-fit until the frame goes
-  // away with the next render.
-  let resizeTimer = null;
-  function onResize() {
-    if (!frame.isConnected) {
-      window.removeEventListener("resize", onResize);
-      return;
-    }
-    clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(fitHeight, 120);
-  }
-  window.addEventListener("resize", onResize);
+  // No resize listener here on purpose: the global one at the bottom of this
+  // file re-renders on any width change, which rebuilds this frame and re-runs
+  // fitHeight from its load handler. A per-frame listener would leak one
+  // detached iframe per render instead (render() rebuilds the whole tree).
 
   if (msg.imagesBlocked) {
     const banner = h("div", {
@@ -3152,6 +3152,9 @@ function emailFrameDocument(html) {
     + `html,body{margin:0;padding:0;background:#fff;color:#1e293b;`
     + `font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;font-size:14px;line-height:1.5;}`
     + `img{max-width:100%;height:auto;}`
+    // A single unbreakable token (a long URL in a plain reply) would otherwise
+    // set the width of the whole message and shrink all of its text with it.
+    + `body{overflow-wrap:break-word;}`
     // No max-width on tables: squeezing a 600px newsletter into a phone breaks
     // the layout the sender designed. The frame is scaled to fit instead.
     + `</style></head><body>${html || ""}</body></html>`;

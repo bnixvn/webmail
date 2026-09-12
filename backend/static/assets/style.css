@@ -53,12 +53,12 @@ input, textarea, [contenteditable] {
 .email-frame-sizer {
   position: relative;
   overflow: hidden;
-  min-height: 120px; /* before the first measurement the frame is out of flow */
 }
 .email-frame-sizer > .email-frame {
   position: absolute;
   top: 0;
   left: 0;
+  width: 100%; /* until the first measurement gives it a real width */
 }
 
 /* Compose editor */
@@ -355,9 +355,10 @@ input, textarea, [contenteditable] {
 /* Responsive helpers */
 @media (max-width: 768px) {
   .desktop-only { display: none !important; }
-  /* iOS zooms the page in when a focused field is under 16px. Pinch-zoom is
-     allowed (see index.html), so keep the auto-zoom from firing instead. */
-  input, textarea, select, [contenteditable="true"] { font-size: 16px; }
+  /* iOS zooms the page in when a focused control is under 16px, and nothing
+     zooms it back out. Inputs are already covered above; selects are not, and
+     some carry Tailwind's text-sm, so this needs to outrank it. */
+  select { font-size: 16px !important; }
 }
 @media (min-width: 769px) {
   .mobile-only { display: none !important; }
