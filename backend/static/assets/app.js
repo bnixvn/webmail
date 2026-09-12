@@ -1200,7 +1200,7 @@ async function getAvatarSources(email) {
 
   const promise = api(`/api/avatar?email=${encodeURIComponent(key)}`)
     .then(data => { avatarCache.set(key, data); return data; })
-    .catch(() => ({ bimiUrl: null, gravatarUrl: null }));
+    .catch(() => ({ url: null }));
   avatarPending.set(key, promise);
   return promise;
 }
@@ -1231,7 +1231,8 @@ function avatarBadge(size, email, sources) {
       showImage(contact.photo);
       return;
     }
-    showImage(sources.bimiUrl || sources.gravatarUrl);
+    // Same-origin proxy URL: the browser never contacts the sender's server.
+    showImage(sources.url);
   }
 
   if (sources) {
@@ -1525,7 +1526,10 @@ function showToast(msg, type = "success", duration = 3000) {
   toast.id = "app-toast";
   toast.className = `toast fixed bottom-5 left-1/2 -translate-x-1/2 z-[9999] flex items-center gap-2 px-4 py-2.5 rounded-lg text-white text-sm font-medium shadow-lg ${colors[type] || colors.success}`;
   toast.style.cssText = "animation: fadeIn 0.25s ease, fadeOut 0.3s ease forwards; animation-delay: 0s, " + (duration / 1000 - 0.3) + "s;";
-  toast.innerHTML = (icons[type] || icons.success) + `<span>${msg}</span>`;
+  // Icon markup is ours; the message is not (server error details can carry
+  // text from a message), so it goes in as text, never as HTML.
+  toast.innerHTML = icons[type] || icons.success;
+  toast.appendChild(h("span", {}, String(msg ?? "")));
   document.body.appendChild(toast);
   setTimeout(() => toast.remove(), duration);
 }
@@ -4447,7 +4451,11 @@ function renderComposePage() {
     contenteditable: "true",
     "data-placeholder": "Write your message...",
   });
-  if (S.compose.html) editor.innerHTML = S.compose.html;
+  // Editing a draft loads that message's HTML into the page itself, outside the
+  // sandboxed reading frame — and a message can reach Drafts without the user
+  // writing it (a mail rule can move one there). Run it through the allowlist
+  // sanitiser rather than trusting the reader-side sanitiser's output here.
+  if (S.compose.html) editor.innerHTML = sanitizeSignatureHtml(S.compose.html);
   else if (S.compose.text) editor.innerHTML = textToHtml(S.compose.text);
   editor.addEventListener("input", () => { S.compose.html = editor.innerHTML; });
   preventMobileScroll(editor);

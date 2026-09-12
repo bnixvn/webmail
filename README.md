@@ -14,7 +14,7 @@ Self-hosted webmail client built with Python FastAPI. Supports IMAP/SMTP email, 
 - 📅 Calendar — CalDAV events with monthly grid view
 - 👥 Contacts — CardDAV with search and CRUD
 - ✍️ Signature — HTML editor with per-account settings
-- 🔒 Security — AES-256-GCM session encryption, HttpOnly cookies, CSP/HSTS headers, remote-image blocking
+- 🔒 Security — AES-256-GCM session encryption, HttpOnly cookies, CSP/HSTS headers, remote-image blocking, attachments served non-renderable, avatars proxied server-side, PBKDF2 admin passwords
 - 🪪 S/MIME — recognises signed and encrypted mail, shows the signer's certificate, and verifies the signature with openssl when available
 - 📱 Responsive — Mobile-first design with Tailwind CSS
 
@@ -205,7 +205,8 @@ webmail/
 | POST | `/api/contacts` | Create contact |
 | PUT | `/api/contacts/{uid}` | Update contact |
 | DELETE | `/api/contacts/{uid}` | Delete contact |
-| GET | `/api/avatar` | Get avatar (BIMI/Gravatar) |
+| GET | `/api/avatar` | Whether a sender has an avatar — returns a same-origin URL, never a third-party one |
+| GET | `/api/avatar/image` | The avatar bytes, fetched server-side so the reader's browser never contacts the sender |
 | GET | `/api/settings/signature` | Get signature |
 | PUT | `/api/settings/signature` | Update signature |
 

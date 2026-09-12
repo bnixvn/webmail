@@ -220,11 +220,22 @@ provision_admin() {
   admin_status="$("${VENV_DIR}/bin/python" - "${admin_db}" "${admin_user}" "${admin_password}" <<'PY'
 import datetime
 import hashlib
+import secrets
 import sqlite3
 import sys
 
 db_path, username, password = sys.argv[1:4]
 now = datetime.datetime.utcnow().isoformat()
+
+
+def hash_password(raw: str) -> str:
+    # Must match _admin_hash_password in backend/main.py.
+    iterations = 600_000
+    salt = secrets.token_bytes(16)
+    digest = hashlib.pbkdf2_hmac("sha256", raw.encode(), salt, iterations)
+    return f"pbkdf2_sha256${iterations}${salt.hex()}${digest.hex()}"
+
+
 with sqlite3.connect(db_path) as db:
     db.execute(
         """CREATE TABLE IF NOT EXISTS admin_users (
@@ -238,7 +249,7 @@ with sqlite3.connect(db_path) as db:
     if db.execute("SELECT COUNT(*) FROM admin_users").fetchone()[0] == 0:
         db.execute(
             "INSERT INTO admin_users (username, password, created_at, updated_at) VALUES (?,?,?,?)",
-            (username, hashlib.sha256(password.encode()).hexdigest(), now, now),
+            (username, hash_password(password), now, now),
         )
         db.commit()
         print("created")

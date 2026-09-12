@@ -2,7 +2,7 @@
 // Strategy: network-first for everything, cache is a fallback for when the
 // network is unreachable. Never intercepts /api/* — mail/session data must
 // always come from the network, never a stale cache.
-const CACHE_VERSION = "bnix-webmail-v13";
+const CACHE_VERSION = "bnix-webmail-v14";
 
 const APP_SHELL = [
   "/",

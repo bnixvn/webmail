@@ -593,3 +593,159 @@ class SecurityHardeningTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(calls.get("alias"), "mail.other.com")
 
+
+    # ── Attachments must not be renderable as HTML/SVG on our own origin ──────
+
+    def test_html_attachment_is_forced_to_a_download(self):
+        # An attacker picks the Content-Type on anything they mail you. Served
+        # inline as text/html it would run on the webmail origin, and
+        # script-src 'self' would happily load a second attachment as its
+        # script, so the type has to be overridden, not just sniffed.
+        for declared in ("text/html", "text/html; charset=utf-8", "image/svg+xml",
+                         "application/xhtml+xml", "text/xml", "application/javascript"):
+            with self.subTest(declared=declared):
+                media, disposition = main._safe_attachment_headers(declared, download=False)
+                self.assertEqual(media, "application/octet-stream")
+                self.assertEqual(disposition, "attachment")
+
+    def test_viewable_attachments_still_render_inline(self):
+        for declared in ("image/png", "image/jpeg", "application/pdf", "text/plain"):
+            with self.subTest(declared=declared):
+                media, disposition = main._safe_attachment_headers(declared, download=False)
+                self.assertEqual(media, declared)
+                self.assertEqual(disposition, "inline")
+
+    def test_download_flag_never_renders_inline(self):
+        media, disposition = main._safe_attachment_headers("image/png", download=True)
+        self.assertEqual(media, "image/png")
+        self.assertEqual(disposition, "attachment")
+
+    # ── S3 objects belong to one account ─────────────────────────────────────
+
+    def test_s3_key_outside_the_account_namespace_is_rejected(self):
+        cfg = {"prefix": "mail"}
+        own = main._s3_build_key("me@bnix.vn", "mail", "report.pdf")
+        self.assertEqual(main._s3_require_own_key("me@bnix.vn", cfg, own), own)
+
+        for foreign in (
+            "mail/someone_else_bnix.vn/abc123/secret.pdf",
+            "mail/backups/db.sql",
+            "me_bnix.vn/abc123/no-prefix.pdf",   # right account, wrong prefix
+            own.replace("mail/me_bnix.vn/", "mail/me_bnix.vn_evil/"),
+            "",
+        ):
+            with self.subTest(key=foreign):
+                with self.assertRaises(main.HTTPException) as ctx:
+                    main._s3_require_own_key("me@bnix.vn", cfg, foreign)
+                self.assertEqual(ctx.exception.status_code, 403)
+
+    def test_s3_owner_prefix_is_not_a_bare_substring_match(self):
+        # "me@bnix.vn" must not unlock "meredith@bnix.vn"'s objects.
+        cfg = {"prefix": ""}
+        victim = main._s3_build_key("meredith@bnix.vn", "", "payslip.pdf")
+        with self.assertRaises(main.HTTPException):
+            main._s3_require_own_key("me@bnix.vn", cfg, victim)
+
+    # ── Admin password storage ───────────────────────────────────────────────
+
+    def test_admin_password_hash_is_salted_and_verifiable(self):
+        stored = main._admin_hash_password("correct horse battery")
+        self.assertTrue(stored.startswith("pbkdf2_sha256$"))
+        self.assertNotIn("correct horse battery", stored)
+        self.assertTrue(main._admin_verify_password("correct horse battery", stored))
+        self.assertFalse(main._admin_verify_password("wrong", stored))
+        # Same password, different salt each time.
+        self.assertNotEqual(stored, main._admin_hash_password("correct horse battery"))
+        self.assertFalse(main._admin_is_legacy_hash(stored))
+
+    def test_legacy_sha256_admin_hash_still_verifies(self):
+        import hashlib
+        legacy = hashlib.sha256(b"old-password").hexdigest()
+        self.assertTrue(main._admin_verify_password("old-password", legacy))
+        self.assertFalse(main._admin_verify_password("nope", legacy))
+        self.assertTrue(main._admin_is_legacy_hash(legacy))
+
+    # ── Sanitiser: remote-content vectors that are not <img> ──────────────────
+
+    def test_sanitizer_drops_base_link_and_meta_refresh(self):
+        html = (
+            '<base href="https://evil.example/">'
+            '<link rel="stylesheet" href="https://evil.example/track.css">'
+            '<meta http-equiv="refresh" content="0;url=https://evil.example/">'
+            "<p>Hello</p>"
+        )
+        cleaned = main._sanitize_html(html)
+        self.assertNotIn("<base", cleaned.lower())
+        self.assertNotIn("<link", cleaned.lower())
+        self.assertNotIn("refresh", cleaned.lower())
+        self.assertIn("<p>Hello</p>", cleaned)
+
+    def test_sanitizer_drops_css_import(self):
+        html = "<style>@import url('https://evil.example/t.css'); @import \"https://evil.example/u.css\"; p{color:red}</style>"
+        cleaned = main._sanitize_html(html)
+        self.assertNotIn("evil.example", cleaned)
+        self.assertIn("color:red", cleaned)
+
+    # ── Mail headers ─────────────────────────────────────────────────────────
+
+    def test_header_values_cannot_carry_newlines(self):
+        message, to, _cc, _bcc = main._build_mime_message(
+            "me@bnix.vn",
+            {
+                "to": "friend@example.com",
+                "subject": "Hi\r\nBcc: victim@example.com",
+                "replyTo": "a@b.com\nX-Injected: yes",
+                "text": "body",
+            },
+        )
+        self.assertEqual(to, ["friend@example.com"])
+        # The crafted text survives as part of the header's *value*; what must
+        # not happen is it becoming a header of its own.
+        self.assertIsNone(message["Bcc"])
+        self.assertIsNone(message["X-Injected"])
+        header_lines = [
+            line for line in message.as_string().split("\n\n", 1)[0].splitlines()
+            if line[:1] not in (" ", "\t")
+        ]
+        for line in header_lines:
+            self.assertFalse(line.lower().startswith(("bcc:", "x-injected:")), line)
+
+    def test_attachment_response_headers_are_hardened_end_to_end(self):
+        from fastapi.testclient import TestClient
+
+        async def _fake_source(session, folder, uid):
+            return {}, b"raw"
+
+        async def _fake_attachment(source, index):
+            return {
+                "filename": "invoice.html",
+                "contentType": "text/html",
+                "payload": b"<script>alert(1)</script>",
+            }
+
+        with patch.object(main, "require_session", new=AsyncMock(return_value={"email": "me@bnix.vn"})):
+            with patch.object(main, "_fetch_message_source", new=_fake_source):
+                with patch.object(main, "_async_get_attachment", new=_fake_attachment):
+                    with TestClient(main.app) as client:
+                        resp = client.get("/api/messages/1/attachments/0?folder=INBOX")
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.headers["content-type"], "application/octet-stream")
+        self.assertTrue(resp.headers["content-disposition"].startswith("attachment;"))
+        self.assertEqual(resp.headers["x-content-type-options"], "nosniff")
+        # The route's own locked-down policy must survive the global middleware.
+        self.assertIn("default-src 'none'", resp.headers["content-security-policy"])
+        self.assertIn("sandbox", resp.headers["content-security-policy"])
+        self.assertNotIn("script-src 'self'", resp.headers["content-security-policy"])
+
+    def test_no_cors_headers_are_returned_to_a_foreign_origin(self):
+        from fastapi.testclient import TestClient
+
+        with TestClient(main.app) as client:
+            resp = client.get(
+                "/health",
+                headers={"Origin": "https://evil.example", "Cookie": "webmail_session=abc"},
+            )
+        self.assertEqual(resp.status_code, 200)
+        self.assertIsNone(resp.headers.get("access-control-allow-origin"))
+        self.assertIsNone(resp.headers.get("access-control-allow-credentials"))

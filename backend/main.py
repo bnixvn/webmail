@@ -6,6 +6,7 @@ import asyncio
 import base64
 import binascii
 import hashlib
+import hmac
 import html as html_lib
 import ipaddress
 import json
@@ -35,7 +36,6 @@ import aiosmtplib
 import httpx
 import uvicorn
 from fastapi import FastAPI, File, HTTPException, Request, Response, UploadFile
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, EmailStr, Field
@@ -758,6 +758,53 @@ def _admin_user_count() -> int:
     return int(row[0] if row else 0)
 
 
+# ── Admin password hashing ────────────────────────────────────────────────────
+# Stored as "pbkdf2_sha256$<iterations>$<salt_hex>$<hash_hex>". Installs made
+# before this carry a bare unsalted SHA-256 hex digest, which a leaked admin.db
+# gives up to a rainbow table instantly; those still verify, and are rewritten
+# in the new format the next time that password is used successfully.
+_ADMIN_PBKDF2_ITERATIONS = 600_000
+
+
+def _admin_hash_password(password: str, *, salt: bytes | None = None,
+                         iterations: int = _ADMIN_PBKDF2_ITERATIONS) -> str:
+    salt = salt or secrets.token_bytes(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, iterations)
+    return f"pbkdf2_sha256${iterations}${salt.hex()}${digest.hex()}"
+
+
+def _admin_verify_password(password: str, stored: str) -> bool:
+    stored = (stored or "").strip()
+    if not stored:
+        return False
+    if stored.startswith("pbkdf2_sha256$"):
+        try:
+            _, iterations, salt_hex, digest_hex = stored.split("$", 3)
+            expected = hashlib.pbkdf2_hmac(
+                "sha256", password.encode(), bytes.fromhex(salt_hex), int(iterations)
+            )
+        except Exception:
+            return False
+        return hmac.compare_digest(expected.hex(), digest_hex)
+    # Legacy unsalted SHA-256.
+    return hmac.compare_digest(hashlib.sha256(password.encode()).hexdigest(), stored)
+
+
+def _admin_is_legacy_hash(stored: str) -> bool:
+    return not (stored or "").startswith("pbkdf2_sha256$")
+
+
+def _admin_store_password(username: str, password: str) -> None:
+    import sqlite3
+
+    with sqlite3.connect(ADMIN_DB) as db:
+        db.execute(
+            "UPDATE admin_users SET password=?, updated_at=? WHERE username=?",
+            (_admin_hash_password(password), datetime.utcnow().isoformat(), username),
+        )
+        db.commit()
+
+
 def _admin_setting_get(key: str, default: str = "") -> str:
     import sqlite3
     with sqlite3.connect(ADMIN_DB) as db:
@@ -855,16 +902,38 @@ def _s3_generate_presigned_url(cfg: dict, key: str, expiration: int = 3600) -> s
     )
 
 
-def _s3_build_key(email: str, prefix: str, filename: str) -> str:
-    """Build an S3 key for an attachment."""
+def _s3_owner_prefix(email: str, prefix: str) -> str:
+    """The key prefix every object belonging to this account lives under."""
     safe_email = re.sub(r"[^a-zA-Z0-9._-]", "_", email.lower())
-    uid = uuid.uuid4().hex[:12]
-    safe_name = re.sub(r"[^a-zA-Z0-9._()-]", "_", filename)
     parts = []
     if prefix:
         parts.append(prefix.strip("/"))
-    parts.extend([safe_email, uid, safe_name])
-    return "/".join(parts)
+    parts.append(safe_email)
+    return "/".join(parts) + "/"
+
+
+def _s3_build_key(email: str, prefix: str, filename: str) -> str:
+    """Build an S3 key for an attachment."""
+    uid = uuid.uuid4().hex[:12]
+    safe_name = re.sub(r"[^a-zA-Z0-9._()-]", "_", filename)
+    return _s3_owner_prefix(email, prefix) + f"{uid}/{safe_name}"
+
+
+def _s3_require_own_key(email: str, cfg: dict, key: str) -> str:
+    """
+    Reject an S3 key that is not in this account's own namespace.
+
+    The key arrives from the client (a download request, or an attachment
+    reference on an outgoing message), while the credentials come from the
+    server-side config — so without this check any signed-in user could read,
+    and mail out, every object in the bucket, including other accounts'
+    attachments.
+    """
+    key = (key or "").strip()
+    owner = _s3_owner_prefix(email, cfg.get("prefix", ""))
+    if not key or not key.startswith(owner) or ".." in key.split("/"):
+        raise HTTPException(403, "That attachment does not belong to this account.")
+    return key
 
 
 def _domain_alias_mail_target(alias_domain: str) -> str | None:
@@ -1320,13 +1389,12 @@ async def _smtp_login_for_session(smtp: aiosmtplib.SMTP, session: dict, email: s
 
 app = FastAPI(title="BNIX Webmail API")
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# No CORS middleware on purpose. The SPA, the admin page and the API are all
+# served from this same origin, so nothing here needs cross-origin access.
+# It used to run with allow_origins=["*"] together with allow_credentials=True,
+# which makes Starlette echo the requesting page's Origin back and say
+# credentials are allowed — i.e. any site could read this API as the logged-in
+# user. Only the SameSite=Lax cookie stood between that and account takeover.
 
 _CSP = (
     "default-src 'self'; "
@@ -1348,7 +1416,10 @@ async def _security_headers(request: Request, call_next):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
-    response.headers["Content-Security-Policy"] = _CSP
+    # Routes that serve untrusted bytes (attachments, remote avatars) set their
+    # own, stricter policy. Never widen it back to the app policy here.
+    if "content-security-policy" not in response.headers:
+        response.headers["Content-Security-Policy"] = _CSP
     # Browsers only honor HSTS on responses actually received over HTTPS,
     # so this is a no-op (and harmless) for local plain-HTTP development.
     response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
@@ -1479,6 +1550,12 @@ def _sanitize_html(html: str, show_images: bool = False) -> str:
         r"<applet[\s>][\s\S]*?</applet>",
         r"<svg[\s>][\s\S]*?</svg>",
         r"<math[\s>][\s\S]*?</math>",
+        # <base> would retarget every relative URL in the message, <link> pulls
+        # a remote stylesheet (a tracker that survives image blocking), and a
+        # <meta refresh> navigates the reading frame on its own.
+        r"<base\b[^>]*>",
+        r"<link\b[^>]*>",
+        r"<meta[^>]*http-equiv\s*=\s*[\"']?refresh[^>]*>",
     ]
     for pattern in dangerous_tags:
         out = re.sub(pattern, "", out, flags=re.IGNORECASE)
@@ -1489,6 +1566,10 @@ def _sanitize_html(html: str, show_images: bool = False) -> str:
         css = re.sub(r"expression\s*\([^)]*\)", "", css, flags=re.IGNORECASE)
         css = re.sub(r"behavior\s*:", "", css, flags=re.IGNORECASE)
         css = re.sub(r"-moz-binding\s*:", "", css, flags=re.IGNORECASE)
+        # @import pulls a remote stylesheet. The url(...) form is handled by
+        # _clean_css_url below; this catches the bare-string form, which would
+        # otherwise slip a tracker past the remote-content blocking.
+        css = re.sub(r"@import\s+(?:url\s*\()?\s*['\"][^'\"]*['\"]\s*\)?\s*;?", "", css, flags=re.IGNORECASE)
 
         def _clean_css_url(m2):
             scheme = _normalized_url_scheme(m2.group(2))
@@ -3195,7 +3276,9 @@ async def one_click_unsubscribe(request: Request, body: dict):
     _assert_public_http_url(url)
 
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
+        # No redirects: the pre-flight check above only validated this URL's
+        # host, and each hop would need re-validating to stay SSRF-safe.
+        async with httpx.AsyncClient(timeout=10, follow_redirects=False) as client:
             resp = await client.post(url, data={"List-Unsubscribe": "One-Click"})
         if resp.status_code >= 400:
             raise HTTPException(502, f"Unsubscribe request failed ({resp.status_code}).")
@@ -3205,6 +3288,33 @@ async def one_click_unsubscribe(request: Request, body: dict):
         raise HTTPException(502, "Unsubscribe request failed.")
 
     return JSONResponse({"ok": True})
+
+
+# Content types an attachment may be rendered as, in this app's own origin.
+# Everything else is served as application/octet-stream with a download
+# disposition. The type on an attachment is chosen by whoever sent the mail, so
+# without this an attacker could send "evil.html" as text/html (plus a second
+# attachment as text/javascript, which script-src 'self' would happily load)
+# and get script execution on the webmail origin — session-riding XSS.
+# Deliberately absent: text/html, image/svg+xml, anything XML — all scriptable.
+_INLINE_SAFE_ATTACHMENT_TYPES = {
+    "image/png", "image/jpeg", "image/jpg", "image/gif", "image/webp",
+    "image/bmp", "image/x-icon", "image/vnd.microsoft.icon", "image/avif",
+    "application/pdf",
+    "text/plain",
+    "audio/mpeg", "audio/ogg", "audio/wav", "audio/webm", "audio/mp4", "audio/aac",
+    "video/mp4", "video/webm", "video/ogg",
+}
+
+
+def _safe_attachment_headers(content_type: str, download: bool) -> tuple[str, str]:
+    """Return (media_type, disposition) that are safe to serve same-origin."""
+    base = (content_type or "").split(";")[0].strip().lower()
+    if base in _INLINE_SAFE_ATTACHMENT_TYPES and not download:
+        return base, "inline"
+    if base in _INLINE_SAFE_ATTACHMENT_TYPES:
+        return base, "attachment"
+    return "application/octet-stream", "attachment"
 
 
 @app.get("/api/messages/{uid}/attachments/{index}")
@@ -3222,15 +3332,18 @@ async def get_attachment(request: Request, uid: int, index: int):
         raise HTTPException(404, "Attachment not found.")
 
     filename = attachment["filename"] or f"attachment-{index + 1}"
-    disposition = "attachment" if download else "inline"
+    media_type, disposition = _safe_attachment_headers(attachment["contentType"], download)
     safe_name = quote(filename)
     headers = {
         "Content-Disposition": f"{disposition}; filename*=UTF-8''{safe_name}",
         "Cache-Control": "private, max-age=300",
+        # Second line of defence for anything that does get rendered.
+        "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+        "X-Content-Type-Options": "nosniff",
     }
     return Response(
         content=attachment["payload"],
-        media_type=attachment["contentType"] or "application/octet-stream",
+        media_type=media_type,
         headers=headers,
     )
 
@@ -3468,6 +3581,17 @@ def _parse_recipients(value: str) -> list[str]:
     return list(dict.fromkeys(e.lower() for e in emails))
 
 
+def _header_safe(value: str) -> str:
+    """
+    Strip CR/LF from a value that goes into a mail header.
+
+    Python's email policy raises ValueError on embedded newlines, so injection
+    was never possible — but that surfaced as a 500. Cleaning here keeps a
+    crafted Reply-To/References from turning into an unhandled error.
+    """
+    return re.sub(r"[\r\n]+", " ", str(value or "")).strip()
+
+
 def _build_mime_message(
     email: str, body: dict, *, require_recipients: bool = True, message_id: str | None = None
 ) -> tuple[EmailMessage, list[str], list[str], list[str]]:
@@ -3478,11 +3602,11 @@ def _build_mime_message(
     if require_recipients and not to_recipients:
         raise HTTPException(400, "At least one recipient is required.")
 
-    subject = body.get("subject", "(No subject)")
+    subject = _header_safe(body.get("subject", "(No subject)"))
     text = body.get("text", "")
     html = body.get("html")
-    from_name = body.get("fromName", "")
-    reply_to = body.get("replyTo", "")
+    from_name = _header_safe(body.get("fromName", ""))
+    reply_to = _header_safe(body.get("replyTo", ""))
 
     mime_message = EmailMessage()
     if message_id:
@@ -3500,8 +3624,8 @@ def _build_mime_message(
         mime_message["Reply-To"] = reply_to
 
     # Threading headers
-    in_reply_to = body.get("inReplyTo", "")
-    references = body.get("references", "")
+    in_reply_to = _header_safe(body.get("inReplyTo", ""))
+    references = _header_safe(body.get("references", ""))
     if in_reply_to:
         mime_message["In-Reply-To"] = in_reply_to
         mime_message["References"] = (references + " " + in_reply_to).strip() if references else in_reply_to
@@ -3522,8 +3646,13 @@ def _build_mime_message(
 
         data_bytes = None
 
-        # S3-referenced attachment (large files >= 22MB)
+        # S3-referenced attachment (large files >= 22MB). The key comes from the
+        # client, so it has to be one this account actually owns — otherwise a
+        # compose request could mail any object in the bucket to an outsider.
+        # Checked outside the try below so a rejected key fails the request
+        # instead of quietly sending the mail without its attachment.
         if s3_key and s3_cfg:
+            _s3_require_own_key(email, s3_cfg, s3_key)
             try:
                 data_bytes = _s3_download_bytes(s3_cfg, s3_key)
                 print(f"[S3] Downloaded attachment from S3: {s3_key} ({len(data_bytes)} bytes)")
@@ -3687,21 +3816,8 @@ async def _gravatar_url_if_exists(email_hash: str) -> str | None:
     return url if exists else None
 
 
-@app.get("/api/avatar")
-async def get_avatar(request: Request):
-    await require_session(request)
-    email = request.query_params.get("email", "").strip().lower()
-    if not email or "@" not in email:
-        raise HTTPException(400, "Invalid email.")
-
-    # Returns None unless a real avatar exists, so the client shows initials
-    # without ever requesting (and 404ing on) a picture that isn't there.
-    gravatar_hash = hashlib.md5(email.encode()).hexdigest()
-    gravatar_url = await _gravatar_url_if_exists(gravatar_hash)
-
-    # Try BIMI
-    domain = email.split("@")[1].lower()
-    bimi_url = None
+async def _bimi_logo_url(domain: str) -> str | None:
+    """The l= URL from a domain's BIMI record, if it publishes one."""
     try:
         import dns.resolver
         resolver = dns.resolver.Resolver()
@@ -3713,14 +3829,123 @@ async def get_avatar(request: Request):
             if m:
                 url = m.group(1).strip().strip('"')
                 if url.startswith("https://"):
-                    bimi_url = url
-                    break
+                    return url
     except Exception:
         pass
+    return None
 
-    response = JSONResponse({"bimiUrl": bimi_url, "gravatarUrl": gravatar_url})
+
+@app.get("/api/avatar")
+async def get_avatar(request: Request):
+    await require_session(request)
+    email = request.query_params.get("email", "").strip().lower()
+    if not email or "@" not in email:
+        raise HTTPException(400, "Invalid email.")
+
+    # Returns None unless a real avatar exists, so the client shows initials
+    # without ever requesting (and 404ing on) a picture that isn't there.
+    gravatar_hash = hashlib.md5(email.encode()).hexdigest()
+    has_gravatar = bool(await _gravatar_url_if_exists(gravatar_hash))
+    has_bimi = bool(await _bimi_logo_url(email.split("@")[1].lower()))
+
+    # Only a same-origin URL is handed back. The picture itself is fetched by
+    # the server in /api/avatar/image: a BIMI logo URL is published by the
+    # sender's own domain, so letting the browser load it directly would hand
+    # every sender a tracking pixel that fires from the message list — without
+    # the message even being opened, and straight past the remote-image
+    # blocking. Gravatar would likewise see the reader's IP for every sender.
+    url = None
+    if has_gravatar or has_bimi:
+        url = f"/api/avatar/image?email={quote(email)}"
+
+    response = JSONResponse({"url": url, "hasBimi": has_bimi, "hasGravatar": has_gravatar})
     response.headers["Cache-Control"] = "private, max-age=3600"
     return response
+
+
+# Avatars are small and repeat constantly across a message list, so keep the
+# bytes in memory briefly rather than re-fetching per render.
+_AVATAR_IMAGE_CACHE: dict[str, tuple[bytes, str, float]] = {}
+_AVATAR_IMAGE_CACHE_TTL = 6 * 60 * 60
+_AVATAR_IMAGE_CACHE_MAX = 300
+_AVATAR_MAX_BYTES = 512 * 1024
+_AVATAR_ALLOWED_TYPES = {
+    "image/png", "image/jpeg", "image/gif", "image/webp", "image/svg+xml",
+}
+
+
+async def _fetch_avatar_image(url: str, *, follow_redirects: bool = False) -> tuple[bytes, str] | None:
+    """
+    Fetch a remote avatar server-side, with SSRF, size and type limits.
+    Redirects are only followed for Gravatar, whose host is ours to trust; a
+    BIMI URL comes from the sender, and each hop would need re-validating.
+    """
+    try:
+        _assert_public_http_url(url)
+    except HTTPException:
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=8, follow_redirects=follow_redirects) as client:
+            resp = await client.get(url)
+        if resp.status_code != 200:
+            return None
+        content_type = (resp.headers.get("content-type") or "").split(";")[0].strip().lower()
+        if content_type not in _AVATAR_ALLOWED_TYPES:
+            return None
+        data = resp.content
+        if not data or len(data) > _AVATAR_MAX_BYTES:
+            return None
+        return data, content_type
+    except Exception:
+        return None
+
+
+@app.get("/api/avatar/image")
+async def get_avatar_image(request: Request):
+    """
+    Proxy a sender's avatar so the reader's browser never talks to the sender's
+    (or Gravatar's) server. Served with a locked-down policy because the bytes
+    come from a third party — BIMI logos are SVG, which is scriptable.
+    """
+    await require_session(request)
+    email = request.query_params.get("email", "").strip().lower()
+    if not email or "@" not in email:
+        raise HTTPException(400, "Invalid email.")
+
+    now = time.time()
+    cached = _AVATAR_IMAGE_CACHE.get(email)
+    if cached and now - cached[2] < _AVATAR_IMAGE_CACHE_TTL:
+        data, content_type = cached[0], cached[1]
+        if not data:
+            raise HTTPException(404, "No avatar.")
+    else:
+        result = None
+        bimi_url = await _bimi_logo_url(email.split("@")[1].lower())
+        if bimi_url:
+            result = await _fetch_avatar_image(bimi_url)
+        if result is None:
+            gravatar_hash = hashlib.md5(email.encode()).hexdigest()
+            gravatar_url = await _gravatar_url_if_exists(gravatar_hash)
+            if gravatar_url:
+                result = await _fetch_avatar_image(gravatar_url, follow_redirects=True)
+
+        data, content_type = result if result else (b"", "")
+        if len(_AVATAR_IMAGE_CACHE) >= _AVATAR_IMAGE_CACHE_MAX:
+            _AVATAR_IMAGE_CACHE.clear()
+        _AVATAR_IMAGE_CACHE[email] = (data, content_type, now)
+        if not data:
+            raise HTTPException(404, "No avatar.")
+
+    return Response(
+        content=data,
+        media_type=content_type,
+        headers={
+            "Cache-Control": "private, max-age=21600",
+            "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+            "X-Content-Type-Options": "nosniff",
+            "Content-Disposition": "inline",
+        },
+    )
 
 
 # ── Signature ─────────────────────────────────────────────────────────────────
@@ -4706,18 +4931,19 @@ async def admin_login(request: Request, body: dict):
     if retry_after:
         _raise_login_blocked(retry_after)
 
-    import hashlib
-    pwd_hash = hashlib.sha256(password.encode()).hexdigest()
-
     import sqlite3
     with sqlite3.connect(ADMIN_DB) as db:
         row = db.execute(
-            "SELECT id, username FROM admin_users WHERE username=? AND password=?",
-            (username, pwd_hash),
+            "SELECT id, username, password FROM admin_users WHERE username=?",
+            (username,),
         ).fetchone()
 
-    if not row:
+    if not row or not _admin_verify_password(password, row[2]):
         _raise_invalid_login("admin", client_ip, "Invalid credentials.")
+
+    # Opportunistic upgrade: the only moment the plaintext is available.
+    if _admin_is_legacy_hash(row[2]):
+        _admin_store_password(row[1], password)
 
     _reset_login_failures("admin", client_ip)
     session_data = {
@@ -4764,25 +4990,15 @@ async def admin_change_password(request: Request, body: dict):
     if len(new_password) < 6:
         raise HTTPException(400, "Password must be at least 6 characters.")
 
-    import hashlib
-    old_hash = hashlib.sha256(old_password.encode()).hexdigest()
-    new_hash = hashlib.sha256(new_password.encode()).hexdigest()
-
     import sqlite3
     with sqlite3.connect(ADMIN_DB) as db:
         row = db.execute(
-            "SELECT id FROM admin_users WHERE username=? AND password=?",
-            (admin["username"], old_hash),
+            "SELECT password FROM admin_users WHERE username=?", (admin["username"],)
         ).fetchone()
-        if not row:
-            raise HTTPException(401, "Current password is incorrect.")
-        now = datetime.utcnow().isoformat()
-        db.execute(
-            "UPDATE admin_users SET password=?, updated_at=? WHERE username=?",
-            (new_hash, now, admin["username"]),
-        )
-        db.commit()
+    if not row or not _admin_verify_password(old_password, row[0]):
+        raise HTTPException(401, "Current password is incorrect.")
 
+    _admin_store_password(admin["username"], new_password)
     return JSONResponse({"ok": True})
 
 
@@ -5086,6 +5302,7 @@ async def download_s3_attachment(request: Request, s3_key: str):
     if not cfg:
         raise HTTPException(400, "S3 storage not configured.")
 
+    s3_key = _s3_require_own_key(email, cfg, s3_key)
     try:
         url = _s3_generate_presigned_url(cfg, s3_key, expiration=3600)
     except Exception as exc:
@@ -5108,7 +5325,11 @@ _SIG_SERVE_ROOT = Path(f"{DATA_DIR}/signatures").resolve()
 
 @app.get("/signature-images/{path:path}")
 @app.get("/assets/signatures/{path:path}")
-async def serve_signature_image(path: str):
+async def serve_signature_image(request: Request, path: str):
+    # These are only ever loaded by the app itself (the URLs are same-origin
+    # relative paths), so there is no reason to serve user content to anyone
+    # who merely guesses — or is handed — the URL.
+    await require_session(request)
     target = (_SIG_SERVE_ROOT / path).resolve()
     if _SIG_SERVE_ROOT not in target.parents or not target.is_file():
         raise HTTPException(404, "Not found.")
