@@ -749,3 +749,148 @@ class SecurityHardeningTests(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertIsNone(resp.headers.get("access-control-allow-origin"))
         self.assertIsNone(resp.headers.get("access-control-allow-credentials"))
+
+    # ── SSRF: the checked address is the address we connect to ───────────────
+
+    def test_outbound_request_connects_to_the_address_it_checked(self):
+        captured = {}
+
+        class _FakeResponse:
+            status_code = 200
+            headers = {"content-type": "image/png"}
+            content = b"\x89PNG"
+
+        class _FakeClient:
+            def __init__(self, **kwargs):
+                captured["client_kwargs"] = kwargs
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            async def request(self, method, url, **kwargs):
+                captured["method"] = method
+                captured["url"] = url
+                captured["headers"] = kwargs.get("headers")
+                captured["extensions"] = kwargs.get("extensions")
+                return _FakeResponse()
+
+        def _fake_getaddrinfo(host, port, *a, **kw):
+            # First answer is public; every later one is loopback. A second
+            # resolution — the rebind — must never be the one we connect to.
+            calls = captured.setdefault("dns_calls", [])
+            calls.append(host)
+            if len(calls) == 1:
+                return [(main.socket.AF_INET, 1, 6, "", ("93.184.216.34", port))]
+            return [(main.socket.AF_INET, 1, 6, "", ("127.0.0.1", port))]
+
+        with patch.object(main.socket, "getaddrinfo", _fake_getaddrinfo):
+            with patch.object(main.httpx, "AsyncClient", _FakeClient):
+                asyncio.run(main._request_pinned("GET", "https://evil.example/logo.svg?a=1"))
+
+        # Connects to the literal address, not to a name that can change answer.
+        self.assertEqual(captured["url"], "https://93.184.216.34:443/logo.svg?a=1")
+        self.assertEqual(captured["headers"]["Host"], "evil.example")
+        # TLS still validates against the real hostname.
+        self.assertEqual(captured["extensions"]["sni_hostname"], "evil.example")
+        self.assertFalse(captured["client_kwargs"]["follow_redirects"])
+
+    def test_outbound_request_refuses_private_and_non_http_targets(self):
+        for bad in ("http://127.0.0.1/x", "http://169.254.169.254/latest/meta-data/",
+                    "http://10.0.0.5/", "ftp://example.com/x", "https:///nohost"):
+            with self.subTest(url=bad):
+                with self.assertRaises(main.HTTPException) as ctx:
+                    asyncio.run(main._request_pinned("GET", bad, timeout=2))
+                self.assertEqual(ctx.exception.status_code, 400)
+
+    def test_outbound_request_rejects_a_host_with_any_private_answer(self):
+        def _split_horizon(host, port, *a, **kw):
+            return [
+                (main.socket.AF_INET, 1, 6, "", ("93.184.216.34", port)),
+                (main.socket.AF_INET, 1, 6, "", ("127.0.0.1", port)),
+            ]
+
+        with patch.object(main.socket, "getaddrinfo", _split_horizon):
+            with self.assertRaises(main.HTTPException) as ctx:
+                asyncio.run(main._request_pinned("GET", "https://evil.example/"))
+        self.assertEqual(ctx.exception.status_code, 400)
+
+    # ── Signing out actually invalidates the cookie ──────────────────────────
+
+    def test_signing_out_invalidates_a_copy_of_the_cookie(self):
+        session = {
+            "email": "me@bnix.vn",
+            "password": "hunter2",
+            "sid": "test-sid-abc",
+            "createdAt": int(main.time.time() * 1000),
+        }
+        token = main.encrypt_session(session)
+        self.assertIsNotNone(main.decrypt_session(token))
+
+        main._revoke_session(session)
+        # The stolen copy of the same cookie is now worthless.
+        self.assertIsNone(main.decrypt_session(token))
+
+    def test_revoking_one_session_leaves_other_sessions_alone(self):
+        now = int(main.time.time() * 1000)
+        phone = {"email": "me@bnix.vn", "password": "x", "sid": "sid-phone", "createdAt": now}
+        laptop = {"email": "me@bnix.vn", "password": "x", "sid": "sid-laptop", "createdAt": now}
+        phone_token = main.encrypt_session(phone)
+        laptop_token = main.encrypt_session(laptop)
+
+        main._revoke_session(phone)
+        self.assertIsNone(main.decrypt_session(phone_token))
+        self.assertIsNotNone(main.decrypt_session(laptop_token))
+
+    def test_admin_sign_out_invalidates_the_admin_cookie(self):
+        data = {
+            "admin": True,
+            "username": "admin",
+            "sid": "sid-admin-1",
+            "createdAt": int(main.time.time() * 1000),
+        }
+        token = main._admin_encrypt_session(data)
+        self.assertIsNotNone(main._admin_decrypt_session(token))
+        main._revoke_session(data, max_age=main.ADMIN_SESSION_MAX_AGE)
+        self.assertIsNone(main._admin_decrypt_session(token))
+
+    def test_login_issues_a_revocable_session_id(self):
+        self._patch_env({"IMAP_HOST": "imap.safe.example", "SMTP_HOST": "smtp.safe.example"})
+
+        class FakeIMAP:
+            def __init__(self, host, port, timeout):
+                pass
+
+            async def wait_hello_from_server(self):
+                return None
+
+            async def login(self, email, password):
+                return SimpleNamespace(result="OK", lines=[])
+
+            async def logout(self):
+                return None
+
+        with patch.object(main.aioimaplib, "IMAP4_SSL", FakeIMAP):
+            response = asyncio.run(main.login(_request(), {
+                "email": "user@example.com", "password": "pw",
+            }))
+        token = response.headers["set-cookie"].split("webmail_session=", 1)[1].split(";", 1)[0]
+        session = main.decrypt_session(token)
+        self.assertTrue(session.get("sid"))
+
+        main._revoke_session(session)
+        self.assertIsNone(main.decrypt_session(token))
+
+    def test_a_broken_session_store_denies_rather_than_admits(self):
+        import sqlite3
+
+        def _explode(*a, **kw):
+            raise RuntimeError("disk gone")
+
+        with patch.object(sqlite3, "connect", _explode):
+            self.assertTrue(main._session_is_revoked("any-sid"))
+        # ...and an unreadable store must not lock out sessions that were never
+        # signed out: a cookie with no id at all is still fine.
+        self.assertFalse(main._session_is_revoked(None))

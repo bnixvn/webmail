@@ -29,7 +29,7 @@ from email.utils import formataddr, getaddresses, make_msgid
 from functools import partial
 from pathlib import Path
 from typing import Any, AsyncIterator
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote, urlsplit, urlunsplit
 
 import aioimaplib
 import aiosmtplib
@@ -1048,6 +1048,8 @@ def _admin_decrypt_session(token: str | None) -> dict | None:
             return None
         if time.time() - data.get("createdAt", 0) / 1000.0 > ADMIN_SESSION_MAX_AGE:
             return None
+        if _session_is_revoked(data.get("sid")):
+            return None
         return data
     except Exception:
         return None
@@ -1331,6 +1333,68 @@ async def _resolve_smtp_config(domain: str) -> tuple[str, int]:
 
 # ─── Session (AES-256-GCM, matching Next.js) ──────────────────────────────────
 
+# Sessions live entirely in the cookie, so signing out cannot simply forget
+# them: anyone holding a copy of the cookie could keep using it until it aged
+# out. Each session carries a random id, and signing out records that id here
+# until the moment the cookie would have expired anyway — after which the row
+# is worthless and gets pruned. Only signed-out ids are stored, so the table
+# stays small (it is empty in the normal case).
+SESSIONS_DB = os.path.join(DATA_DIR, "db", "sessions.db")
+
+
+def _sessions_init():
+    import sqlite3
+
+    with sqlite3.connect(SESSIONS_DB) as db:
+        db.execute("""CREATE TABLE IF NOT EXISTS revoked_sessions (
+            sid        TEXT PRIMARY KEY,
+            expires_at INTEGER NOT NULL
+        )""")
+        db.commit()
+
+
+_sessions_init()
+
+
+def _session_is_revoked(sid: str | None) -> bool:
+    # Cookies issued before sessions carried an id cannot be revoked; they age
+    # out within SESSION_MAX_AGE on their own.
+    if not sid:
+        return False
+    import sqlite3
+
+    try:
+        with sqlite3.connect(SESSIONS_DB, timeout=5) as db:
+            row = db.execute(
+                "SELECT 1 FROM revoked_sessions WHERE sid=? AND expires_at > ?",
+                (sid, int(time.time())),
+            ).fetchone()
+        return row is not None
+    except Exception:
+        # A broken session store must not become a way to stay signed in.
+        return True
+
+
+def _revoke_session(session: dict | None, max_age: int | None = None) -> None:
+    if not session or not session.get("sid"):
+        return
+    import sqlite3
+
+    created = session.get("createdAt", 0) / 1000.0
+    expires_at = int(created + (max_age or SESSION_MAX_AGE))
+    now = int(time.time())
+    try:
+        with sqlite3.connect(SESSIONS_DB, timeout=5) as db:
+            db.execute("DELETE FROM revoked_sessions WHERE expires_at <= ?", (now,))
+            db.execute(
+                "INSERT OR REPLACE INTO revoked_sessions (sid, expires_at) VALUES (?, ?)",
+                (session["sid"], max(expires_at, now + 60)),
+            )
+            db.commit()
+    except Exception as exc:
+        print(f"[SESSION] Could not record sign-out: {exc}")
+
+
 def _session_key() -> bytes:
     return hashlib.sha256(AUTH_SECRET.encode()).digest()
 
@@ -1362,6 +1426,8 @@ def decrypt_session(token: str | None) -> dict | None:
         if _session_auth_type(session) == "password" and not session.get("password"):
             return None
         if time.time() - session["createdAt"] / 1000.0 > SESSION_MAX_AGE:
+            return None
+        if _session_is_revoked(session.get("sid")):
             return None
         return session
     except Exception:
@@ -2673,6 +2739,7 @@ async def login(request: Request, body: dict):
         "email": email,
         "login_email": login_email,
         "password": password,
+        "sid": secrets.token_urlsafe(18),
         "createdAt": int(time.time() * 1000),
         "mail_domain": mail_domain,
         "imap_host": imap_host,
@@ -2700,6 +2767,9 @@ async def logout(request: Request):
     session = await _load_session(request)
     if session:
         await _evict_session_imap(session)
+        # Deleting the cookie only clears this browser. Recording the id is
+        # what stops a copy of it being used elsewhere.
+        _revoke_session(session)
     response = JSONResponse({"ok": True})
     response.delete_cookie(SESSION_COOKIE, path="/")
     return response
@@ -3240,25 +3310,73 @@ async def get_message(request: Request, uid: int):
     return JSONResponse({"message": summary})
 
 
-def _assert_public_http_url(url: str) -> None:
+def _assert_public_http_url(url: str) -> list[tuple[int, str]]:
     """
     Reject a URL that resolves to a private/loopback/link-local address before
-    the server makes a request to it. The unsubscribe URL comes straight from
-    an email header, which an attacker fully controls — a classic SSRF vector.
+    the server makes a request to it, and return the addresses it did resolve
+    to. An unsubscribe URL comes straight from an email header and a BIMI logo
+    URL from the sender's own DNS — both are attacker-controlled, the classic
+    SSRF vector.
+
+    Returning the addresses matters: the caller connects to one of them
+    directly (see _request_pinned) instead of letting httpx resolve the name a
+    second time, which would leave a window for the name to answer with a
+    public address here and 127.0.0.1 there.
     """
     parsed = urlsplit(url)
     if parsed.scheme not in ("http", "https") or not parsed.hostname:
-        raise HTTPException(400, "Invalid unsubscribe URL.")
+        raise HTTPException(400, "Invalid URL.")
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
     try:
-        infos = socket.getaddrinfo(parsed.hostname, None)
+        infos = socket.getaddrinfo(parsed.hostname, port, type=socket.SOCK_STREAM)
     except socket.gaierror:
-        raise HTTPException(400, "Could not resolve unsubscribe host.")
+        raise HTTPException(400, "Could not resolve host.")
     if not infos:
-        raise HTTPException(400, "Could not resolve unsubscribe host.")
-    for info in infos:
-        addr = ipaddress.ip_address(info[4][0])
+        raise HTTPException(400, "Could not resolve host.")
+
+    addresses: list[tuple[int, str]] = []
+    for family, _type, _proto, _canonname, sockaddr in infos:
+        try:
+            addr = ipaddress.ip_address(sockaddr[0])
+        except ValueError:
+            raise HTTPException(400, "Could not resolve host.")
         if not addr.is_global:
-            raise HTTPException(400, "Unsubscribe URL points to a private address.")
+            raise HTTPException(400, "URL points to a private address.")
+        addresses.append((family, sockaddr[0]))
+    return addresses
+
+
+async def _request_pinned(method: str, url: str, *, timeout: float = 10, **kwargs) -> httpx.Response:
+    """
+    Make an outbound request to an attacker-supplied URL, connecting to an
+    address that was checked to be public rather than re-resolving the name.
+
+    TLS still verifies the certificate against the real hostname: the address
+    goes in the URL, the name goes in the Host header and in sni_hostname,
+    which httpcore hands to the TLS handshake as server_hostname.
+
+    Redirects stay off — a new hop would need the whole check again.
+    """
+    addresses = _assert_public_http_url(url)
+    parsed = urlsplit(url)
+    family, ip = addresses[0]
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    literal = f"[{ip}]" if family == socket.AF_INET6 else ip
+    pinned_url = urlunsplit(
+        (parsed.scheme, f"{literal}:{port}", parsed.path or "/", parsed.query, "")
+    )
+
+    headers = dict(kwargs.pop("headers", None) or {})
+    headers["Host"] = parsed.netloc.rsplit("@", 1)[-1]
+
+    async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
+        return await client.request(
+            method,
+            pinned_url,
+            headers=headers,
+            extensions={"sni_hostname": parsed.hostname},
+            **kwargs,
+        )
 
 
 @app.post("/api/unsubscribe")
@@ -3276,10 +3394,9 @@ async def one_click_unsubscribe(request: Request, body: dict):
     _assert_public_http_url(url)
 
     try:
-        # No redirects: the pre-flight check above only validated this URL's
-        # host, and each hop would need re-validating to stay SSRF-safe.
-        async with httpx.AsyncClient(timeout=10, follow_redirects=False) as client:
-            resp = await client.post(url, data={"List-Unsubscribe": "One-Click"})
+        resp = await _request_pinned(
+            "POST", url, timeout=10, data={"List-Unsubscribe": "One-Click"}
+        )
         if resp.status_code >= 400:
             raise HTTPException(502, f"Unsubscribe request failed ({resp.status_code}).")
     except HTTPException:
@@ -3874,19 +3991,20 @@ _AVATAR_ALLOWED_TYPES = {
 }
 
 
-async def _fetch_avatar_image(url: str, *, follow_redirects: bool = False) -> tuple[bytes, str] | None:
+async def _fetch_avatar_image(url: str, *, trusted_host: bool = False) -> tuple[bytes, str] | None:
     """
     Fetch a remote avatar server-side, with SSRF, size and type limits.
-    Redirects are only followed for Gravatar, whose host is ours to trust; a
-    BIMI URL comes from the sender, and each hop would need re-validating.
+
+    A BIMI URL is published by the sender's own domain, so it goes through the
+    pinned path: checked address, no redirects. Gravatar is a fixed host nobody
+    else controls, so it can be fetched normally and follow its redirects.
     """
     try:
-        _assert_public_http_url(url)
-    except HTTPException:
-        return None
-    try:
-        async with httpx.AsyncClient(timeout=8, follow_redirects=follow_redirects) as client:
-            resp = await client.get(url)
+        if trusted_host:
+            async with httpx.AsyncClient(timeout=8, follow_redirects=True) as client:
+                resp = await client.get(url)
+        else:
+            resp = await _request_pinned("GET", url, timeout=8)
         if resp.status_code != 200:
             return None
         content_type = (resp.headers.get("content-type") or "").split(";")[0].strip().lower()
@@ -3927,7 +4045,7 @@ async def get_avatar_image(request: Request):
             gravatar_hash = hashlib.md5(email.encode()).hexdigest()
             gravatar_url = await _gravatar_url_if_exists(gravatar_hash)
             if gravatar_url:
-                result = await _fetch_avatar_image(gravatar_url, follow_redirects=True)
+                result = await _fetch_avatar_image(gravatar_url, trusted_host=True)
 
         data, content_type = result if result else (b"", "")
         if len(_AVATAR_IMAGE_CACHE) >= _AVATAR_IMAGE_CACHE_MAX:
@@ -4949,6 +5067,7 @@ async def admin_login(request: Request, body: dict):
     session_data = {
         "admin": True,
         "username": row[1],
+        "sid": secrets.token_urlsafe(18),
         "createdAt": int(time.time() * 1000),
     }
     response = JSONResponse({"ok": True, "username": row[1]})
@@ -4965,7 +5084,11 @@ async def admin_login(request: Request, body: dict):
 
 
 @app.post("/api/admin/logout")
-async def admin_logout():
+async def admin_logout(request: Request):
+    _revoke_session(
+        _admin_decrypt_session(request.cookies.get(ADMIN_SESSION_COOKIE)),
+        max_age=ADMIN_SESSION_MAX_AGE,
+    )
     response = JSONResponse({"ok": True})
     response.delete_cookie(ADMIN_SESSION_COOKIE, path="/")
     return response
