@@ -42,6 +42,25 @@ input, textarea, [contenteditable] {
   border-radius: 6px;
 }
 
+/* Holds the frame while it is scaled down to fit narrow screens. The frame
+   keeps its natural (wide) layout box and is shrunk with a transform, so the
+   sizer carries the scaled size the page layout should see. */
+.email-frame-box {
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.email-frame-sizer {
+  position: relative;
+  overflow: hidden;
+  min-height: 120px; /* before the first measurement the frame is out of flow */
+}
+.email-frame-sizer > .email-frame {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
 /* Compose editor */
 .compose-editor {
   outline: none;
@@ -336,6 +355,9 @@ input, textarea, [contenteditable] {
 /* Responsive helpers */
 @media (max-width: 768px) {
   .desktop-only { display: none !important; }
+  /* iOS zooms the page in when a focused field is under 16px. Pinch-zoom is
+     allowed (see index.html), so keep the auto-zoom from firing instead. */
+  input, textarea, select, [contenteditable="true"] { font-size: 16px; }
 }
 @media (min-width: 769px) {
   .mobile-only { display: none !important; }

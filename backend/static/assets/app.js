@@ -2973,14 +2973,17 @@ function renderQuickReply(placeholder) {
   renderAttPreviews();
   outer.appendChild(attContainer);
 
-  // Send button
+  // Send button â€” labelled, and big enough to be a comfortable touch target.
   const bottomRow = h("div", { className: "flex items-center justify-end mt-2" });
   const sendBtn = h("button", {
-    className: "qr-send-btn p-2 rounded-full bg-brand text-white hover:bg-brand-hover disabled:opacity-50",
+    className: "qr-send-btn inline-flex items-center gap-2 px-4 py-2 rounded-full "
+      + "bg-brand text-white text-sm font-medium hover:bg-brand-hover disabled:opacity-50",
     disabled: "disabled",
     onclick: sendQuickReply,
-    innerHTML: I.send,
-  });
+  },
+    h("span", { className: "flex items-center", innerHTML: I.send }),
+    h("span", {}, t("send")),
+  );
   bottomRow.appendChild(sendBtn);
   outer.appendChild(bottomRow);
 
@@ -3029,20 +3032,56 @@ function renderQuickReply(placeholder) {
 function renderEmailHtmlWithImageGuard(msg) {
   const wrap = h("div", { className: "email-html-wrap" });
 
+  // The frame keeps the mail's natural width and is scaled down visually, so
+  // the sizer carries the scaled-down size that page layout actually sees.
+  const box = h("div", { className: "email-frame-box" });
+  const sizer = h("div", { className: "email-frame-sizer" });
+
   const frame = h("iframe", {
-    className: "email-frame w-full border-0 block",
+    className: "email-frame border-0 block",
     sandbox: "allow-same-origin allow-popups allow-popups-to-escape-sandbox",
     referrerpolicy: "no-referrer",
     title: msg.subject || "",
     srcdoc: emailFrameDocument(msg.html),
   });
 
+  // Lay the mail out at its natural width, then shrink-to-fit with a transform
+  // (a pure visual scale â€” no reflow, so the sender's layout is untouched).
+  // Mail authored for a 600px desktop column therefore fits a phone instead of
+  // scrolling sideways. Below MIN_SCALE the text would be unreadable, so very
+  // wide mail is left scrollable rather than shrunk into nothing.
+  const MIN_SCALE = 0.35;
   function fitHeight() {
     try {
       const doc = frame.contentDocument;
       if (!doc || !doc.body) return;
-      const height = Math.max(doc.body.scrollHeight, doc.documentElement.scrollHeight);
-      if (height) frame.style.height = `${height + 8}px`;
+      const available = box.clientWidth;
+      if (!available) return;
+
+      // Measure at the available width first: most mail already fits.
+      frame.style.transform = "";
+      frame.style.width = `${available}px`;
+      let natural = Math.max(doc.body.scrollWidth, doc.documentElement.scrollWidth);
+
+      let scale = 1;
+      if (natural > available + 2) {
+        scale = Math.max(available / natural, MIN_SCALE);
+        frame.style.width = `${natural}px`;
+      } else {
+        natural = available;
+      }
+
+      const height = Math.max(doc.body.scrollHeight, doc.documentElement.scrollHeight) + 8;
+      frame.style.height = `${height}px`;
+
+      if (scale < 1) {
+        frame.style.transformOrigin = "top left";
+        frame.style.transform = `scale(${scale})`;
+      } else {
+        frame.style.transform = "";
+      }
+      sizer.style.width = `${Math.ceil(natural * scale)}px`;
+      sizer.style.height = `${Math.ceil(height * scale)}px`;
     } catch {
       frame.style.height = "480px"; // cross-origin fallback, should not happen
     }
@@ -3058,6 +3097,19 @@ function renderEmailHtmlWithImageGuard(msg) {
     } catch {}
     setTimeout(fitHeight, 300);
   });
+
+  // Rotating the phone changes the available width; re-fit until the frame goes
+  // away with the next render.
+  let resizeTimer = null;
+  function onResize() {
+    if (!frame.isConnected) {
+      window.removeEventListener("resize", onResize);
+      return;
+    }
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(fitHeight, 120);
+  }
+  window.addEventListener("resize", onResize);
 
   if (msg.imagesBlocked) {
     const banner = h("div", {
@@ -3084,7 +3136,9 @@ function renderEmailHtmlWithImageGuard(msg) {
     wrap.appendChild(banner);
   }
 
-  wrap.appendChild(frame);
+  sizer.appendChild(frame);
+  box.appendChild(sizer);
+  wrap.appendChild(box);
   return wrap;
 }
 
@@ -3098,7 +3152,8 @@ function emailFrameDocument(html) {
     + `html,body{margin:0;padding:0;background:#fff;color:#1e293b;`
     + `font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;font-size:14px;line-height:1.5;}`
     + `img{max-width:100%;height:auto;}`
-    + `table{max-width:100%;}`
+    // No max-width on tables: squeezing a 600px newsletter into a phone breaks
+    // the layout the sender designed. The frame is scaled to fit instead.
     + `</style></head><body>${html || ""}</body></html>`;
 }
 
@@ -3155,7 +3210,7 @@ function renderThreadMsgBubble(m, isLast) {
 
   if (!isCollapsed) {
     // Body
-    const body = h("div", { className: "px-6 py-4" });
+    const body = h("div", { className: "px-3 py-3 md:px-6 md:py-4" });
     const bubbleSmime = renderSmimeBadge(m);
     if (bubbleSmime) {
       bubbleSmime.className = "mb-3";
@@ -3241,7 +3296,7 @@ function renderThreadView(section, threadMsgs) {
   section.appendChild(header);
 
   // Scrollable thread
-  const scroll = h("div", { className: "flex-1 overflow-y-auto px-4 py-4" });
+  const scroll = h("div", { className: "flex-1 overflow-y-auto px-2 py-2 md:px-4 md:py-4" });
 
   // Loading indicator for thread fetch
   if (S.loadingThread) {
@@ -3575,8 +3630,8 @@ function renderMessageView() {
   section.appendChild(header);
 
   // Content
-  const content = h("div", { className: "flex-1 overflow-y-auto p-4" });
-  const article = h("article", { className: "bg-white dark:bg-slate-800 rounded-lg border border-line shadow-sm p-6" });
+  const content = h("div", { className: "flex-1 overflow-y-auto p-2 md:p-4" });
+  const article = h("article", { className: "bg-white dark:bg-slate-800 rounded-lg border border-line shadow-sm p-3 md:p-6" });
 
   if (msg.html) {
     article.appendChild(renderEmailHtmlWithImageGuard(msg));
@@ -5960,14 +6015,16 @@ function render() {
           mailView.appendChild(renderMessageList());
         }
 
-        // Mobile FAB: compose button (bottom-right, mobile-only)
-        const fab = h("button", {
-          className: "fab-compose md:hidden",
-          title: t("compose"),
-          onclick() { openCompose(); },
-          innerHTML: I.edit,
-        });
-        mailView.appendChild(fab);
+        // Mobile FAB: compose button (bottom-right, mobile-only). Only over the
+        // list â€” on a message it sat right on top of the quick-reply send button.
+        if (!S.compose && !S.selectedUid) {
+          mailView.appendChild(h("button", {
+            className: "fab-compose md:hidden",
+            title: t("compose"),
+            onclick() { openCompose(); },
+            innerHTML: I.edit,
+          }));
+        }
 
         main.appendChild(mailView);
       } else if (S.view === "contacts") {

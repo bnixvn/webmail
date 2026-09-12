@@ -2,19 +2,22 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <!-- Pinch-zoom stays on: mail scaled down to fit a phone has to be zoomable.
+       Form controls are forced to 16px on small screens (style.css) so iOS does
+       not zoom in by itself when a field takes focus. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
   <title>Webmail</title>
   <link rel="icon" href="/brand/mail.png">
   <link rel="apple-touch-icon" href="/brand/mail.png">
   <link rel="manifest" href="/manifest.json">
   <meta name="theme-color" content="#284f7d">
-  <link rel="stylesheet" href="/assets/css/tailwind.css">
-  <link rel="stylesheet" href="/assets/style.css">
-  <link rel="stylesheet" href="/assets/dark-mode.css">
+  <link rel="stylesheet" href="/assets/css/tailwind.css?v=20260912mobile">
+  <link rel="stylesheet" href="/assets/style.css?v=20260912mobile">
+  <link rel="stylesheet" href="/assets/dark-mode.css?v=20260912mobile">
   <script src="/assets/theme-init.js"></script>
 </head>
 <body class="bg-white dark:bg-slate-900 text-ink dark:text-slate-100">
   <div id="app"></div>
-  <script src="/assets/app.js?v=20260912certdl"></script>
+  <script src="/assets/app.js?v=20260912mobile"></script>
 </body>
 </html>
