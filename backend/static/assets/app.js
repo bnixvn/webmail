@@ -1211,7 +1211,7 @@ async function getAvatarSources(email) {
 const failedAvatarUrls = new Set();
 
 function avatarBadge(size, email, sources) {
-  const el = h("div", { className: "avatar-badge", style: { width: size + "px", height: size + "px", fontSize: (size * 0.38) + "px", background: "#a3e635" } });
+  const el = h("div", { className: "avatar-badge", style: { width: size + "px", height: size + "px", fontSize: (size * 0.38) + "px" } });
   el.textContent = initialsOf(email);
 
   // Only shows a picture when there really is one — otherwise the initials stay.
