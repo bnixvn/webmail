@@ -36,7 +36,7 @@ import aiosmtplib
 import httpx
 import uvicorn
 from fastapi import FastAPI, File, HTTPException, Request, Response, UploadFile
-from fastapi.responses import JSONResponse, FileResponse, HTMLResponse
+from fastapi.responses import JSONResponse, FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, EmailStr, Field
 
@@ -1131,9 +1131,41 @@ async def _probe_imap_server(
             await writer.wait_closed()
 
 
+# ─── SSO from a hosting panel ────────────────────────────────────────────────
+# A hosting panel that runs the mail server can sign a mailbox owner straight
+# in. It signs a short-lived, single-use token with SSO_SECRET; the session it
+# opens reaches IMAP and SMTP as a Dovecot master user ("mailbox*master"), so
+# the mailbox password is never needed and never lands in the cookie -- the
+# master password stays in this process's environment. Off unless all of
+# SSO_SECRET, SSO_MASTER_USER and SSO_MASTER_PASSWORD are set.
+SSO_TOKEN_MAX_TTL = 300
+_SSO_EMAIL_RE = re.compile(r"^[a-z0-9._%+-]{1,64}@[a-z0-9.-]{1,253}\.[a-z]{2,63}$")
+
+
+def _sso_config() -> dict | None:
+    secret = os.environ.get("SSO_SECRET", "").strip()
+    user = os.environ.get("SSO_MASTER_USER", "").strip()
+    password = os.environ.get("SSO_MASTER_PASSWORD", "")
+    separator = os.environ.get("SSO_MASTER_SEPARATOR", "*") or "*"
+    if len(secret) < 32 or not user or not password:
+        return None
+    return {"secret": secret, "user": user, "password": password, "separator": separator}
+
+
+def _session_credentials(session: dict, email: str | None = None) -> tuple[str, str]:
+    """The IMAP/SMTP login for a session: its own password, or for an SSO
+    session the master user acting as that mailbox."""
+    if _session_auth_type(session) == "sso":
+        config = _sso_config()
+        if not config:
+            raise SessionExpiredError()
+        return f"{session['email']}{config['separator']}{config['user']}", config["password"]
+    return session.get("login_email") or email or session["email"], session["password"]
+
+
 async def _imap_login(client: aioimaplib.IMAP4, session: dict):
-    email = session.get("login_email") or session["email"]
-    response = await client.login(email, session["password"])
+    user, password = _session_credentials(session)
+    response = await client.login(user, password)
     if not _imap_ok(response):
         raise SessionExpiredError()
 
@@ -1350,6 +1382,10 @@ def _sessions_init():
             sid        TEXT PRIMARY KEY,
             expires_at INTEGER NOT NULL
         )""")
+        db.execute("""CREATE TABLE IF NOT EXISTS used_sso_tokens (
+            nonce      TEXT PRIMARY KEY,
+            expires_at INTEGER NOT NULL
+        )""")
         db.commit()
 
 
@@ -1425,6 +1461,8 @@ def decrypt_session(token: str | None) -> dict | None:
             return None
         if _session_auth_type(session) == "password" and not session.get("password"):
             return None
+        if _session_auth_type(session) == "sso" and not _sso_config():
+            return None
         if time.time() - session["createdAt"] / 1000.0 > SESSION_MAX_AGE:
             return None
         if _session_is_revoked(session.get("sid")):
@@ -1448,7 +1486,8 @@ def encrypt_session(session: dict) -> str:
 
 
 async def _smtp_login_for_session(smtp: aiosmtplib.SMTP, session: dict, email: str):
-    await smtp.login(session.get("login_email") or email, session["password"])
+    user, password = _session_credentials(session, email)
+    await smtp.login(user, password)
 
 
 # ─── Middleware: session ──────────────────────────────────────────────────────
@@ -2759,6 +2798,118 @@ async def login(request: Request, body: dict):
         path="/",
         max_age=SESSION_MAX_AGE if remember else None,
     )
+    return response
+
+
+def _sso_claim_nonce(nonce: str, expires_at: int) -> bool:
+    """Record a link as used. False when it already was."""
+    import sqlite3
+
+    try:
+        with sqlite3.connect(SESSIONS_DB, timeout=5) as db:
+            db.execute("DELETE FROM used_sso_tokens WHERE expires_at <= ?", (int(time.time()),))
+            db.execute("INSERT INTO used_sso_tokens (nonce, expires_at) VALUES (?, ?)", (nonce, expires_at))
+            db.commit()
+        return True
+    except sqlite3.IntegrityError:
+        return False
+    except sqlite3.Error:
+        # A broken store must not become a way to replay a link.
+        return False
+
+
+def _sso_verify(token: str, config: dict) -> str:
+    """The mailbox a signed link opens, or ValueError."""
+    try:
+        payload_b64, signature_b64 = (token or "").split(".", 1)
+        expected = hmac.new(config["secret"].encode(), payload_b64.encode(), hashlib.sha256).digest()
+        if not hmac.compare_digest(expected, _b64_decode(signature_b64)):
+            raise ValueError("bad signature")
+        payload = json.loads(_b64_decode(payload_b64))
+    except (ValueError, TypeError, binascii.Error, json.JSONDecodeError) as exc:
+        raise ValueError("This sign-in link is not valid.") from exc
+    now = time.time()
+    expires_at = int(payload.get("exp") or 0)
+    if expires_at < now or expires_at - now > SSO_TOKEN_MAX_TTL:
+        raise ValueError("This sign-in link has expired. Open webmail from the panel again.")
+    email = str(payload.get("email") or "").lower().strip()
+    nonce = str(payload.get("nonce") or "")
+    if not _SSO_EMAIL_RE.match(email) or not 16 <= len(nonce) <= 128:
+        raise ValueError("This sign-in link is not valid.")
+    if not _sso_claim_nonce(nonce, expires_at):
+        raise ValueError("This sign-in link was already used. Open webmail from the panel again.")
+    return email
+
+
+def _sso_error(message: str, status: int) -> HTMLResponse:
+    body = (
+        "<!doctype html><meta charset=utf-8><title>Webmail</title>"
+        "<body style=\"font-family:system-ui,sans-serif;max-width:32rem;margin:4rem auto;padding:0 1rem\">"
+        f"<h1 style=\"font-size:1.25rem\">Webmail</h1><p>{html_lib.escape(message)}</p>"
+        "<p><a href=\"/\">Sign in with your password</a></p></body>"
+    )
+    return HTMLResponse(body, status_code=status, headers={"Cache-Control": "no-store"})
+
+
+@app.get("/sso")
+async def sso_login(request: Request, token: str = ""):
+    config = _sso_config()
+    if not config:
+        return _sso_error("Single sign-on is not enabled on this webmail.", 404)
+    client_ip = _login_client_ip(request)
+    if _login_block_remaining("webmail", client_ip):
+        return _sso_error("Too many failed sign-ins from this address. Try again later.", 429)
+    try:
+        email = _sso_verify(token, config)
+    except ValueError as exc:
+        _record_login_failure("webmail", client_ip)
+        return _sso_error(str(exc), 403)
+
+    domain = email.split("@")[1]
+    mail_domain = _mail_domain_for_login(request, domain)
+    imap_host, imap_port, imap_secure = await _resolve_imap_config(mail_domain)
+    smtp_host, smtp_port = await _resolve_smtp_config(mail_domain)
+    session = {
+        "email": email,
+        "login_email": email,
+        "auth_type": "sso",
+        "sid": secrets.token_urlsafe(18),
+        "createdAt": int(time.time() * 1000),
+        "mail_domain": mail_domain,
+        "imap_host": imap_host,
+        "imap_port": imap_port,
+        "imap_secure": imap_secure,
+        "smtp_host": smtp_host,
+        "smtp_port": smtp_port,
+    }
+    # The mailbox must exist and the master login must work before a session
+    # is handed out.
+    client = _new_imap_client(imap_host, imap_port, imap_secure)
+    try:
+        await client.wait_hello_from_server()
+        await _imap_login(client, session)
+    except Exception:
+        _record_login_failure("webmail", client_ip)
+        return _sso_error("This mailbox could not be opened.", 403)
+    finally:
+        try:
+            await client.logout()
+        except Exception:
+            pass
+    _reset_login_failures("webmail", client_ip)
+
+    response = RedirectResponse("/", status_code=303)
+    response.set_cookie(
+        key=SESSION_COOKIE,
+        value=encrypt_session(session),
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        path="/",
+        max_age=SESSION_MAX_AGE,
+    )
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Referrer-Policy"] = "no-referrer"
     return response
 
 
