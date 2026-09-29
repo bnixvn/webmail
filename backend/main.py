@@ -2577,6 +2577,14 @@ def _quote_imap_folder(folder: str) -> str:
     return f'"{escaped}"'
 
 
+async def _uid_search(client: aioimaplib.IMAP4, *criteria: str):
+    """UID SEARCH. aioimaplib 2 refuses SEARCH through uid() ("command UID
+    only possible with COPY, FETCH, EXPUNGE or STORE"), which broke draft
+    autosave and message search; non-ASCII text is sent with CHARSET UTF-8."""
+    charset = None if all(str(item).isascii() for item in criteria) else "utf-8"
+    return await client.uid_search(*criteria, charset=charset)
+
+
 def _imap_quote_search(value: str) -> str:
     """
     Quote free text for use as an IMAP SEARCH string literal.
@@ -3204,7 +3212,7 @@ async def get_thread(request: Request):
                 sel = await client.select(_quote_imap_folder(_folder), readonly=True)
                 _require_imap_ok(sel, f"SELECT {_folder}")
                 # IMAP SEARCH by subject text
-                search_resp = await client.uid("SEARCH", "SUBJECT", _imap_quote_search(_subj))
+                search_resp = await _uid_search(client, "SUBJECT", _imap_quote_search(_subj))
                 _require_imap_ok(search_resp, "UID SEARCH SUBJECT")
                 uids: list[str] = []
                 for item in _imap_lines(search_resp):
@@ -3324,7 +3332,7 @@ async def search_messages(request: Request):
             try:
                 sel = await client.select(_quote_imap_folder(_folder), readonly=True)
                 _require_imap_ok(sel, f"SELECT {_folder}")
-                search_resp = await client.uid("SEARCH", *_criteria)
+                search_resp = await _uid_search(client, *_criteria)
                 _require_imap_ok(search_resp, "UID SEARCH")
                 uids: list[str] = []
                 for item in _imap_lines(search_resp):
@@ -3814,7 +3822,7 @@ async def save_draft(request: Request, body: dict):
         # (avoids depending on the optional UIDPLUS/APPENDUID extension).
         sel = await client.select(_quote_imap_folder(target))
         _require_imap_ok(sel, f"SELECT {target}")
-        search_resp = await client.uid("SEARCH", "HEADER", "Message-ID", _imap_quote_search(message_id))
+        search_resp = await _uid_search(client, "HEADER", "Message-ID", _imap_quote_search(message_id))
         _require_imap_ok(search_resp, "UID SEARCH Message-ID")
         uids: list[str] = []
         for item in _imap_lines(search_resp):
