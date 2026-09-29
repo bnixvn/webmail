@@ -36,7 +36,7 @@ import aiosmtplib
 import httpx
 import uvicorn
 from fastapi import FastAPI, File, HTTPException, Request, Response, UploadFile
-from fastapi.responses import JSONResponse, FileResponse, HTMLResponse
+from fastapi.responses import JSONResponse, FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, EmailStr, Field
 
@@ -63,6 +63,19 @@ SESSION_MAX_AGE = 60 * 60 * 12  # 12 hours
 IMAP_TIMEOUT = 60  # seconds
 SMTP_TIMEOUT = 30
 POOL_TTL = 4 * 60  # 4 minutes
+
+# ── Single sign-on from a hosting panel ──
+# A panel that runs the mail server signs a short-lived token naming one
+# mailbox; /api/auth/sso turns it into a session. The mail server has a master
+# user (Dovecot: "mailbox*master" with the master password), so the webmail can
+# open that mailbox without its password. The master password lives here, in
+# the environment, and is read at login time: it is never put in a session
+# cookie. All three must be set, or the endpoint does not exist.
+SSO_SECRET = os.environ.get("SSO_SECRET", "").strip()
+SSO_MASTER_USER = os.environ.get("SSO_MASTER_USER", "").strip()
+SSO_MASTER_PASSWORD = os.environ.get("SSO_MASTER_PASSWORD", "")
+SSO_MASTER_SEPARATOR = os.environ.get("SSO_MASTER_SEPARATOR", "*") or "*"
+SSO_TOKEN_MAX_AGE = 120  # seconds
 
 DATA_DIR = os.environ.get("DATA_DIR", "/opt/bnix-webmail/data")
 os.makedirs(f"{DATA_DIR}/signatures", exist_ok=True)
@@ -1131,9 +1144,23 @@ async def _probe_imap_server(
             await writer.wait_closed()
 
 
+def _session_login_credentials(session: dict) -> tuple[str, str]:
+    """What to log in to IMAP and SMTP with for this session.
+
+    A single sign-on session carries no password: it opens the mailbox as the
+    mail server's master user, whose password is read from the environment
+    now. With SSO switched off since, such a session simply stops working.
+    """
+    if _session_auth_type(session) == "sso":
+        if not _sso_enabled():
+            raise SessionExpiredError()
+        return f"{session['email']}{SSO_MASTER_SEPARATOR}{SSO_MASTER_USER}", SSO_MASTER_PASSWORD
+    return session.get("login_email") or session["email"], session["password"]
+
+
 async def _imap_login(client: aioimaplib.IMAP4, session: dict):
-    email = session.get("login_email") or session["email"]
-    response = await client.login(email, session["password"])
+    email, password = _session_login_credentials(session)
+    response = await client.login(email, password)
     if not _imap_ok(response):
         raise SessionExpiredError()
 
@@ -1350,6 +1377,11 @@ def _sessions_init():
             sid        TEXT PRIMARY KEY,
             expires_at INTEGER NOT NULL
         )""")
+        # Single sign-on tokens already turned into a session: each works once.
+        db.execute("""CREATE TABLE IF NOT EXISTS used_sso_tokens (
+            nonce      TEXT PRIMARY KEY,
+            expires_at INTEGER NOT NULL
+        )""")
         db.commit()
 
 
@@ -1448,7 +1480,11 @@ def encrypt_session(session: dict) -> str:
 
 
 async def _smtp_login_for_session(smtp: aiosmtplib.SMTP, session: dict, email: str):
-    await smtp.login(session.get("login_email") or email, session["password"])
+    if _session_auth_type(session) == "sso":
+        login, password = _session_login_credentials(session)
+    else:
+        login, password = session.get("login_email") or email, session["password"]
+    await smtp.login(login, password)
 
 
 # ─── Middleware: session ──────────────────────────────────────────────────────
@@ -2758,6 +2794,110 @@ async def login(request: Request, body: dict):
         samesite="lax",
         path="/",
         max_age=SESSION_MAX_AGE if remember else None,
+    )
+    return response
+
+
+def _sso_enabled() -> bool:
+    return bool(SSO_SECRET and SSO_MASTER_USER and SSO_MASTER_PASSWORD)
+
+
+def _sso_sign(payload_b64: str) -> str:
+    digest = hmac.new(SSO_SECRET.encode(), payload_b64.encode(), hashlib.sha256).digest()
+    return base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
+
+
+def _verify_sso_token(token: str, now: int | None = None) -> str:
+    """The mailbox a single sign-on token names, if it is genuine, fresh and
+    unused. Anything else is one refusal: the caller learns nothing."""
+    import sqlite3
+
+    now = int(now if now is not None else time.time())
+    refused = HTTPException(403, "This sign-in link is not valid. Open the webmail from the panel again.")
+    payload_b64, _, signature = (token or "").partition(".")
+    if not payload_b64 or not signature or not hmac.compare_digest(signature, _sso_sign(payload_b64)):
+        raise refused
+    try:
+        padded = payload_b64 + "=" * (-len(payload_b64) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(padded.encode()).decode())
+        email = str(payload["email"]).strip().lower()
+        expires = int(payload["exp"])
+        nonce = str(payload["nonce"])
+    except (ValueError, KeyError, TypeError, binascii.Error):
+        raise refused
+    if "@" not in email or not nonce or expires < now or expires > now + SSO_TOKEN_MAX_AGE:
+        raise refused
+    try:
+        with sqlite3.connect(SESSIONS_DB, timeout=5) as db:
+            db.execute("DELETE FROM used_sso_tokens WHERE expires_at <= ?", (now,))
+            try:
+                db.execute("INSERT INTO used_sso_tokens (nonce, expires_at) VALUES (?, ?)",
+                           (nonce, expires + 60))
+            except sqlite3.IntegrityError:
+                raise refused
+            db.commit()
+    except sqlite3.Error:
+        # A token that cannot be marked used must not be usable twice.
+        raise refused
+    return email
+
+
+@app.get("/api/auth/sso")
+async def sso_login(request: Request, token: str = ""):
+    """Sign in from the hosting panel: /api/auth/sso?token=..., then the inbox."""
+    if not _sso_enabled():
+        raise HTTPException(404, "Not found")
+    client_ip = _login_client_ip(request)
+    retry_after = _login_block_remaining("webmail", client_ip)
+    if retry_after:
+        _raise_login_blocked(retry_after)
+    try:
+        email = _verify_sso_token(token)
+    except HTTPException:
+        _record_login_failure("webmail", client_ip)
+        raise
+
+    domain = email.split("@")[1]
+    mail_domain = _mail_domain_for_login(request, domain)
+    imap_host, imap_port, imap_secure = await _resolve_imap_config(mail_domain)
+    smtp_host, smtp_port = await _resolve_smtp_config(mail_domain)
+
+    session = {
+        "email": email,
+        "auth_type": "sso",
+        "sid": secrets.token_urlsafe(18),
+        "createdAt": int(time.time() * 1000),
+        "mail_domain": mail_domain,
+        "imap_host": imap_host,
+        "imap_port": imap_port,
+        "imap_secure": imap_secure,
+        "smtp_host": smtp_host,
+        "smtp_port": smtp_port,
+    }
+    # The mailbox must exist and open, or there is no session to give.
+    client = _new_imap_client(imap_host, imap_port, imap_secure)
+    try:
+        await client.wait_hello_from_server()
+        await _imap_login(client, session)
+    except Exception:
+        _record_login_failure("webmail", client_ip)
+        raise HTTPException(403, "This mailbox could not be opened. Open the webmail from the panel again.")
+    finally:
+        try:
+            await client.logout()
+        except Exception:
+            pass
+    _reset_login_failures("webmail", client_ip)
+
+    response = RedirectResponse("/", status_code=303)
+    response.set_cookie(
+        key=SESSION_COOKIE,
+        value=encrypt_session(session),
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        path="/",
+        max_age=SESSION_MAX_AGE,
     )
     return response
 

@@ -104,6 +104,29 @@ sudo systemctl restart bnix-webmail
 
 The installer creates a random initial admin password in `/root/bnix-webmail-admin.txt`. Sign in at `/admin` and change it after first use.
 
+### Single sign-on from a hosting panel
+
+A hosting panel that runs the mail server can send its users straight into
+their mailbox, without asking for the mailbox password. Set all three:
+
+```env
+SSO_SECRET=<random, shared with the panel>
+SSO_MASTER_USER=<a Dovecot master user>
+SSO_MASTER_PASSWORD=<that master user's password>
+SSO_MASTER_SEPARATOR=*
+```
+
+The panel sends the browser to `/api/auth/sso?token=<payload>.<signature>`:
+
+- `payload` is base64url JSON `{"email": "...", "exp": <unix time>, "nonce": "..."}`;
+- `signature` is base64url HMAC-SHA256 of the payload text with `SSO_SECRET`;
+- `exp` may be at most 120 seconds ahead, and each nonce works once.
+
+The webmail then logs in to IMAP and SMTP as `mailbox*master` with the master
+password. The session cookie holds no password; the master password is read
+from the environment at each login. With any of the three unset, the endpoint
+answers 404.
+
 > **Multi-domain support**: Users can log in with any email address. The app resolves DNS for each email domain to find the correct IMAP/SMTP server. If auto-detection is not suitable for a deployment, configure trusted `IMAP_HOST` and `SMTP_HOST` values in `/etc/bnix-webmail.env`.
 
 ### Caddy Reverse Proxy
@@ -184,6 +207,7 @@ webmail/
 | Method | Path | Description |
 |--------|------|-------------|
 | POST | `/api/auth/login` | Login with email + password |
+| GET | `/api/auth/sso` | Single sign-on from a hosting panel (only when `SSO_*` is set) |
 | POST | `/api/auth/logout` | Logout |
 | GET | `/api/auth/me` | Check session (public — returns `{authenticated: false}` if not logged in, no 401) |
 | GET | `/api/mailboxes` | List mailboxes |
