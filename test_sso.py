@@ -89,6 +89,11 @@ class SsoTests(unittest.TestCase):
                 asyncio.run(main.sso_login(request, token=_token()))
             self.assertEqual(refused.exception.status_code, 404)
 
+    def test_the_endpoint_answers_on_both_paths(self):
+        """OPanel 1.25.0 links to /sso; /api/auth/sso is the documented path."""
+        paths = {route.path for route in main.app.routes if getattr(route, "endpoint", None) is main.sso_login}
+        self.assertEqual(paths, {"/sso", "/api/auth/sso"})
+
 
 if __name__ == "__main__":
     unittest.main()
